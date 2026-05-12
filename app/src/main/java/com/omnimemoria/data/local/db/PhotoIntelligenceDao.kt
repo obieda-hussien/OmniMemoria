@@ -1,5 +1,6 @@
 package com.omnimemoria.data.local.db
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -15,4 +16,10 @@ interface PhotoIntelligenceDao {
 
     @Query("SELECT * FROM photo_intelligence")
     suspend fun getAll(): List<PhotoIntelligence>
+
+    @Query("SELECT * FROM photo_intelligence WHERE isVaultItem = 0")
+    fun getGalleryPhotos(): PagingSource<Int, PhotoIntelligence>
+
+    @Query("SELECT * FROM photo_intelligence WHERE isVaultItem = 1")
+    fun getVaultPhotos(): PagingSource<Int, PhotoIntelligence>
 }
