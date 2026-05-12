@@ -33,7 +33,7 @@ class MediaStoreRepository @Inject constructor(
 
     fun getPhotosPaged(sortConfig: SortConfig): Flow<PagingData<MediaPhoto>> {
         return Pager(
-            config = PagingConfig(pageSize = PHOTO_PAGE_SIZE),
+            config = PagingConfig(pageSize = PAGE_SIZE),
             pagingSourceFactory = {
                 MediaPhotoPagingSource(
                     contentResolver = contentResolver,
@@ -46,7 +46,7 @@ class MediaStoreRepository @Inject constructor(
 
     fun getFoldersPaged(): Flow<PagingData<MediaFolder>> {
         return Pager(
-            config = PagingConfig(pageSize = PHOTO_PAGE_SIZE),
+            config = PagingConfig(pageSize = PAGE_SIZE),
             pagingSourceFactory = { MediaFolderPagingSource(contentResolver) }
         ).flow
     }
@@ -162,7 +162,7 @@ class MediaStoreRepository @Inject constructor(
     }
 
     companion object {
-        private const val PHOTO_PAGE_SIZE = 60
+        private const val PAGE_SIZE = 60
 
         private val photoProjection = arrayOf(
             MediaStore.Images.Media._ID,
@@ -208,8 +208,20 @@ class MediaStoreRepository @Inject constructor(
                 SortBy.NAME -> MediaStore.Images.Media.DISPLAY_NAME to MediaStore.Images.Media.DATE_ADDED
                 SortBy.TYPE -> MediaStore.Images.Media.MIME_TYPE to MediaStore.Images.Media.DATE_ADDED
                 SortBy.RESOLUTION -> MediaStore.Images.Media.WIDTH to MediaStore.Images.Media.HEIGHT
-                SortBy.DURATION -> MediaStore.Images.Media.DATE_TAKEN to MediaStore.Images.Media.DATE_ADDED
-                SortBy.FAVORITES_FIRST -> MediaStore.Images.Media.DATE_TAKEN to MediaStore.Images.Media.DATE_ADDED
+                SortBy.DURATION -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        MediaStore.MediaColumns.DURATION to MediaStore.Images.Media.DATE_ADDED
+                    } else {
+                        MediaStore.Images.Media.DATE_TAKEN to MediaStore.Images.Media.DATE_ADDED
+                    }
+                }
+                SortBy.FAVORITES_FIRST -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        MediaStore.MediaColumns.IS_FAVORITE to MediaStore.Images.Media.DATE_TAKEN
+                    } else {
+                        MediaStore.Images.Media.DATE_TAKEN to MediaStore.Images.Media.DATE_ADDED
+                    }
+                }
             }
 
             val direction = when (sortConfig.sortOrder) {
