@@ -1940,4 +1940,4 @@ dependencies {
 
 ---
 
-*آخر تحديث: مايو 2026 — LensApp Planning Document v2.2 (Vault Architecture في Phase 1 + تقسيم Phase 4 + Gemini Nano AICore + فصل الفلاتر الذكية)*
+*آخر تحديث: مايو 2026 — OmniMemoria Planning Document v2.2 (Vault Architecture في Phase 1 + تقسيم Phase 4 + Gemini Nano AICore + فصل الفلاتر الذكية)*
