@@ -91,23 +91,26 @@ class MediaStoreRepository @Inject constructor(
         private val photoIntelligenceDao: PhotoIntelligenceDao,
         private val sortConfig: SortConfig
     ) : PagingSource<Int, MediaPhoto>() {
+        private var cachedVaultedIds: Set<Long>? = null
 
         override suspend fun load(params: LoadParams<Int>): LoadResult<Int, MediaPhoto> {
             return try {
                 val startOffset = params.key ?: 0
-                val vaultedIds = photoIntelligenceDao.getVaultPhotoIds().toHashSet()
+                val vaultedIds = cachedVaultedIds ?: photoIntelligenceDao.getVaultPhotoIds().toHashSet()
+                    .also { cachedVaultedIds = it }
                 val pageData = mutableListOf<MediaPhoto>()
                 var offset = startOffset
                 var endReached = false
+                val chunkSize = params.loadSize * 2
 
                 while (pageData.size < params.loadSize && !endReached) {
-                    val chunk = queryPhotos(contentResolver, sortConfig, params.loadSize, offset)
+                    val chunk = queryPhotos(contentResolver, sortConfig, chunkSize, offset)
                     if (chunk.isEmpty()) {
                         endReached = true
                     } else {
                         pageData += chunk.filterNot { photo -> photo.id in vaultedIds }
                         offset += chunk.size
-                        if (chunk.size < params.loadSize) {
+                        if (chunk.size < chunkSize) {
                             endReached = true
                         }
                     }
@@ -196,7 +199,12 @@ class MediaStoreRepository @Inject constructor(
                     results += cursor.toMediaPhoto()
                 }
             }
-            return results
+            if (sortConfig.sortBy != SortBy.RESOLUTION) return results
+
+            return when (sortConfig.sortOrder) {
+                SortOrder.ASCENDING -> results.sortedBy { photo -> photo.width.toLong() * photo.height.toLong() }
+                SortOrder.DESCENDING -> results.sortedByDescending { photo -> photo.width.toLong() * photo.height.toLong() }
+            }
         }
 
         @RequiresApi(Build.VERSION_CODES.O)
@@ -208,13 +216,7 @@ class MediaStoreRepository @Inject constructor(
                 SortBy.NAME -> MediaStore.Images.Media.DISPLAY_NAME to MediaStore.Images.Media.DATE_ADDED
                 SortBy.TYPE -> MediaStore.Images.Media.MIME_TYPE to MediaStore.Images.Media.DATE_ADDED
                 SortBy.RESOLUTION -> MediaStore.Images.Media.WIDTH to MediaStore.Images.Media.HEIGHT
-                SortBy.DURATION -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        MediaStore.MediaColumns.DURATION to MediaStore.Images.Media.DATE_ADDED
-                    } else {
-                        MediaStore.Images.Media.DATE_TAKEN to MediaStore.Images.Media.DATE_ADDED
-                    }
-                }
+                SortBy.DURATION -> MediaStore.Images.Media.DATE_TAKEN to MediaStore.Images.Media.DATE_ADDED
                 SortBy.FAVORITES_FIRST -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         MediaStore.MediaColumns.IS_FAVORITE to MediaStore.Images.Media.DATE_TAKEN
