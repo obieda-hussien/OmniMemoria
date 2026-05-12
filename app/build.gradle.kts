@@ -52,6 +52,10 @@ android {
     }
 }
 
+configurations.matching { it.name.contains("debug", ignoreCase = true) }.all {
+    exclude(group = "io.objectbox", module = "objectbox-android")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -69,7 +73,6 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
-    implementation(libs.objectbox.android)
     debugImplementation(libs.objectbox.objectbrowser)
 
     implementation(libs.androidx.navigation.compose)
