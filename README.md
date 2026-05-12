@@ -1,4 +1,4 @@
-# 📸 LensApp — معرض الصور الذكي
+# 📸 OmniMemoria — معرض الصور الذكي
 ### Android · Kotlin · Jetpack Compose · Material 3 Expressive · Android 15/16
 
 > تطبيق معرض صور أندرويد من الجيل الجديد — يجمع بين الـ On-Device AI، وشكل M3 Expressive حقيقي، وضغط ذكي للصور والفيديوهات، وميزات مش موجودة في أي تطبيق تاني.
