@@ -22,4 +22,7 @@ interface PhotoIntelligenceDao {
 
     @Query("SELECT * FROM photo_intelligence WHERE isVaultItem = 1")
     fun getVaultPhotos(): PagingSource<Int, PhotoIntelligence>
+
+    @Query("SELECT id FROM photo_intelligence WHERE isVaultItem = 1")
+    suspend fun getVaultPhotoIds(): List<Long>
 }
