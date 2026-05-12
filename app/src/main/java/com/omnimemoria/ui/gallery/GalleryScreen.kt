@@ -48,8 +48,6 @@ import com.omnimemoria.domain.model.MediaPhoto
 @Composable
 fun GalleryScreen(
     onPhotoClick: (Long) -> Unit,
-    @Suppress("UNUSED_PARAMETER")
-    onFolderClick: (String) -> Unit,
     viewModel: GalleryViewModel = hiltViewModel()
 ) {
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

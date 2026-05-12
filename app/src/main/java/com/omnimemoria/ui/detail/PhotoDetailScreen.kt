@@ -2,6 +2,12 @@ package com.omnimemoria.ui.detail
 
 import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,12 +16,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,7 +44,9 @@ fun PhotoDetailScreen(
 ) {
     BackHandler(onBack = onBack)
 
-    val photo = viewModel.getPhoto(photoId)
+    val photo by produceState<MediaPhoto?>(initialValue = null, key1 = photoId) {
+        value = viewModel.getPhoto(photoId)
+    }
     var isFavorite by remember(photoId) { mutableStateOf(false) }
 
     Scaffold(
@@ -49,12 +59,38 @@ fun PhotoDetailScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceAround
                 ) {
-                    IconButton(onClick = { }) { Text("Share") }
-                    IconButton(onClick = { isFavorite = !isFavorite }) {
-                        Text(if (isFavorite) "♥" else "♡")
+                    IconButton(onClick = { }) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Share photo"
+                        )
                     }
-                    IconButton(onClick = { }) { Text("Delete") }
-                    IconButton(onClick = { }) { Text("More") }
+                    IconButton(onClick = { isFavorite = !isFavorite }) {
+                        Icon(
+                            imageVector = if (isFavorite) {
+                                Icons.Default.Favorite
+                            } else {
+                                Icons.Default.FavoriteBorder
+                            },
+                            contentDescription = if (isFavorite) {
+                                "Remove from favorites"
+                            } else {
+                                "Add to favorites"
+                            }
+                        )
+                    }
+                    IconButton(onClick = { }) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete photo"
+                        )
+                    }
+                    IconButton(onClick = { }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More options"
+                        )
+                    }
                 }
             }
         }

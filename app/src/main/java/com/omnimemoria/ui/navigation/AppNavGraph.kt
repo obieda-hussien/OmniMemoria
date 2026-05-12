@@ -30,8 +30,7 @@ fun AppNavGraph(isVaultUnlocked: Boolean) {
     ) {
         composable(AppRoutes.Gallery) {
             GalleryScreen(
-                onPhotoClick = { photoId -> navController.navigate(AppRoutes.detail(photoId)) },
-                onFolderClick = { bucketId -> navController.navigate(AppRoutes.folder(bucketId)) }
+                onPhotoClick = { photoId -> navController.navigate(AppRoutes.detail(photoId)) }
             )
         }
 
