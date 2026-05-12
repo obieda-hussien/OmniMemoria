@@ -77,6 +77,7 @@ dependencies {
     debugImplementation(libs.objectbox.objectbrowser)
 
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     implementation(libs.coil.compose)
@@ -91,6 +92,7 @@ dependencies {
     implementation(libs.androidx.paging.compose)
 
     implementation(libs.accompanist.permissions)
+    implementation(libs.telephoto.zoomable.image.coil3)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
