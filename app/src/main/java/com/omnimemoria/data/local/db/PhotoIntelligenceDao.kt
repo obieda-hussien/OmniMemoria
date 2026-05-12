@@ -1,0 +1,18 @@
+package com.omnimemoria.data.local.db
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+
+@Dao
+interface PhotoIntelligenceDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: PhotoIntelligence)
+
+    @Query("SELECT * FROM photo_intelligence WHERE id = :id")
+    suspend fun getById(id: Long): PhotoIntelligence?
+
+    @Query("SELECT * FROM photo_intelligence")
+    suspend fun getAll(): List<PhotoIntelligence>
+}

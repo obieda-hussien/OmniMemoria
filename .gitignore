@@ -8,3 +8,5 @@ local.properties
 # Mac / Windows
 .DS_Store
 Thumbs.db
+
+.kotlin/
