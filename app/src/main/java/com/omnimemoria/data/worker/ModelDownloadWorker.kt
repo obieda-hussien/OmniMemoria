@@ -32,6 +32,11 @@ class ModelDownloadWorker @AssistedInject constructor(
                     true
                 )
             }
+
+            else -> {
+                Log.w(TAG, "Unknown model requested: $modelName")
+                return Result.failure()
+            }
         }
 
         val tesseractDownloaded = appPreferences

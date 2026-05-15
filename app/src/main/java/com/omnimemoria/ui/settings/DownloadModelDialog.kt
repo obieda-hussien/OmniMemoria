@@ -17,11 +17,15 @@ fun DownloadModelDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val sizeText = when (modelName) {
+        ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER -> "~50MB"
+        else -> "~30MB"
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "Download $modelName") },
-        text = { Text(text = "Size: ~30MB — WiFi Recommended") },
+        text = { Text(text = "Size: $sizeText — WiFi Recommended") },
         confirmButton = {
             TextButton(
                 onClick = {
