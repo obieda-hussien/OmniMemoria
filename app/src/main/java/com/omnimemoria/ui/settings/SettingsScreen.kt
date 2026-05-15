@@ -227,10 +227,16 @@ private val AI_FEATURE_ITEMS = listOf(
     FeatureItem("Arabic OCR (Tesseract)", FeatureFlag.ARABIC_OCR),
     FeatureItem("Image Classification (ML Kit)", FeatureFlag.ML_LABELS),
     FeatureItem("Face Detection", FeatureFlag.FACE_DETECTION),
+    FeatureItem("Embeddings", FeatureFlag.EMBEDDINGS),
     FeatureItem(
         title = "Semantic Search (RAG)",
         flag = FeatureFlag.RAG_SEARCH,
         subtitle = "Requires embeddings"
+    ),
+    FeatureItem(
+        title = "Smart Filters",
+        flag = FeatureFlag.SMART_FILTERS,
+        subtitle = "Uses AI-generated metadata"
     )
 )
 
@@ -239,7 +245,8 @@ private val VISUAL_FEATURE_ITEMS = listOf(
     FeatureItem("Duplicate Photo Detection", FeatureFlag.PHOTO_DNA),
     FeatureItem("Vibe Albums", FeatureFlag.VIBE_ALBUMS),
     FeatureItem("Temporal Wave", FeatureFlag.TEMPORAL_WAVE),
-    FeatureItem("Memory Stats", FeatureFlag.MEMORIA_STATS)
+    FeatureItem("Memory Stats", FeatureFlag.MEMORIA_STATS),
+    FeatureItem("Ultra HDR", FeatureFlag.ULTRA_HDR)
 )
 
 private val COMPRESSION_ITEMS = listOf(

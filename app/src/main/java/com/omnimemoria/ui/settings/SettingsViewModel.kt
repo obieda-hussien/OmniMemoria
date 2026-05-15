@@ -61,22 +61,6 @@ class SettingsViewModel @Inject constructor(
     companion object {
         private const val STOP_TIMEOUT_MILLIS = 5_000L
 
-        private val FEATURE_FLAGS = listOf(
-            FeatureFlag.OCR,
-            FeatureFlag.ARABIC_OCR,
-            FeatureFlag.ML_LABELS,
-            FeatureFlag.FACE_DETECTION,
-            FeatureFlag.RAG_SEARCH,
-            FeatureFlag.PIXEL_PALETTE,
-            FeatureFlag.PHOTO_DNA,
-            FeatureFlag.VIBE_ALBUMS,
-            FeatureFlag.TEMPORAL_WAVE,
-            FeatureFlag.MEMORIA_STATS,
-            FeatureFlag.SMART_COMPRESSION,
-            FeatureFlag.VIDEO_COMPRESSION,
-            FeatureFlag.VAULT,
-            FeatureFlag.SILENT_STORY,
-            FeatureFlag.MEMORY_MAP
-        )
+        private val FEATURE_FLAGS = FeatureFlag.entries
     }
 }

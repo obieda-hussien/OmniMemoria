@@ -44,10 +44,9 @@ class OmniMemoria : Application(), Configuration.Provider {
             try {
                 val shouldSchedulePeriodicIndexing =
                     combine(
-                        featureFlagManager.isEnabled(FeatureFlag.OCR),
-                        featureFlagManager.isEnabled(FeatureFlag.ML_LABELS)
-                    ) { ocrEnabled, mlLabelsEnabled ->
-                        ocrEnabled || mlLabelsEnabled
+                        AI_FEATURE_FLAGS.map(featureFlagManager::isEnabled)
+                    ) { states ->
+                        states.any { it }
                     }.first()
                 if (shouldSchedulePeriodicIndexing) {
                     workManagerScheduler.schedulePeriodicIndex()
@@ -59,6 +58,16 @@ class OmniMemoria : Application(), Configuration.Provider {
     }
 
     companion object {
+        private val AI_FEATURE_FLAGS = listOf(
+            FeatureFlag.OCR,
+            FeatureFlag.ARABIC_OCR,
+            FeatureFlag.ML_LABELS,
+            FeatureFlag.FACE_DETECTION,
+            FeatureFlag.EMBEDDINGS,
+            FeatureFlag.RAG_SEARCH,
+            FeatureFlag.SMART_FILTERS
+        )
+
         lateinit var boxStore: BoxStore
             private set
     }

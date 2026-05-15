@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -33,10 +32,4 @@ class GalleryViewModel @Inject constructor(
 
     val photos: Flow<PagingData<MediaPhoto>> = activeSortConfig
         .flatMapLatest { config -> mediaStoreRepository.getPhotosPaged(config) }
-
-    init {
-        viewModelScope.launch {
-            sortPresetRepository.seedDefaultsIfEmpty()
-        }
-    }
 }
