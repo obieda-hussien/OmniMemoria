@@ -13,6 +13,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -40,8 +41,12 @@ class OmniMemoria : Application(), Configuration.Provider {
 
         applicationScope.launch {
             val shouldSchedulePeriodicIndexing =
-                featureFlagManager.isEnabled(FeatureFlag.OCR).first() ||
-                    featureFlagManager.isEnabled(FeatureFlag.ML_LABELS).first()
+                combine(
+                    featureFlagManager.isEnabled(FeatureFlag.OCR),
+                    featureFlagManager.isEnabled(FeatureFlag.ML_LABELS)
+                ) { ocrEnabled, mlLabelsEnabled ->
+                    ocrEnabled || mlLabelsEnabled
+                }.first()
             if (shouldSchedulePeriodicIndexing) {
                 workManagerScheduler.schedulePeriodicIndex()
             }

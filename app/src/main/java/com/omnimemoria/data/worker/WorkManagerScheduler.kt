@@ -34,7 +34,7 @@ class WorkManagerScheduler @Inject constructor(
 
         WorkManager.getInstance(context).enqueueUniqueWork(
             UNIQUE_WORK_NAME,
-            ExistingWorkPolicy.REPLACE,
+            ExistingWorkPolicy.APPEND,
             request
         )
     }

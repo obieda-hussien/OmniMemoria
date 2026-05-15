@@ -23,7 +23,7 @@ class PhotoIndexWorker @AssistedInject constructor(
         val inputMode = inputData.getString(WORK_INPUT_MODE)
         Log.d(
             TAG,
-            "PhotoIndexWorker triggered for ${inputData}. mode=$inputMode photoIds=${inputPhotoIds?.contentToString()}"
+            "PhotoIndexWorker triggered for ${inputData}. mode=$inputMode photoIdsCount=${inputPhotoIds?.size ?: 0}"
         )
         return Result.success()
     }
