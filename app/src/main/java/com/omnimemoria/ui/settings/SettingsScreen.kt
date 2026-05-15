@@ -18,10 +18,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.omnimemoria.BuildConfig
 import com.omnimemoria.data.worker.ModelDownloadWorker
 import com.omnimemoria.domain.flags.FeatureFlag
 
@@ -146,10 +146,18 @@ private fun ModelDownloadItem(
 
 @Composable
 private fun AboutItem() {
+    val context = LocalContext.current
+    val versionName = remember(context) {
+        runCatching {
+            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            packageInfo.versionName ?: "Unknown"
+        }.getOrDefault("Unknown")
+    }
+
     Column {
         ListItem(
             headlineContent = { Text(text = "App version") },
-            supportingContent = { Text(text = BuildConfig.VERSION_NAME) }
+            supportingContent = { Text(text = versionName) }
         )
         HorizontalDivider()
         ListItem(
