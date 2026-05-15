@@ -1,6 +1,7 @@
 package com.omnimemoria
 
 import android.app.Application
+import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.omnimemoria.data.worker.WorkManagerScheduler
@@ -40,15 +41,19 @@ class OmniMemoria : Application(), Configuration.Provider {
         boxStore = MyObjectBox.builder().androidContext(this).build()
 
         applicationScope.launch {
-            val shouldSchedulePeriodicIndexing =
-                combine(
-                    featureFlagManager.isEnabled(FeatureFlag.OCR),
-                    featureFlagManager.isEnabled(FeatureFlag.ML_LABELS)
-                ) { ocrEnabled, mlLabelsEnabled ->
-                    ocrEnabled || mlLabelsEnabled
-                }.first()
-            if (shouldSchedulePeriodicIndexing) {
-                workManagerScheduler.schedulePeriodicIndex()
+            try {
+                val shouldSchedulePeriodicIndexing =
+                    combine(
+                        featureFlagManager.isEnabled(FeatureFlag.OCR),
+                        featureFlagManager.isEnabled(FeatureFlag.ML_LABELS)
+                    ) { ocrEnabled, mlLabelsEnabled ->
+                        ocrEnabled || mlLabelsEnabled
+                    }.first()
+                if (shouldSchedulePeriodicIndexing) {
+                    workManagerScheduler.schedulePeriodicIndex()
+                }
+            } catch (throwable: Throwable) {
+                Log.e("OmniMemoria", "Failed to initialize periodic indexing scheduler", throwable)
             }
         }
     }

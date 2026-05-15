@@ -68,8 +68,7 @@ class WorkManagerScheduler @Inject constructor(
     }
 
     companion object {
-        const val UNIQUE_WORK_NAME = "omnimemoria_index"
-        const val UNIQUE_IMMEDIATE_WORK_NAME = "${UNIQUE_WORK_NAME}_immediate"
-        const val UNIQUE_PERIODIC_WORK_NAME = "${UNIQUE_WORK_NAME}_periodic"
+        const val UNIQUE_IMMEDIATE_WORK_NAME = "omnimemoria_index_immediate"
+        const val UNIQUE_PERIODIC_WORK_NAME = "omnimemoria_index_periodic"
     }
 }
