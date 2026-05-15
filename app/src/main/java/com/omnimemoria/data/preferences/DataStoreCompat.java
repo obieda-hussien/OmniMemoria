@@ -4,6 +4,10 @@ import androidx.datastore.preferences.core.MutablePreferences;
 import androidx.datastore.preferences.core.Preferences;
 import androidx.datastore.preferences.core.PreferencesKeys;
 
+/**
+ * Java interop bridge for DataStore Preferences APIs used by AppPreferences.
+ * This avoids Kotlin visibility/interoperability issues around key helper and edit utilities.
+ */
 final class DataStoreCompat {
     private DataStoreCompat() {
     }
