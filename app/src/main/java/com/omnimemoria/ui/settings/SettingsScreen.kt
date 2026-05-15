@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -14,9 +15,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.omnimemoria.BuildConfig
+import com.omnimemoria.data.worker.ModelDownloadWorker
 import com.omnimemoria.domain.flags.FeatureFlag
 
 @Composable
@@ -24,7 +30,9 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val featureStates by viewModel.featureStates.collectAsState()
+    val modelDownloadStates by viewModel.modelDownloadStates.collectAsState()
     val ocrEnabled = featureStates[FeatureFlag.OCR] == true
+    var activeDownloadModel by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -64,6 +72,43 @@ fun SettingsScreen(
                 onCheckedChange = { viewModel.toggle(item.flag) }
             )
         }
+
+        item {
+            SectionHeader(title = "📥 AI Models")
+        }
+        items(AI_MODEL_ITEMS) { item ->
+            val isDownloaded = modelDownloadStates[item.modelName] == true
+            ModelDownloadItem(
+                title = item.title,
+                downloaded = isDownloaded,
+                onDownloadClick = { activeDownloadModel = item.modelName }
+            )
+        }
+
+        item {
+            SectionHeader(title = "🔒 Security")
+        }
+        items(SECURITY_FEATURE_ITEMS) { item ->
+            FeatureToggleItem(
+                title = item.title,
+                checked = featureStates[item.flag] == true,
+                onCheckedChange = { viewModel.toggle(item.flag) }
+            )
+        }
+
+        item {
+            SectionHeader(title = "ℹ️ About the App")
+        }
+        item {
+            AboutItem()
+        }
+    }
+
+    activeDownloadModel?.let { modelName ->
+        DownloadModelDialog(
+            modelName = modelName,
+            onDismiss = { activeDownloadModel = null }
+        )
     }
 }
 
@@ -74,6 +119,49 @@ private fun SectionHeader(title: String) {
         style = MaterialTheme.typography.titleMedium,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
     )
+}
+
+@Composable
+private fun ModelDownloadItem(
+    title: String,
+    downloaded: Boolean,
+    onDownloadClick: () -> Unit
+) {
+    Column {
+        ListItem(
+            headlineContent = { Text(text = title) },
+            trailingContent = {
+                if (downloaded) {
+                    Text(text = "✅ Downloaded")
+                } else {
+                    Button(onClick = onDownloadClick) {
+                        Text(text = "Download")
+                    }
+                }
+            }
+        )
+        HorizontalDivider()
+    }
+}
+
+@Composable
+private fun AboutItem() {
+    Column {
+        ListItem(
+            headlineContent = { Text(text = "App version") },
+            supportingContent = { Text(text = BuildConfig.VERSION_NAME) }
+        )
+        HorizontalDivider()
+        ListItem(
+            headlineContent = { Text(text = "Open source libraries") },
+            trailingContent = {
+                Button(onClick = { }) {
+                    Text(text = "Open")
+                }
+            }
+        )
+        HorizontalDivider()
+    }
 }
 
 @Composable
@@ -106,6 +194,11 @@ private data class FeatureItem(
     val subtitle: String? = null
 )
 
+private data class AiModelItem(
+    val title: String,
+    val modelName: String
+)
+
 private val AI_FEATURE_ITEMS = listOf(
     FeatureItem("Text Extraction (OCR)", FeatureFlag.OCR),
     FeatureItem("Arabic OCR (Tesseract)", FeatureFlag.ARABIC_OCR),
@@ -129,4 +222,15 @@ private val VISUAL_FEATURE_ITEMS = listOf(
 private val COMPRESSION_ITEMS = listOf(
     FeatureItem("Image Compression", FeatureFlag.SMART_COMPRESSION),
     FeatureItem("Video Compression", FeatureFlag.VIDEO_COMPRESSION)
+)
+
+private val AI_MODEL_ITEMS = listOf(
+    AiModelItem("Tesseract Arabic (~30MB)", ModelDownloadWorker.MODEL_TESSERACT_ARA),
+    AiModelItem("Embedding Model (~50MB)", ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER)
+)
+
+private val SECURITY_FEATURE_ITEMS = listOf(
+    FeatureItem("Encrypted Vault", FeatureFlag.VAULT),
+    FeatureItem("Silent Photos (EXIF)", FeatureFlag.SILENT_STORY),
+    FeatureItem("Memory Map", FeatureFlag.MEMORY_MAP)
 )

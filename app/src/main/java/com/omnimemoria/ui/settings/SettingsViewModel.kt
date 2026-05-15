@@ -2,6 +2,8 @@ package com.omnimemoria.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.omnimemoria.data.preferences.AppPreferences
+import com.omnimemoria.data.worker.ModelDownloadWorker
 import com.omnimemoria.domain.flags.FeatureFlag
 import com.omnimemoria.domain.flags.FeatureFlagManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -14,7 +16,8 @@ import kotlinx.coroutines.launch
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val featureFlagManager: FeatureFlagManager
+    private val featureFlagManager: FeatureFlagManager,
+    private val appPreferences: AppPreferences
 ) : ViewModel() {
 
     val featureStates: StateFlow<Map<FeatureFlag, Boolean>> =
@@ -28,6 +31,24 @@ class SettingsViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
             initialValue = FEATURE_FLAGS.associateWith { false }
+        )
+
+    val modelDownloadStates: StateFlow<Map<String, Boolean>> =
+        combine(
+            appPreferences.getBoolean(AppPreferences.PreferencesKeys.MODEL_TESSERACT_ARA_DOWNLOADED),
+            appPreferences.getBoolean(AppPreferences.PreferencesKeys.MODEL_MEDIAPIPE_EMBEDDER_DOWNLOADED)
+        ) { tesseractDownloaded, embedderDownloaded ->
+            mapOf(
+                ModelDownloadWorker.MODEL_TESSERACT_ARA to tesseractDownloaded,
+                ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER to embedderDownloaded
+            )
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            initialValue = mapOf(
+                ModelDownloadWorker.MODEL_TESSERACT_ARA to false,
+                ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER to false
+            )
         )
 
     fun toggle(flag: FeatureFlag) {
@@ -52,7 +73,10 @@ class SettingsViewModel @Inject constructor(
             FeatureFlag.TEMPORAL_WAVE,
             FeatureFlag.MEMORIA_STATS,
             FeatureFlag.SMART_COMPRESSION,
-            FeatureFlag.VIDEO_COMPRESSION
+            FeatureFlag.VIDEO_COMPRESSION,
+            FeatureFlag.VAULT,
+            FeatureFlag.SILENT_STORY,
+            FeatureFlag.MEMORY_MAP
         )
     }
 }

@@ -54,6 +54,10 @@ class AppPreferences constructor(
         val ENABLE_RAG_SEARCH = DataStoreCompat.booleanKey("enable_rag_search")
         val ENABLE_SMART_FILTERS = DataStoreCompat.booleanKey("enable_smart_filters")
         val ENABLE_ULTRA_HDR = DataStoreCompat.booleanKey("enable_ultra_hdr")
+        val MODEL_TESSERACT_ARA_DOWNLOADED = DataStoreCompat.booleanKey("model_tesseract_ara_downloaded")
+        val MODEL_MEDIAPIPE_EMBEDDER_DOWNLOADED =
+            DataStoreCompat.booleanKey("model_mediapipe_embedder_downloaded")
+        val ARE_AI_MODELS_DOWNLOADED = DataStoreCompat.booleanKey("are_ai_models_downloaded")
 
         val VAULT_PIN_HASH = DataStoreCompat.stringKey("vault_pin_hash")
         val SORT_PRESETS_JSON = DataStoreCompat.stringKey("sort_presets_json")
