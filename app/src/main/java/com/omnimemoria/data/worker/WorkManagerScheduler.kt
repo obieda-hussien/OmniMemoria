@@ -33,8 +33,8 @@ class WorkManagerScheduler @Inject constructor(
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(
-            UNIQUE_WORK_NAME,
-            ExistingWorkPolicy.APPEND,
+            UNIQUE_IMMEDIATE_WORK_NAME,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             request
         )
     }
@@ -56,17 +56,20 @@ class WorkManagerScheduler @Inject constructor(
             .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            UNIQUE_WORK_NAME,
+            UNIQUE_PERIODIC_WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
             request
         )
     }
 
     fun cancelAllWork() {
-        WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK_NAME)
+        WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_IMMEDIATE_WORK_NAME)
+        WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_PERIODIC_WORK_NAME)
     }
 
     companion object {
         const val UNIQUE_WORK_NAME = "omnimemoria_index"
+        const val UNIQUE_IMMEDIATE_WORK_NAME = "${UNIQUE_WORK_NAME}_immediate"
+        const val UNIQUE_PERIODIC_WORK_NAME = "${UNIQUE_WORK_NAME}_periodic"
     }
 }
