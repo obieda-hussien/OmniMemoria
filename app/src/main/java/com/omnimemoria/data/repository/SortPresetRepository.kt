@@ -20,6 +20,7 @@ class SortPresetRepository @Inject constructor(
     private val sortPresetDao: SortPresetDao
 ) {
     private val seedMutex = Mutex()
+    @Volatile
     private var defaultsSeeded = false
 
     fun getCurrentSort(): Flow<SortConfig> = flow {
