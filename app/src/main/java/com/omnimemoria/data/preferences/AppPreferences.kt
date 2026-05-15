@@ -15,7 +15,6 @@ private val Context.appDataStore: DataStore<Preferences> by preferencesDataStore
 class AppPreferences @Inject constructor(
     @ApplicationContext context: Context
 ) {
-    val data: Flow<Preferences> = context.appDataStore.data
     private val dataStore = context.appDataStore
 
     fun getBoolean(key: Preferences.Key<Boolean>, default: Boolean = false): Flow<Boolean> {
