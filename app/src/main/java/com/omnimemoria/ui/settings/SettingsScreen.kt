@@ -87,7 +87,7 @@ private fun FeatureToggleItem(
     Column {
         ListItem(
             headlineContent = { Text(text = title) },
-            supportingContent = subtitle?.let { value -> { Text(text = value) } },
+            supportingContent = subtitle?.let { { Text(text = it) } },
             trailingContent = {
                 Switch(
                     checked = checked,
@@ -114,7 +114,7 @@ private val AI_FEATURE_ITEMS = listOf(
     FeatureItem(
         title = "Semantic Search (RAG)",
         flag = FeatureFlag.RAG_SEARCH,
-        subtitle = "requires embeddings"
+        subtitle = "Requires embeddings"
     )
 )
 
