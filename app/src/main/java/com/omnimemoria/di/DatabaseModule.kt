@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.omnimemoria.data.local.db.AppDatabase
 import com.omnimemoria.data.local.db.PhotoIntelligenceDao
+import com.omnimemoria.data.local.db.SortPresetDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -23,5 +24,10 @@ object DatabaseModule {
     @Provides
     fun providePhotoIntelligenceDao(database: AppDatabase): PhotoIntelligenceDao {
         return database.photoIntelligenceDao()
+    }
+
+    @Provides
+    fun provideSortPresetDao(database: AppDatabase): SortPresetDao {
+        return database.sortPresetDao()
     }
 }
