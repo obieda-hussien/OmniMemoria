@@ -1071,7 +1071,7 @@ class FeatureFlagManager @Inject constructor(
 ### Module Structure
 
 ```
-📦 LensApp/
+📦 OmniMemoria/
 │
 ├── 🎨 :ui
 │   ├── gallery/
@@ -1499,7 +1499,7 @@ fun schedulePeriodicIndex() {
 
 ## 📊 مقارنة المنافسين — الصورة الكاملة
 
-| الميزة | Google Photos | PicSort | Simple Gallery | **LensApp** |
+| الميزة | Google Photos | PicSort | Simple Gallery | **OmniMemoria** |
 |---|---|---|---|---|
 | **OCR نصوص** | ✅ cloud فقط | ❌ | ❌ | ✅ **محلي 100%** |
 | **OCR عربي** | ✅ cloud فقط | ❌ | ❌ | ✅ **Tesseract offline** |
