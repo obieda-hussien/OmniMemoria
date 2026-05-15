@@ -15,7 +15,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 @HiltAndroidApp
@@ -42,15 +43,19 @@ class OmniMemoria : Application(), Configuration.Provider {
 
         applicationScope.launch {
             try {
-                val shouldSchedulePeriodicIndexing =
-                    combine(
-                        AI_FEATURE_FLAGS.map(featureFlagManager::isEnabled)
-                    ) { states ->
-                        states.any { it }
-                    }.first()
-                if (shouldSchedulePeriodicIndexing) {
-                    workManagerScheduler.schedulePeriodicIndex()
+                combine(
+                    AI_FEATURE_FLAGS.map(featureFlagManager::isEnabled)
+                ) { states ->
+                    states.any { it }
                 }
+                    .distinctUntilChanged()
+                    .collectLatest { shouldSchedulePeriodicIndexing ->
+                        if (shouldSchedulePeriodicIndexing) {
+                            workManagerScheduler.schedulePeriodicIndex()
+                        } else {
+                            workManagerScheduler.cancelPeriodicIndex()
+                        }
+                    }
             } catch (throwable: Throwable) {
                 Log.e("OmniMemoria", "Failed to initialize periodic indexing scheduler", throwable)
             }

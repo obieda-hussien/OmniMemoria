@@ -67,6 +67,10 @@ class WorkManagerScheduler @Inject constructor(
 
     fun cancelAllWork() {
         WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_IMMEDIATE_WORK_NAME)
+        cancelPeriodicIndex()
+    }
+
+    fun cancelPeriodicIndex() {
         WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_PERIODIC_WORK_NAME)
     }
 

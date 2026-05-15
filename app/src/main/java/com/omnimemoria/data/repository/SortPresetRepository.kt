@@ -43,8 +43,6 @@ class SortPresetRepository @Inject constructor(
     suspend fun setDefault(id: Int) = sortPresetDao.setDefault(id)
 
     private suspend fun ensureDefaultsSeeded() {
-        if (defaultsSeeded) return
-
         seedMutex.withLock {
             if (defaultsSeeded) return
             if (sortPresetDao.count() == 0) {
