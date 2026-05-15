@@ -21,8 +21,7 @@ final class DataStoreCompat {
             Preferences.Key<Boolean> key,
             boolean value
     ) {
-        MutablePreferences mutable = new MutablePreferences();
-        mutable.plusAssign(source);
+        MutablePreferences mutable = source.toMutablePreferences();
         mutable.set(key, value);
         return mutable;
     }
@@ -32,8 +31,7 @@ final class DataStoreCompat {
             Preferences.Key<String> key,
             String value
     ) {
-        MutablePreferences mutable = new MutablePreferences();
-        mutable.plusAssign(source);
+        MutablePreferences mutable = source.toMutablePreferences();
         mutable.set(key, value);
         return mutable;
     }

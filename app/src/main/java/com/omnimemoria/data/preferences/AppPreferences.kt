@@ -5,14 +5,13 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 private const val APP_PREFERENCES_NAME = "omnimemoria_settings"
 private val Context.appDataStore: DataStore<Preferences> by preferencesDataStore(name = APP_PREFERENCES_NAME)
 
-class AppPreferences @Inject constructor(
+class AppPreferences constructor(
     @ApplicationContext context: Context
 ) {
     private val dataStore = context.appDataStore
