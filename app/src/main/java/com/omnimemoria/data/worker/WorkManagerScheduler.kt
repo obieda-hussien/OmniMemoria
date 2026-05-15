@@ -50,7 +50,10 @@ class WorkManagerScheduler @Inject constructor(
             .putString(PhotoIndexWorker.WORK_INPUT_MODE, PhotoIndexWorker.WORK_MODE_PERIODIC)
             .build()
 
-        val request = PeriodicWorkRequestBuilder<PhotoIndexWorker>(6, TimeUnit.HOURS)
+        val request = PeriodicWorkRequestBuilder<PhotoIndexWorker>(
+            PERIODIC_INDEX_INTERVAL_HOURS,
+            TimeUnit.HOURS
+        )
             .setInputData(inputData)
             .setConstraints(constraints)
             .build()
@@ -70,5 +73,6 @@ class WorkManagerScheduler @Inject constructor(
     companion object {
         const val UNIQUE_IMMEDIATE_WORK_NAME = "omnimemoria_index_immediate"
         const val UNIQUE_PERIODIC_WORK_NAME = "omnimemoria_index_periodic"
+        private const val PERIODIC_INDEX_INTERVAL_HOURS = 6L
     }
 }

@@ -87,11 +87,7 @@ private fun FeatureToggleItem(
     Column {
         ListItem(
             headlineContent = { Text(text = title) },
-            supportingContent = {
-                subtitle?.let {
-                    Text(text = it)
-                }
-            },
+            supportingContent = subtitle?.let { value -> { Text(text = value) } },
             trailingContent = {
                 Switch(
                     checked = checked,
