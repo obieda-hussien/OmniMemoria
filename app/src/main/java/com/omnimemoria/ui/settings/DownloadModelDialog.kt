@@ -25,7 +25,7 @@ fun DownloadModelDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "Download $modelName") },
-        text = { Text(text = "Size: $sizeText — WiFi Recommended") },
+        text = { Text(text = "Size: $sizeText — Wi-Fi Recommended") },
         confirmButton = {
             TextButton(
                 onClick = {

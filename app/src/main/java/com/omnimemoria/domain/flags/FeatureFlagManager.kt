@@ -48,12 +48,12 @@ class FeatureFlagManager @Inject constructor(
 
     fun areAiModelsDownloaded(): Flow<AiModelState> {
         return combine(
-            appPreferences.getBoolean(AppPreferences.PreferencesKeys.ENABLE_OCR),
-            appPreferences.getBoolean(AppPreferences.PreferencesKeys.ENABLE_ARABIC_OCR)
-        ) { ocrEnabled, arabicOcrEnabled ->
+            appPreferences.getBoolean(AppPreferences.PreferencesKeys.MODEL_TESSERACT_ARA_DOWNLOADED),
+            appPreferences.getBoolean(AppPreferences.PreferencesKeys.MODEL_MEDIAPIPE_EMBEDDER_DOWNLOADED)
+        ) { tesseractDownloaded, embedderDownloaded ->
             when {
-                !ocrEnabled && !arabicOcrEnabled -> AiModelState.NONE
-                ocrEnabled && arabicOcrEnabled -> AiModelState.FULL
+                !tesseractDownloaded && !embedderDownloaded -> AiModelState.NONE
+                tesseractDownloaded && embedderDownloaded -> AiModelState.FULL
                 else -> AiModelState.TESSERACT_ONLY
             }
         }
