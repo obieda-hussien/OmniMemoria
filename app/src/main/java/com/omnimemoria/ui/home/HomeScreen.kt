@@ -14,10 +14,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination
@@ -28,6 +28,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.omnimemoria.ui.gallery.GalleryScreen
+import com.omnimemoria.ui.theme.AmberVibe
+import com.omnimemoria.ui.theme.RoseMemory
 import java.util.Calendar
 
 enum class HomeTab(val route: String, val label: String, val icon: ImageVector) {
@@ -41,7 +43,6 @@ enum class HomeTab(val route: String, val label: String, val icon: ImageVector) 
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
     val homeNavController = rememberNavController()
@@ -53,16 +54,9 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        extendBody = true, // ضروري جداً عشان البار السفلي يكون عائم فوق المحتوى
+        extendBodyBehindAppBar = true, // ضروري عشان البار العلوي يكون عائم
         topBar = { OmniTopBar(onSettingsClick = onSettingsClick) },
-        floatingActionButton = {
-            AnimatedVisibility(
-                visible = currentTab == HomeTab.GALLERY,
-                enter = fadeIn() + scaleIn(),
-                exit = fadeOut() + scaleOut()
-            ) {
-                SmartFab(onClick = { showSmartSheet = true })
-            }
-        },
         bottomBar = {
             OmniBottomNav(
                 currentDestination = currentDestination,
@@ -75,12 +69,22 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
                 }
             )
         },
+        floatingActionButton = {
+            AnimatedVisibility(
+                visible = currentTab == HomeTab.GALLERY,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 })
+            ) {
+                SmartFab(onClick = { showSmartSheet = true })
+            }
+        },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
+        // مررنا 0.dp لأننا بنعوض المسافات داخل شاشة الـ Gallery نفسها ليكون التمرير خلف الأشرطة
         NavHost(
             navController = homeNavController,
             startDestination = HomeTab.GALLERY.route,
-            modifier = Modifier.padding(paddingValues)
+            modifier = Modifier.fillMaxSize()
         ) {
             composable(HomeTab.GALLERY.route) { GalleryScreen(onPhotoClick = onPhotoClick) }
             composable(HomeTab.ALBUMS.route) { AlbumsPlaceholderScreen() }
@@ -94,53 +98,69 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+// Custom Floating Top Bar
 @Composable
 private fun OmniTopBar(onSettingsClick: () -> Unit) {
-    TopAppBar(
-        title = {
-            Column(modifier = Modifier.padding(top = 8.dp)) {
-                Text(
-                    text = "OMNIMEMORIA",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
+                        MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
+                        Color.Transparent
+                    )
                 )
+            )
+            .statusBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        // النصوص على اليسار
+        Column {
+            Text(
+                text = "OMNIMEMORIA",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.5.sp
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = dynamicGreeting(),
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "1,247 Photos · 23.4 GB · 89 Albums",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
-        },
-        actions = {
-            IconButton(
-                onClick = onSettingsClick,
-                modifier = Modifier
-                    .padding(end = 16.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Settings,
-                    contentDescription = "Settings",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = Color.Transparent,
-            scrolledContainerColor = MaterialTheme.colorScheme.surface
-        )
-    )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "Photos 23.4 GB · 89 Albums",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // زر الإعدادات على اليمين
+        IconButton(
+            onClick = onSettingsClick,
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Icon(Icons.Outlined.Settings, "Settings", tint = MaterialTheme.colorScheme.primary)
+        }
+    }
 }
 
 @Composable
@@ -149,8 +169,7 @@ private fun SmartFab(onClick: () -> Unit) {
         onClick = onClick,
         containerColor = MaterialTheme.colorScheme.primary,
         contentColor = MaterialTheme.colorScheme.onPrimary,
-        shape = RoundedCornerShape(16.dp),
-        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+        shape = RoundedCornerShape(16.dp)
     ) {
         Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(20.dp))
         Spacer(modifier = Modifier.width(8.dp))
@@ -158,6 +177,46 @@ private fun SmartFab(onClick: () -> Unit) {
     }
 }
 
+// Custom Floating Glass Bottom Nav
+@Composable
+private fun OmniBottomNav(currentDestination: NavDestination?, onTabSelected: (HomeTab) -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 24.dp) // المسافة من الأسفل لجعله عائم
+            .clip(RoundedCornerShape(32.dp))
+            .background(Color(0xFF141220).copy(alpha = 0.85f)) // لون شفاف Glassmorphism
+    ) {
+        NavigationBar(
+            containerColor = Color.Transparent,
+            tonalElevation = 0.dp,
+            modifier = Modifier.height(72.dp)
+        ) {
+            HomeTab.entries.forEach { tab ->
+                val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                NavigationBarItem(
+                    selected = selected,
+                    onClick = { onTabSelected(tab) },
+                    icon = { Icon(tab.icon, contentDescription = tab.label) },
+                    label = {
+                        if (selected) { // إظهار النص للعنصر المحدد فقط لمظهر أنظف
+                            Text(tab.label, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        }
+                    },
+                    alwaysShowLabel = false,
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
+            }
+        }
+    }
+}
+
+// Smart Sheet 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SmartActionsSheet(onDismiss: () -> Unit) {
@@ -174,14 +233,12 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
                 Spacer(modifier = Modifier.width(12.dp))
                 Text("Smart Actions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
-            
             val actions = listOf(
                 Triple("Smart Compress", "Free up space intelligently", MaterialTheme.colorScheme.primary),
                 Triple("Photo DNA", "Find similar photos", Color(0xFFFFB300)),
                 Triple("Re-Index", "Rebuild photo index", Color(0xFFFF5252)),
                 Triple("Memoria Stats", "Your memory stats", Color(0xFF7C4DFF))
             )
-            
             actions.forEach { (title, subtitle, color) ->
                 Row(
                     modifier = Modifier
@@ -210,34 +267,15 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
     }
 }
 
-@Composable
-private fun OmniBottomNav(currentDestination: NavDestination?, onTabSelected: (HomeTab) -> Unit) {
-    NavigationBar(containerColor = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
-        HomeTab.entries.forEach { tab ->
-            val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
-            NavigationBarItem(
-                selected = selected,
-                onClick = { onTabSelected(tab) },
-                icon = { Icon(tab.icon, contentDescription = tab.label) },
-                label = { Text(tab.label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    indicatorColor = Color.Transparent,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            )
-        }
-    }
-}
-
+// Placeholders
 @Composable fun AlbumsPlaceholderScreen() { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Albums Screen") } }
 @Composable fun SearchPlaceholderScreen() { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Search Screen") } }
-@Composable fun VaultPlaceholderScreen() { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Vault Screen Locked") } }
+@Composable fun VaultPlaceholderScreen() { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Vault Screen") } }
 
 private fun dynamicGreeting(): String {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     return when {
-        hour < 12 -> "Good Morning ✦"
-        else -> "Good Evening ✦"
+        hour < 12 -> "Good Morning"
+        else -> "Good Evening"
     }
 }
