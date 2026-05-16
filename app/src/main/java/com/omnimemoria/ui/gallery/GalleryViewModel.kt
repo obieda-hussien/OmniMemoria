@@ -3,6 +3,7 @@ package com.omnimemoria.ui.gallery
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
+import androidx.paging.cachedIn // إضافة هامة جداً
 import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.data.repository.SortPresetRepository
 import com.omnimemoria.domain.model.MediaPhoto
@@ -32,4 +33,5 @@ class GalleryViewModel @Inject constructor(
 
     val photos: Flow<PagingData<MediaPhoto>> = activeSortConfig
         .flatMapLatest { config -> mediaStoreRepository.getPhotosPaged(config) }
+        .cachedIn(viewModelScope) // هذا السطر هو الذي يمنع السكرول من الرجوع للأعلى!
 }
