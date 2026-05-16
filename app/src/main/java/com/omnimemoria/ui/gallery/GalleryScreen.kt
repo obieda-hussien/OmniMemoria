@@ -1,231 +1,116 @@
 package com.omnimemoria.ui.gallery
 
-import android.Manifest
-import android.os.Build
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.isGranted
-import com.google.accompanist.permissions.rememberPermissionState
 import com.omnimemoria.domain.model.MediaPhoto
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.sp
+import com.omnimemoria.ui.theme.AmberVibe
+import com.omnimemoria.ui.theme.RoseMemory
 
-@OptIn(ExperimentalPermissionsApi::class)
-@Composable
-fun GalleryScreen(
-    onPhotoClick: (Long) -> Unit,
-    viewModel: GalleryViewModel = hiltViewModel()
-) {
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_IMAGES
-    } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
-    }
-    val permissionState = rememberPermissionState(permission = permission)
-
-    when {
-        permissionState.status.isGranted -> {
-            val photos = viewModel.photos.collectAsLazyPagingItems()
-            GalleryGrid(
-                photos = photos.itemSnapshotList.items,
-                loading = photos.loadState.refresh is LoadState.Loading,
-                error = photos.loadState.refresh as? LoadState.Error,
-                onRetry = photos::retry,
-                onPhotoClick = onPhotoClick
-            )
-        }
-
-        else -> {
-            PermissionPrompt(onRequestPermission = permissionState::launchPermissionRequest)
-        }
-    }
-}
+private data class VibeChip(val label: String, val color: Color)
+private val placeholderVibes = listOf(
+    VibeChip("Evening\nPhotos", AmberVibe),
+    VibeChip("Quiet\nMoments", Color(0xFF2D26A0)), // Indigo Deep
+    VibeChip("Favorites\n", RoseMemory)
+)
 
 @Composable
-private fun GalleryGrid(
-    photos: List<MediaPhoto>,
-    loading: Boolean,
-    error: LoadState.Error?,
-    onRetry: () -> Unit,
-    onPhotoClick: (Long) -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.statusBars)
+fun GalleryScreen(onPhotoClick: (Long) -> Unit, viewModel: GalleryViewModel = hiltViewModel()) {
+    val photos = viewModel.photos.collectAsLazyPagingItems()
+    var showFilterSheet by remember { mutableStateOf(false) }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxSize()
     ) {
-        when {
-            loading -> ShimmerGridPlaceholder()
-            error != null -> ErrorState(onRetry)
-            else -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    contentPadding = PaddingValues(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(photos, key = { it.id }) { photo ->
-                        AsyncImage(
-                            model = photo.uri,
-                            contentDescription = photo.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                .clip(MaterialTheme.shapes.medium)
-                                .clickable { onPhotoClick(photo.id) }
+        // 1. Vibe Albums Row
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(bottom = 24.dp, top = 8.dp)
+            ) {
+                items(placeholderVibes) { vibe ->
+                    Box(
+                        modifier = Modifier
+                            .width(110.dp)
+                            .height(130.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(vibe.color)
+                            .clickable { /* Handle click */ }
+                            .padding(16.dp),
+                        contentAlignment = Alignment.BottomStart
+                    ) {
+                        Text(
+                            text = vibe.label,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            lineHeight = 22.sp
                         )
                     }
                 }
             }
         }
-    }
-}
 
-@Composable
-private fun PermissionPrompt(onRequestPermission: () -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "Media permission is required")
-            Button(onClick = onRequestPermission, modifier = Modifier.padding(top = 12.dp)) {
-                Text(text = "Grant permission")
+        // 2. Sort / Filter Header
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "All Photos",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { showFilterSheet = true }
+                ) {
+                    Icon(Icons.Outlined.Tune, contentDescription = "Sort Options", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Sort", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
-    }
-}
 
-@Composable
-private fun ErrorState(onRetry: () -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Button(onClick = onRetry) {
-            Text(text = "Retry")
-        }
-    }
-}
-
-@Composable
-private fun ShimmerGridPlaceholder() {
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val alpha = transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.85f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "alpha"
-    )
-
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
-        contentPadding = PaddingValues(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(18) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .alpha(alpha.value)
-            )
-        }
-    }
-}
-
-@Composable
-fun FolderScreen(bucketId: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.statusBars),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text = "Folder: $bucketId")
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun FilterBottomSheet(
-    onDismiss: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState()
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp)
-        ) {
-            Text(
-                text = "Sort & Filter",
-                style = MaterialTheme.typography.titleMedium,
-                fontSize = 18.sp
-            )
-            Spacer(modifier = Modifier.padding(top = 16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                OutlinedButton(onClick = { /* stub — no action yet */ }) {
-                    Text(text = "Save as Preset")
-                }
+        // 3. Photo Grid
+        items(photos.itemCount) { index ->
+            photos[index]?.let { photo ->
+                AsyncImage(
+                    model = photo.uri,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onPhotoClick(photo.id) }
+                )
             }
         }
     }
