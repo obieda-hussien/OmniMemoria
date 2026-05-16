@@ -1,13 +1,111 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  OmniMemoria — Constellation Icon (Concept B)
+  "نجوم الذكريات" — stars connected like the letter M
+  Forming an M-shape constellation on a deep OLED background
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:scaleX="2.25" android:scaleY="2.25" android:translateX="27" android:translateY="27">
-        <path android:fillColor="#5E35B1" android:pathData="M19,3H5C3.9,3 3,3.9 3,5v14c0,1.1 0.9,2 2,2h14c1.1,0 2,-0.9 2,-2V5C21,3.9 20.1,3 19,3zM19,19H5V5h14V19z"/>
-        <path android:fillColor="#00ACC1" android:pathData="M13,14.5 l-3.5,-4.5 l-4.5,6 h14 Z"/>
-        <path android:fillColor="#5E35B1" android:pathData="M17.5,16 l-3,-4 l-2.5,3 h7 Z"/>
-        <path android:fillColor="#00ACC1" android:pathData="M17.5,10.5 c-0.6,0 -1.2,-0.5 -1.5,-1.1 c-0.3,-0.6 -0.8,-1.1 -1.4,-1.4 0.6,-0.3 1.1,-0.8 1.4,-1.4 0.3,-0.6 0.9,-1.1 1.5,-1.1 0.6,0 1.2,0.5 1.5,1.1 0.3,0.6 0.8,1.1 1.4,1.4 -0.6,0.3 -1.1,0.8 -1.4,1.4 C18.7,10 18.1,10.5 17.5,10.5 z"/>
-    </group>
+
+    <!-- ── Faint ambient glow behind left star ─────────────────────────────── -->
+    <path
+        android:fillColor="#158B7FF5"
+        android:pathData="M24,62 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0" />
+
+    <!-- ── Faint ambient glow behind right star ────────────────────────────── -->
+    <path
+        android:fillColor="#158B7FF5"
+        android:pathData="M84,62 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0" />
+
+    <!-- ══ Constellation lines (connecting the 5 stars) ══════════════════════ -->
+    <!-- Left leg: bottom-left → upper-left -->
+    <path
+        android:strokeColor="#558B7FF5"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M24,62 L36,32" />
+
+    <!-- Left inner: upper-left → center-mid -->
+    <path
+        android:strokeColor="#558B7FF5"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M36,32 L54,50" />
+
+    <!-- Right inner: center-mid → upper-right -->
+    <path
+        android:strokeColor="#558B7FF5"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M54,50 L72,32" />
+
+    <!-- Right leg: upper-right → bottom-right -->
+    <path
+        android:strokeColor="#558B7FF5"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M72,32 L84,62" />
+
+    <!-- ══ Main 5 stars (M-shape) ════════════════════════════════════════════ -->
+
+    <!-- Star 1 — bottom-left -->
+    <path
+        android:fillColor="#8B7FF5"
+        android:pathData="M24,62 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+
+    <!-- Star 2 — upper-left -->
+    <path
+        android:fillColor="#8B7FF5"
+        android:pathData="M36,32 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+
+    <!-- Star 3 — center peak (slightly larger — the "apex" of the M) -->
+    <path
+        android:fillColor="#A89CF7"
+        android:pathData="M54,50 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+
+    <!-- Star 4 — upper-right -->
+    <path
+        android:fillColor="#8B7FF5"
+        android:pathData="M72,32 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+
+    <!-- Star 5 — bottom-right -->
+    <path
+        android:fillColor="#8B7FF5"
+        android:pathData="M84,62 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+
+    <!-- ══ Ambient micro-stars scattered in background ════════════════════════ -->
+
+    <!-- Amber accent micro-star (top area) -->
+    <path
+        android:fillColor="#CCFBC02D"
+        android:pathData="M62,22 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0" />
+
+    <!-- Rose accent micro-star -->
+    <path
+        android:fillColor="#99F0A3C8"
+        android:pathData="M28,40 m-1.8,0 a1.8,1.8 0 1,0 3.6,0 a1.8,1.8 0 1,0 -3.6,0" />
+
+    <!-- Indigo tiny dot -->
+    <path
+        android:fillColor="#778B7FF5"
+        android:pathData="M80,48 m-1.4,0 a1.4,1.4 0 1,0 2.8,0 a1.4,1.4 0 1,0 -2.8,0" />
+
+    <!-- Tiny white sparkle top-right -->
+    <path
+        android:fillColor="#55FFFFFF"
+        android:pathData="M78,26 m-1.2,0 a1.2,1.2 0 1,0 2.4,0 a1.2,1.2 0 1,0 -2.4,0" />
+
+    <!-- Tiny amber sparkle bottom area -->
+    <path
+        android:fillColor="#55FBC02D"
+        android:pathData="M42,74 m-1,0 a1,1 0 1,0 2,0 a1,1 0 1,0 -2,0" />
+
+    <!-- Tiny indigo sparkle left -->
+    <path
+        android:fillColor="#558B7FF5"
+        android:pathData="M16,44 m-1,0 a1,1 0 1,0 2,0 a1,1 0 1,0 -2,0" />
+
 </vector>
