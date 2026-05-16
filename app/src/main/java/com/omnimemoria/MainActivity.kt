@@ -13,7 +13,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             OmniMemoriaTheme {
-                AppNavGraph(isVaultUnlocked = false)
+                // تم إزالة isVaultUnlocked = false
+                AppNavGraph()
             }
         }
     }
