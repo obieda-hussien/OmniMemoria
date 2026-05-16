@@ -11,37 +11,48 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 private val LightColors = lightColorScheme(
-    primary = PrimaryLight,
-    onPrimary = OnPrimaryLight,
-    primaryContainer = PrimaryContainerLight,
-    onPrimaryContainer = OnPrimaryContainerLight,
-    secondary = SecondaryLight,
-    onSecondary = OnSecondaryLight,
-    secondaryContainer = SecondaryContainerLight,
+    primary              = PrimaryLight,
+    onPrimary            = OnPrimaryLight,
+    primaryContainer     = PrimaryContainerLight,
+    onPrimaryContainer   = OnPrimaryContainerLight,
+    secondary            = SecondaryLight,
+    onSecondary          = OnSecondaryLight,
+    secondaryContainer   = SecondaryContainerLight,
     onSecondaryContainer = OnSecondaryContainerLight,
-    background = BackgroundLight,
-    surface = SurfaceLight,
-    surfaceVariant = SurfaceVariantLight
+    tertiary             = TertiaryLight,
+    onTertiary           = OnTertiaryLight,
+    tertiaryContainer    = TertiaryContainerLight,
+    onTertiaryContainer  = OnTertiaryContainerLight,
+    background           = BackgroundLight,
+    surface              = SurfaceLight,
+    surfaceVariant       = SurfaceVariantLight,
+    onSurfaceVariant     = OnSurfaceVariantLight,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = PrimaryDark,
-    onPrimary = OnPrimaryDark,
-    primaryContainer = PrimaryContainerDark,
-    onPrimaryContainer = OnPrimaryContainerDark,
-    secondary = SecondaryDark,
-    onSecondary = OnSecondaryDark,
-    secondaryContainer = SecondaryContainerDark,
+    primary              = PrimaryDark,
+    onPrimary            = OnPrimaryDark,
+    primaryContainer     = PrimaryContainerDark,
+    onPrimaryContainer   = OnPrimaryContainerDark,
+    secondary            = SecondaryDark,
+    onSecondary          = OnSecondaryDark,
+    secondaryContainer   = SecondaryContainerDark,
     onSecondaryContainer = OnSecondaryContainerDark,
-    background = BackgroundDark,
-    surface = SurfaceDark,
-    surfaceVariant = SurfaceVariantDark
+    tertiary             = TertiaryDark,
+    onTertiary           = OnTertiaryDark,
+    tertiaryContainer    = TertiaryContainerDark,
+    onTertiaryContainer  = OnTertiaryContainerDark,
+    background           = BackgroundDark,
+    surface              = SurfaceDark,
+    surfaceVariant       = SurfaceVariantDark,
+    onSurfaceVariant     = OnSurfaceVariantDark,
 )
 
 @Composable
 fun OmniMemoriaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // Disabled to enforce brand identity
+    // Dynamic color disabled — enforcing Lumina brand identity
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -50,13 +61,13 @@ fun OmniMemoriaTheme(
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
         darkTheme -> DarkColors
-        else -> LightColors
+        else      -> LightColors
     }
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = AppTypography,
-        shapes = AppShapes,
-        content = content
+        typography  = AppTypography,
+        shapes      = AppShapes,
+        content     = content
     )
 }
