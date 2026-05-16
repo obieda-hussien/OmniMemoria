@@ -1,31 +1,31 @@
 package com.omnimemoria.ui.settings
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.omnimemoria.data.worker.ModelDownloadWorker
 import com.omnimemoria.domain.flags.FeatureFlag
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
@@ -35,73 +35,107 @@ fun SettingsScreen(
     val ocrEnabled = featureStates[FeatureFlag.OCR] == true
     var activeDownloadModel by remember { mutableStateOf<String?>(null) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item {
-            SectionHeader(title = "🧠 AI Features")
-        }
-        items(AI_FEATURE_ITEMS) { item ->
-            FeatureToggleItem(
-                title = item.title,
-                subtitle = item.subtitle,
-                checked = featureStates[item.flag] == true,
-                enabled = if (item.flag == FeatureFlag.ARABIC_OCR) ocrEnabled else true,
-                onCheckedChange = { viewModel.toggle(item.flag) }
+    Scaffold(
+        topBar = {
+            LargeTopAppBar(
+                title = { 
+                    Text(
+                        text = "Settings", 
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp
+                    ) 
+                },
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface
+                )
             )
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp) // مسافة كبيرة بين المجموعات
+        ) {
+            
+            item {
+                SettingsGroup(title = "🧠 AI Features") {
+                    AI_FEATURE_ITEMS.forEachIndexed { index, item ->
+                        FeatureToggleItem(
+                            title = item.title,
+                            subtitle = item.subtitle,
+                            checked = featureStates[item.flag] == true,
+                            enabled = if (item.flag == FeatureFlag.ARABIC_OCR) ocrEnabled else true,
+                            onCheckedChange = { viewModel.toggle(item.flag) },
+                            isLast = index == AI_FEATURE_ITEMS.lastIndex
+                        )
+                    }
+                }
+            }
 
-        item {
-            SectionHeader(title = "🎨 Visual Features")
-        }
-        items(VISUAL_FEATURE_ITEMS) { item ->
-            FeatureToggleItem(
-                title = item.title,
-                checked = featureStates[item.flag] == true,
-                onCheckedChange = { viewModel.toggle(item.flag) }
-            )
-        }
+            item {
+                SettingsGroup(title = "🎨 Visual Features") {
+                    VISUAL_FEATURE_ITEMS.forEachIndexed { index, item ->
+                        FeatureToggleItem(
+                            title = item.title,
+                            checked = featureStates[item.flag] == true,
+                            onCheckedChange = { viewModel.toggle(item.flag) },
+                            isLast = index == VISUAL_FEATURE_ITEMS.lastIndex
+                        )
+                    }
+                }
+            }
 
-        item {
-            SectionHeader(title = "🗜️ Compression")
-        }
-        items(COMPRESSION_ITEMS) { item ->
-            FeatureToggleItem(
-                title = item.title,
-                checked = featureStates[item.flag] == true,
-                onCheckedChange = { viewModel.toggle(item.flag) }
-            )
-        }
+            item {
+                SettingsGroup(title = "🗜️ Storage & Compression") {
+                    COMPRESSION_ITEMS.forEachIndexed { index, item ->
+                        FeatureToggleItem(
+                            title = item.title,
+                            checked = featureStates[item.flag] == true,
+                            onCheckedChange = { viewModel.toggle(item.flag) },
+                            isLast = index == COMPRESSION_ITEMS.lastIndex
+                        )
+                    }
+                }
+            }
 
-        item {
-            SectionHeader(title = "📥 AI Models")
-        }
-        items(AI_MODEL_ITEMS) { item ->
-            val isDownloaded = modelDownloadStates[item.modelName] == true
-            ModelDownloadItem(
-                title = item.title,
-                downloaded = isDownloaded,
-                onDownloadClick = { activeDownloadModel = item.modelName }
-            )
-        }
+            item {
+                SettingsGroup(title = "📥 Offline AI Models") {
+                    AI_MODEL_ITEMS.forEachIndexed { index, item ->
+                        val isDownloaded = modelDownloadStates[item.modelName] == true
+                        ModelDownloadItem(
+                            title = item.title,
+                            downloaded = isDownloaded,
+                            onDownloadClick = { activeDownloadModel = item.modelName },
+                            isLast = index == AI_MODEL_ITEMS.lastIndex
+                        )
+                    }
+                }
+            }
 
-        item {
-            SectionHeader(title = "🔒 Security")
-        }
-        items(SECURITY_FEATURE_ITEMS) { item ->
-            FeatureToggleItem(
-                title = item.title,
-                checked = featureStates[item.flag] == true,
-                onCheckedChange = { viewModel.toggle(item.flag) }
-            )
-        }
+            item {
+                SettingsGroup(title = "🔒 Security & Privacy") {
+                    SECURITY_FEATURE_ITEMS.forEachIndexed { index, item ->
+                        FeatureToggleItem(
+                            title = item.title,
+                            checked = featureStates[item.flag] == true,
+                            onCheckedChange = { viewModel.toggle(item.flag) },
+                            isLast = index == SECURITY_FEATURE_ITEMS.lastIndex
+                        )
+                    }
+                }
+            }
 
-        item {
-            SectionHeader(title = "ℹ️ About the App")
-        }
-        item {
-            AboutItem()
+            item {
+                SettingsGroup(title = "ℹ️ About") {
+                    AboutItems()
+                }
+            }
+            
+            item { Spacer(modifier = Modifier.height(40.dp)) }
         }
     }
 
@@ -113,40 +147,133 @@ fun SettingsScreen(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Components
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-    )
+private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+        )
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(content = content)
+        }
+    }
+}
+
+@Composable
+private fun FeatureToggleItem(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+    subtitle: String? = null,
+    isLast: Boolean = false
+) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled) { onCheckedChange(!checked) }
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.4f),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = null, // Handled by Row click
+                enabled = enabled
+            )
+        }
+        if (!isLast) {
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 20.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            )
+        }
+    }
 }
 
 @Composable
 private fun ModelDownloadItem(
     title: String,
     downloaded: Boolean,
-    onDownloadClick: () -> Unit
+    onDownloadClick: () -> Unit,
+    isLast: Boolean
 ) {
     Column {
-        ListItem(
-            headlineContent = { Text(text = title) },
-            trailingContent = {
-                if (downloaded) {
-                    Text(text = "✅ Downloaded")
-                } else {
-                    Button(onClick = onDownloadClick) {
-                        Text(text = "Download")
-                    }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
+            )
+            
+            if (downloaded) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Ready", style = MaterialTheme.typography.labelLarge, color = Color(0xFF4CAF50))
+                }
+            } else {
+                FilledTonalButton(
+                    onClick = onDownloadClick,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Icon(Icons.Outlined.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Get")
                 }
             }
-        )
-        HorizontalDivider()
+        }
+        if (!isLast) {
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 20.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            )
+        }
     }
 }
 
 @Composable
-private fun AboutItem() {
+private fun AboutItems() {
     val context = LocalContext.current
     val versionName = remember(context) {
         runCatching {
@@ -157,26 +284,32 @@ private fun AboutItem() {
     var showLibrariesDialog by remember { mutableStateOf(false) }
 
     Column {
-        ListItem(
-            headlineContent = { Text(text = "App version") },
-            supportingContent = { Text(text = versionName) }
-        )
-        HorizontalDivider()
-        ListItem(
-            headlineContent = { Text(text = "Open source libraries") },
-            trailingContent = {
-                Button(onClick = { showLibrariesDialog = true }) {
-                    Text(text = "Open")
-                }
-            }
-        )
-        HorizontalDivider()
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("App Version", style = MaterialTheme.typography.bodyLarge)
+            Text(versionName, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showLibrariesDialog = true }
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Open Source Licenses", style = MaterialTheme.typography.bodyLarge)
+            Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        }
     }
 
     if (showLibrariesDialog) {
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { showLibrariesDialog = false },
-            title = { Text(text = "Open source libraries") },
+            title = { Text(text = "Open Source Libraries") },
             text = { Text(text = "Licenses screen coming soon.") },
             confirmButton = {
                 TextButton(onClick = { showLibrariesDialog = false }) {
@@ -187,29 +320,9 @@ private fun AboutItem() {
     }
 }
 
-@Composable
-private fun FeatureToggleItem(
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    enabled: Boolean = true,
-    subtitle: String? = null
-) {
-    Column {
-        ListItem(
-            headlineContent = { Text(text = title) },
-            supportingContent = subtitle?.let { { Text(text = it) } },
-            trailingContent = {
-                Switch(
-                    checked = checked,
-                    onCheckedChange = onCheckedChange,
-                    enabled = enabled
-                )
-            }
-        )
-        HorizontalDivider()
-    }
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Data Models
+// ─────────────────────────────────────────────────────────────────────────────
 
 private data class FeatureItem(
     val title: String,
@@ -228,16 +341,8 @@ private val AI_FEATURE_ITEMS = listOf(
     FeatureItem("Image Classification (ML Kit)", FeatureFlag.ML_LABELS),
     FeatureItem("Face Detection", FeatureFlag.FACE_DETECTION),
     FeatureItem("Embeddings", FeatureFlag.EMBEDDINGS),
-    FeatureItem(
-        title = "Semantic Search (RAG)",
-        flag = FeatureFlag.RAG_SEARCH,
-        subtitle = "Requires embeddings"
-    ),
-    FeatureItem(
-        title = "Smart Filters",
-        flag = FeatureFlag.SMART_FILTERS,
-        subtitle = "Uses AI-generated metadata"
-    )
+    FeatureItem("Semantic Search (RAG)", FeatureFlag.RAG_SEARCH, "Requires embeddings"),
+    FeatureItem("Smart Filters", FeatureFlag.SMART_FILTERS, "Uses AI-generated metadata")
 )
 
 private val VISUAL_FEATURE_ITEMS = listOf(
