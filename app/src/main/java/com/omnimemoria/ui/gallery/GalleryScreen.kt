@@ -37,16 +37,15 @@ fun GalleryScreen(onPhotoClick: (Long) -> Unit, viewModel: GalleryViewModel = hi
     val photos = viewModel.photos.collectAsLazyPagingItems()
     var showFilterSheet by remember { mutableStateOf(false) }
     
-    // حفظ حالة السكرول صراحة
     val gridState = rememberLazyGridState()
 
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(3),
-        // المسافات هنا مهمة جداً لتعويض الأشرطة العائمة
+        // هذا هو السطر الذي تم إصلاحه (نمرر PaddingValues للشبكة مباشرة)
         contentPadding = PaddingValues(
-            top = 110.dp,    // تعويض ارتفاع TopBar
-            bottom = 120.dp, // تعويض ارتفاع BottomNav + FAB
+            top = 110.dp,    
+            bottom = 120.dp, 
             start = 8.dp,
             end = 8.dp
         ),
