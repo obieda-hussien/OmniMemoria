@@ -1,6 +1,5 @@
 package com.omnimemoria.ui.home
 
-import android.content.res.Configuration
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,8 +27,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.omnimemoria.ui.gallery.GalleryScreen
-import com.omnimemoria.ui.theme.AmberVibe
-import com.omnimemoria.ui.theme.RoseMemory
 import java.util.Calendar
 
 enum class HomeTab(val route: String, val label: String, val icon: ImageVector) {
@@ -52,35 +49,13 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
 
     var showSmartSheet by rememberSaveable { mutableStateOf(false) }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        extendBody = true, // ضروري جداً عشان البار السفلي يكون عائم فوق المحتوى
-        extendBodyBehindAppBar = true, // ضروري عشان البار العلوي يكون عائم
-        topBar = { OmniTopBar(onSettingsClick = onSettingsClick) },
-        bottomBar = {
-            OmniBottomNav(
-                currentDestination = currentDestination,
-                onTabSelected = { tab ->
-                    homeNavController.navigate(tab.route) {
-                        popUpTo(homeNavController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                }
-            )
-        },
-        floatingActionButton = {
-            AnimatedVisibility(
-                visible = currentTab == HomeTab.GALLERY,
-                enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
-                exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 })
-            ) {
-                SmartFab(onClick = { showSmartSheet = true })
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
-        // مررنا 0.dp لأننا بنعوض المسافات داخل شاشة الـ Gallery نفسها ليكون التمرير خلف الأشرطة
+    // استخدام Box لبناء تصميم عائم متراكب (Layered Design)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        // 1. المحتوى الأساسي (NavHost) - في الخلفية ويمتد بكامل الشاشة
         NavHost(
             navController = homeNavController,
             startDestination = HomeTab.GALLERY.route,
@@ -91,6 +66,40 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
             composable(HomeTab.SEARCH.route) { SearchPlaceholderScreen() }
             composable(HomeTab.VAULT.route) { VaultPlaceholderScreen() }
         }
+
+        // 2. الشريط العلوي العائم (Top Bar)
+        OmniTopBar(
+            onSettingsClick = onSettingsClick,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+
+        // 3. الزر العائم والشريط السفلي (Bottom Nav & FAB)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.End // لمحاذاة زر الـ FAB لليمين
+        ) {
+            AnimatedVisibility(
+                visible = currentTab == HomeTab.GALLERY,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
+                modifier = Modifier.padding(end = 24.dp, bottom = 16.dp)
+            ) {
+                SmartFab(onClick = { showSmartSheet = true })
+            }
+
+            OmniBottomNav(
+                currentDestination = currentDestination,
+                onTabSelected = { tab ->
+                    homeNavController.navigate(tab.route) {
+                        popUpTo(homeNavController.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            )
+        }
     }
 
     if (showSmartSheet) {
@@ -98,11 +107,12 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
     }
 }
 
-// Custom Floating Top Bar
+// ── المكونات العائمة (Components) ──────────────────────────────────────────────────
+
 @Composable
-private fun OmniTopBar(onSettingsClick: () -> Unit) {
+private fun OmniTopBar(onSettingsClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
@@ -118,7 +128,6 @@ private fun OmniTopBar(onSettingsClick: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Top
     ) {
-        // النصوص على اليسار
         Column {
             Text(
                 text = "OMNIMEMORIA",
@@ -151,7 +160,6 @@ private fun OmniTopBar(onSettingsClick: () -> Unit) {
             )
         }
 
-        // زر الإعدادات على اليمين
         IconButton(
             onClick = onSettingsClick,
             modifier = Modifier
@@ -177,16 +185,15 @@ private fun SmartFab(onClick: () -> Unit) {
     }
 }
 
-// Custom Floating Glass Bottom Nav
 @Composable
 private fun OmniBottomNav(currentDestination: NavDestination?, onTabSelected: (HomeTab) -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
-            .padding(bottom = 24.dp) // المسافة من الأسفل لجعله عائم
+            .padding(bottom = 24.dp)
             .clip(RoundedCornerShape(32.dp))
-            .background(Color(0xFF141220).copy(alpha = 0.85f)) // لون شفاف Glassmorphism
+            .background(Color(0xFF141220).copy(alpha = 0.85f))
     ) {
         NavigationBar(
             containerColor = Color.Transparent,
@@ -200,7 +207,7 @@ private fun OmniBottomNav(currentDestination: NavDestination?, onTabSelected: (H
                     onClick = { onTabSelected(tab) },
                     icon = { Icon(tab.icon, contentDescription = tab.label) },
                     label = {
-                        if (selected) { // إظهار النص للعنصر المحدد فقط لمظهر أنظف
+                        if (selected) {
                             Text(tab.label, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                         }
                     },
@@ -216,7 +223,6 @@ private fun OmniBottomNav(currentDestination: NavDestination?, onTabSelected: (H
     }
 }
 
-// Smart Sheet 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SmartActionsSheet(onDismiss: () -> Unit) {
@@ -250,10 +256,7 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(color.copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(color.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Outlined.AutoAwesome, null, tint = color)
                     }
                     Spacer(modifier = Modifier.width(16.dp))
@@ -267,7 +270,6 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
     }
 }
 
-// Placeholders
 @Composable fun AlbumsPlaceholderScreen() { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Albums Screen") } }
 @Composable fun SearchPlaceholderScreen() { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Search Screen") } }
 @Composable fun VaultPlaceholderScreen() { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Vault Screen") } }
