@@ -32,6 +32,7 @@
         android:supportsRtl="true"
         android:requestLegacyExternalStorage="true"
         android:hardwareAccelerated="true"
+        android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.OmniMemoria">
 
         <provider
