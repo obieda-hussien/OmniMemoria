@@ -85,7 +85,11 @@ fun GalleryScreen(onPhotoClick: (Long) -> Unit, viewModel: GalleryViewModel = hi
         // 2. Sort / Filter Header
         item(span = { GridItemSpan(maxLineSpan) }) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, bottom = 12.dp),
+                // تم إصلاح الـ padding هنا بفصلهم
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
