@@ -5,6 +5,8 @@ import androidx.room.Room
 import com.omnimemoria.data.local.db.AppDatabase
 import com.omnimemoria.data.local.db.PhotoIntelligenceDao
 import com.omnimemoria.data.local.db.SortPresetDao
+import com.omnimemoria.data.local.db.FavoritesDao
+import com.omnimemoria.data.local.db.TrashDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -29,5 +31,15 @@ object DatabaseModule {
     @Provides
     fun provideSortPresetDao(database: AppDatabase): SortPresetDao {
         return database.sortPresetDao()
+    }
+
+    @Provides
+    fun provideFavoritesDao(database: AppDatabase): FavoritesDao {
+        return database.favoritesDao()
+    }
+
+    @Provides
+    fun provideTrashDao(database: AppDatabase): TrashDao {
+        return database.trashDao()
     }
 }
