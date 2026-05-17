@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -34,6 +35,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.size.Size
 import com.omnimemoria.ui.theme.AmberVibe
 import com.omnimemoria.ui.theme.RoseMemory
 
@@ -385,11 +388,10 @@ private fun PhotoCell(
                 onLongClick = onLongClick
             )
     ) {
-        AsyncImage(
-            model              = uri,
-            contentDescription = null,
-            contentScale       = ContentScale.Crop,
-            modifier           = Modifier.fillMaxSize()
+        // تم استبدال AsyncImage بـ CachedThumbnail هنا
+        CachedThumbnail(
+            uri      = uri,
+            modifier = Modifier.fillMaxSize()
         )
 
         // ── Selection overlay ─────────────────────────────────────────────────
@@ -435,6 +437,24 @@ private fun PhotoCell(
             }
         }
     }
+}
+
+// ── Cached Thumbnail ──────────────────────────────────────────────────────────────
+
+@Composable
+private fun CachedThumbnail(uri: String, modifier: Modifier) {
+    val context = LocalContext.current
+    AsyncImage(
+        model = ImageRequest.Builder(context)
+            .data(uri)
+            // Fixed decode size → single disk cache entry per photo,
+            // shared across all column-count configurations.
+            .size(Size(512, 512))
+            .build(),
+        contentDescription = null,
+        contentScale       = ContentScale.Crop,
+        modifier           = modifier
+    )
 }
 
 // ── Skeleton shimmer cell ─────────────────────────────────────────────────────────
