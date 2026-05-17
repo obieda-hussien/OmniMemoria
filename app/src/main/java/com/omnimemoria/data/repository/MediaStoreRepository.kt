@@ -172,6 +172,17 @@ class MediaStoreRepository @Inject constructor(
         return results
     }
 
+    // ══ 7. FIX: نفس الـ getAllPhotosSortedByDate لكن بتستثني صور الـ Vault ═══════
+    // PhotoDetail بيفتح من الـ Gallery اللي بتستثني الـ Vault items.
+    // لو استخدمنا getAllPhotosSortedByDate العادية، الـ index بيختلف لأن الـ Vault
+    // items موجودة فيها بس مش موجودة في الـ Gallery — وده كان سبب ظهور الصورة الغلط.
+    suspend fun getAllNonVaultPhotosSortedByDate(): List<MediaPhoto> =
+        withContext(Dispatchers.IO) {
+            val vaultIds = photoIntelligenceDao.getVaultPhotoIds().toHashSet()
+            // الـ vault items مش كتير في الغالب — filter in-memory أسرع من query معقدة
+            getAllPhotosSortedByDate().filterNot { it.id in vaultIds }
+        }
+
     // ══ Paging ══════════════════════════════════════════════════════════════════
 
     fun getPhotosPaged(sortConfig: SortConfig): Flow<PagingData<MediaPhoto>> = Pager(
