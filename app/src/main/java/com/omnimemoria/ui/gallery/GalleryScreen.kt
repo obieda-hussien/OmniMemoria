@@ -2,11 +2,10 @@ package com.omnimemoria.ui.gallery
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
@@ -22,11 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +36,12 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import com.omnimemoria.ui.theme.AmberVibe
 import com.omnimemoria.ui.theme.RoseMemory
+
+// FIX: use rememberTransformableState — it handles zoom without consuming scroll events.
+// The old detectTransformGestures on the outer Box was intercepting all touch events,
+// breaking both scroll and long-press simultaneously.
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 
 // ── Vibe chips placeholder data ──────────────────────────────────────────────────
 private data class VibeChip(val emoji: String, val label: String, val color: Color)
@@ -54,8 +57,8 @@ private val placeholderVibes = listOf(
 
 @Composable
 fun GalleryScreen(
-    onPhotoClick:   (Long) -> Unit,
-    viewModel:      GalleryViewModel = hiltViewModel()
+    onPhotoClick: (Long) -> Unit,
+    viewModel:    GalleryViewModel = hiltViewModel()
 ) {
     val haptic        = LocalHapticFeedback.current
     val groupedPhotos = viewModel.groupedPhotos.collectAsLazyPagingItems()
@@ -63,53 +66,64 @@ fun GalleryScreen(
     val isSelecting   by viewModel.isInSelectionMode.collectAsState()
     val columnCount   by viewModel.columnCount.collectAsState()
 
-    // Pinch-to-zoom zoom tracker
-    var cumulativeZoom by remember { mutableStateOf(1f) }
+    // FIX: use mediaStats.photoCount for the real photo count,
+    // not groupedPhotos.itemCount which includes DateHeader separators.
+    val mediaStats    by viewModel.mediaStats.collectAsState()
 
-    val gridState  = rememberLazyGridState()
+    val gridState = rememberLazyGridState()
 
-    // ── Root Box (pinch gesture wraps everything) ─────────────────────────────
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTransformGestures { _: Offset, _: Offset, zoom: Float, _: Float ->
-                    cumulativeZoom *= zoom
-                    // threshold: 25% change needed to switch column count
-                    if (cumulativeZoom > 1.25f || cumulativeZoom < 0.75f) {
-                        viewModel.onPinchZoom(cumulativeZoom)
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        cumulativeZoom = 1f
-                    }
-                }
-            }
-    ) {
+    // ── FIX: rememberTransformableState handles pinch without consuming scroll ─
+    // Old code used detectTransformGestures on the outer Box which ate all touch
+    // events. transformable() only reacts to scale gestures, leaving scrolling alone.
+    var cumulativeZoom by remember { mutableFloatStateOf(1f) }
+    val transformableState = rememberTransformableState { zoomChange, _, _ ->
+        cumulativeZoom *= zoomChange
+        if (cumulativeZoom > 1.25f || cumulativeZoom < 0.75f) {
+            viewModel.onPinchZoom(cumulativeZoom)
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            cumulativeZoom = 1f
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+
         LazyVerticalGrid(
             state             = gridState,
             columns           = GridCells.Fixed(columnCount),
             contentPadding    = PaddingValues(
-                top    = 112.dp,   // clearance for floating TopBar
-                bottom = 130.dp,   // clearance for BottomNav + FAB
+                top    = 112.dp,
+                bottom = 130.dp,
                 start  = 6.dp,
                 end    = 6.dp
             ),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalArrangement   = Arrangement.spacedBy(3.dp),
-            modifier              = Modifier.fillMaxSize()
+            // FIX: transformable is applied to the grid itself so it only captures
+            // multi-touch scale events. lockRotationOnZoomPan = true prevents
+            // rotation from interfering with the zoom detection.
+            modifier = Modifier
+                .fillMaxSize()
+                .transformable(
+                    state               = transformableState,
+                    lockRotationOnZoomPan = true
+                )
         ) {
             // ── Vibe Albums Row ──────────────────────────────────────────────
             item(span = { GridItemSpan(maxLineSpan) }) {
                 VibeAlbumsRow(modifier = Modifier.padding(bottom = 20.dp))
             }
 
-            // ── Section header + photo count ─────────────────────────────────
+            // ── Section header with REAL photo count ─────────────────────────
             item(span = { GridItemSpan(maxLineSpan) }) {
                 SectionSubHeader(
-                    title    = "All Photos",
-                    count    = groupedPhotos.itemCount,
+                    title     = "All Photos",
+                    // FIX: mediaStats.photoCount is the actual number of photos from
+                    // MediaStore. groupedPhotos.itemCount was wrong because it counted
+                    // DateHeader items as well as Photo items.
+                    count     = mediaStats.photoCount,
                     isLoading = groupedPhotos.loadState.refresh is LoadState.Loading,
-                    onSort   = { /* TODO: open sort sheet */ },
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    onSort    = { /* TODO: open sort sheet */ },
+                    modifier  = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
 
@@ -122,6 +136,15 @@ fun GalleryScreen(
                 // ── Real items (Photos + Date Headers) ───────────────────────
                 items(
                     count = groupedPhotos.itemCount,
+                    // FIX: stable keys prevent unnecessary recompositions when
+                    // column count changes (required by Prompt 9.3).
+                    key   = { index ->
+                        when (val item = groupedPhotos.peek(index)) {
+                            is GalleryItem.DateHeader -> "header_${item.label}"
+                            is GalleryItem.Photo      -> "photo_${item.photo.id}"
+                            null                      -> "placeholder_$index"
+                        }
+                    },
                     span  = { index ->
                         when (groupedPhotos[index]) {
                             is GalleryItem.DateHeader -> GridItemSpan(maxLineSpan)
@@ -136,16 +159,17 @@ fun GalleryScreen(
                         is GalleryItem.Photo -> {
                             val photo      = item.photo
                             val isSelected = photo.id in selectedIds
+                            // FIX: PhotoCell now uses combinedClickable which provides
+                            // proper long-press detection out of the box. The old
+                            // awaitPointerEventScope stub did absolutely nothing.
                             PhotoCell(
-                                uri        = photo.uri.toString(),
-                                isSelected = isSelected,
+                                uri         = photo.uri.toString(),
+                                photoId     = photo.id,
+                                isSelected  = isSelected,
                                 isSelecting = isSelecting,
-                                onClick    = {
-                                    if (isSelecting) {
-                                        viewModel.toggleSelection(photo.id)
-                                    } else {
-                                        onPhotoClick(photo.id)
-                                    }
+                                onClick     = {
+                                    if (isSelecting) viewModel.toggleSelection(photo.id)
+                                    else onPhotoClick(photo.id)
                                 },
                                 onLongClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -158,7 +182,6 @@ fun GalleryScreen(
                 }
             }
 
-            // ── Footer padding ───────────────────────────────────────────────
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -172,11 +195,11 @@ fun GalleryScreen(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             SelectionActionBar(
-                count       = selectedIds.size,
-                onClose     = { viewModel.clearSelection() },
-                onShare     = { /* TODO */ },
-                onDelete    = { /* TODO */ },
-                onMore      = { /* TODO */ }
+                count   = selectedIds.size,
+                onClose = { viewModel.clearSelection() },
+                onShare = { /* TODO */ },
+                onDelete = { /* TODO */ },
+                onMore  = { /* TODO */ }
             )
         }
     }
@@ -188,11 +211,11 @@ fun GalleryScreen(
 private fun VibeAlbumsRow(modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
         Row(
-            modifier            = Modifier
+            modifier              = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment   = Alignment.CenterVertically
+            verticalAlignment     = Alignment.CenterVertically
         ) {
             Text(
                 text       = "Vibe Albums",
@@ -230,7 +253,7 @@ private fun VibeChipCard(vibe: VibeChip) {
                     colors = listOf(vibe.color, vibe.color.copy(alpha = 0.7f))
                 )
             )
-            .clickable { }
+            .combinedClickable(onClick = {})
             .padding(12.dp),
         contentAlignment = Alignment.BottomStart
     ) {
@@ -292,7 +315,7 @@ private fun SectionSubHeader(
             verticalAlignment = Alignment.CenterVertically,
             modifier          = Modifier
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onSort)
+                .combinedClickable(onClick = onSort)
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             Icon(
@@ -330,19 +353,24 @@ private fun DateHeaderRow(label: String) {
 }
 
 // ── Photo Cell ────────────────────────────────────────────────────────────────────
+// FIX: replaced the broken pointerInput stub with combinedClickable.
+// combinedClickable handles: single tap, long press, double tap — all correctly.
+// The scale animation is preserved.
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PhotoCell(
     uri:         String,
+    photoId:     Long,
     isSelected:  Boolean,
     isSelecting: Boolean,
     onClick:     () -> Unit,
     onLongClick: () -> Unit
 ) {
     val scale by animateFloatAsState(
-        targetValue  = if (isSelected) 0.88f else 1f,
+        targetValue   = if (isSelected) 0.88f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label        = "photo_scale"
+        label         = "photo_scale_$photoId"
     )
 
     Box(
@@ -350,35 +378,18 @@ private fun PhotoCell(
             .aspectRatio(1f)
             .scale(scale)
             .clip(RoundedCornerShape(if (isSelected) 14.dp else 8.dp))
-            .pointerInput(isSelecting) {
-                // Long press → multi-select
-                detectTransformGestures { _, pan, zoom, _ ->
-                    // consumed by parent pinch
-                }
-            }
+            // FIX: combinedClickable provides real long-press detection.
+            // onLongClick triggers selection mode; onClick navigates or toggles selection.
+            .combinedClickable(
+                onClick     = onClick,
+                onLongClick = onLongClick
+            )
     ) {
-        // ── Thumbnail ─────────────────────────────────────────────────────────
         AsyncImage(
             model              = uri,
             contentDescription = null,
             contentScale       = ContentScale.Crop,
-            modifier           = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication        = null,
-                    onClick           = onClick
-                )
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            if (event.changes.any { it.pressed }) {
-                                // detect long press manually via delay
-                            }
-                        }
-                    }
-                }
+            modifier           = Modifier.fillMaxSize()
         )
 
         // ── Selection overlay ─────────────────────────────────────────────────
@@ -480,7 +491,6 @@ private fun SelectionActionBar(
             verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Close + count
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) {
                     Icon(Icons.Outlined.Close, null, tint = Color.White)
@@ -493,16 +503,15 @@ private fun SelectionActionBar(
                 )
             }
 
-            // Actions
             Row {
                 IconButton(onClick = onShare) {
-                    Icon(Icons.Outlined.Share,  null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    Icon(Icons.Outlined.Share,    null, tint = Color.White,          modifier = Modifier.size(22.dp))
                 }
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Outlined.Delete, null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(22.dp))
+                    Icon(Icons.Outlined.Delete,   null, tint = Color(0xFFFF6B6B),    modifier = Modifier.size(22.dp))
                 }
                 IconButton(onClick = onMore) {
-                    Icon(Icons.Outlined.MoreVert, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    Icon(Icons.Outlined.MoreVert, null, tint = Color.White,          modifier = Modifier.size(22.dp))
                 }
             }
         }
