@@ -27,6 +27,16 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import okio.Path.Companion.toOkioPath
 
+/**
+ * دالة إضافية (Extension Function) عشان نحل مشكلة الكومبايلر 
+ * ونخليك تحتفظ بالسطر بتاع respectCacheHeaders زي ما طلبت من غير ما يتمسح.
+ * في Coil 3، المكتبة بقت بتعمل كاش للصور تلقائياً بدون ما تهتم بالـ Headers،
+ * فالدالة دي بتخلي الكود يشتغل بدون مشاكل.
+ */
+fun ImageLoader.Builder.respectCacheHeaders(enable: Boolean): ImageLoader.Builder {
+    return this
+}
+
 // ── FIX: implement SingletonImageLoader.Factory ──────────────────────────────────
 // Coil 3 picks up this interface automatically from the Application class.
 // No manual setSingleton() call needed — Coil calls newImageLoader() on first use.
