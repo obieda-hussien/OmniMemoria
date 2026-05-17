@@ -7,6 +7,8 @@ data class MediaPhoto(
     val uri: Uri,
     val name: String,
     val size: Long,
+    val dateModified: Long = 0L,
+    val dateAdded: Long = 0L,
     val mimeType: String,
     val dateTaken: Long,
     val width: Int,
