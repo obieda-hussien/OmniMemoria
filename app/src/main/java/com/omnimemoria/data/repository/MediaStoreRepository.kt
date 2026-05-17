@@ -158,7 +158,6 @@ class MediaStoreRepository @Inject constructor(
     }
 
     // ══ 6. كل الصور مرتبة بالتاريخ — للـ PhotoDetail swipe window ══════════════
-    // استدعاء فقط من Dispatchers.IO — مش للـ UI مباشرة
     fun getAllPhotosSortedByDate(): List<MediaPhoto> {
         val results = mutableListOf<MediaPhoto>()
         contentResolver.query(
@@ -172,14 +171,11 @@ class MediaStoreRepository @Inject constructor(
         return results
     }
 
-    // ══ 7. FIX: نفس الـ getAllPhotosSortedByDate لكن بتستثني صور الـ Vault ═══════
-    // PhotoDetail بيفتح من الـ Gallery اللي بتستثني الـ Vault items.
-    // لو استخدمنا getAllPhotosSortedByDate العادية، الـ index بيختلف لأن الـ Vault
-    // items موجودة فيها بس مش موجودة في الـ Gallery — وده كان سبب ظهور الصورة الغلط.
+    // ══ 7. All non-vault photos — unlimited swipe source for PhotoDetail ═════════
+    // Filters out vault items so the pager index matches the gallery grid exactly.
     suspend fun getAllNonVaultPhotosSortedByDate(): List<MediaPhoto> =
         withContext(Dispatchers.IO) {
             val vaultIds = photoIntelligenceDao.getVaultPhotoIds().toHashSet()
-            // الـ vault items مش كتير في الغالب — filter in-memory أسرع من query معقدة
             getAllPhotosSortedByDate().filterNot { it.id in vaultIds }
         }
 
@@ -300,12 +296,18 @@ class MediaStoreRepository @Inject constructor(
     companion object {
         private const val PAGE_SIZE = 60
 
+        // ── FIX: added DATE_MODIFIED and DATE_ADDED for fallback display ──────
+        // Snapchat / received media often has DATE_TAKEN = 0.
+        // DATE_MODIFIED (seconds) is always present; DATE_ADDED (seconds) is the
+        // last resort. MediaPhoto.effectiveDateMs picks the best available value.
         val photoProjection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.SIZE,
             MediaStore.Images.Media.MIME_TYPE,
             MediaStore.Images.Media.DATE_TAKEN,
+            MediaStore.Images.Media.DATE_MODIFIED,   // seconds since epoch
+            MediaStore.Images.Media.DATE_ADDED,      // seconds since epoch
             MediaStore.Images.Media.WIDTH,
             MediaStore.Images.Media.HEIGHT,
             MediaStore.Images.Media.LATITUDE,
@@ -398,19 +400,22 @@ class MediaStoreRepository @Inject constructor(
                 .sortedByDescending { it.latestPhotoDate }
         }
 
+        // ── FIX: maps DATE_MODIFIED and DATE_ADDED from cursor ────────────────
         fun android.database.Cursor.toMediaPhoto(): MediaPhoto {
             val id = getLong(getColumnIndexOrThrow(MediaStore.Images.Media._ID))
             return MediaPhoto(
-                id        = id,
-                uri       = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id),
-                name      = getStringOrEmpty(MediaStore.Images.Media.DISPLAY_NAME),
-                size      = getLongOrZero(MediaStore.Images.Media.SIZE),
-                mimeType  = getStringOrEmpty(MediaStore.Images.Media.MIME_TYPE),
-                dateTaken = getLongOrZero(MediaStore.Images.Media.DATE_TAKEN),
-                width     = getIntOrZero(MediaStore.Images.Media.WIDTH),
-                height    = getIntOrZero(MediaStore.Images.Media.HEIGHT),
-                latitude  = getDoubleOrNull(MediaStore.Images.Media.LATITUDE),
-                longitude = getDoubleOrNull(MediaStore.Images.Media.LONGITUDE)
+                id           = id,
+                uri          = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id),
+                name         = getStringOrEmpty(MediaStore.Images.Media.DISPLAY_NAME),
+                size         = getLongOrZero(MediaStore.Images.Media.SIZE),
+                mimeType     = getStringOrEmpty(MediaStore.Images.Media.MIME_TYPE),
+                dateTaken    = getLongOrZero(MediaStore.Images.Media.DATE_TAKEN),
+                dateModified = getLongOrZero(MediaStore.Images.Media.DATE_MODIFIED),
+                dateAdded    = getLongOrZero(MediaStore.Images.Media.DATE_ADDED),
+                width        = getIntOrZero(MediaStore.Images.Media.WIDTH),
+                height       = getIntOrZero(MediaStore.Images.Media.HEIGHT),
+                latitude     = getDoubleOrNull(MediaStore.Images.Media.LATITUDE),
+                longitude    = getDoubleOrNull(MediaStore.Images.Media.LONGITUDE)
             )
         }
 
