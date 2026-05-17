@@ -18,7 +18,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -52,26 +51,51 @@ fun PhotoDetailScreen(
     val photoWindow by viewModel.photoWindow.collectAsState()
     val isFavorite  by viewModel.isFavorite.collectAsState()
 
-    // بمجرد فتح الشاشة نحمّل الـ window حول الصورة المختارة
     LaunchedEffect(photoId) {
         viewModel.loadWindowAround(photoId)
     }
 
-    // إيجاد الـ index الأولي للصورة المطلوبة
-    val initialPage = remember(photoWindow, photoId) {
-        photoWindow.indexOfFirst { it.id == photoId }.coerceAtLeast(0)
-    }
+    // ── FIX: pagerState ─────────────────────────────────────────────────────────
+    // Root cause of "wrong photo" bug:
+    //
+    //   1. loadWindowAround() is async — when pagerState is first created, photoWindow
+    //      is still empty so initialPage = 0 always (first photo in window, not the
+    //      one the user tapped).
+    //
+    //   2. Even if we calculate initialPage from the empty list correctly (0), once
+    //      the window loads Compose doesn't re-create pagerState (it's remembered),
+    //      so the pager stays on page 0.
+    //
+    // Fix:
+    //   • Start pagerState at 0 (window is empty at first creation anyway).
+    //   • Add a LaunchedEffect that fires once when photoWindow loads, calculates
+    //     the real target page, and calls scrollToPage() without animation so the
+    //     user sees the correct photo immediately.
+    //   • Once scrolled to the right photo, subsequent window loads (should not
+    //     happen) are guarded by the `hasScrolledToInitialPage` flag so we don't
+    //     jump back unexpectedly during swipe.
 
     val pagerState = rememberPagerState(
-        initialPage  = initialPage,
-        pageCount    = { photoWindow.size.coerceAtLeast(1) }
+        initialPage = 0,
+        pageCount   = { photoWindow.size.coerceAtLeast(1) }
     )
 
-    // الصورة الحالية بتتغير مع السكرول
+    var hasScrolledToInitialPage by remember { mutableStateOf(false) }
+
+    LaunchedEffect(photoWindow) {
+        if (photoWindow.isNotEmpty() && !hasScrolledToInitialPage) {
+            val targetPage = photoWindow.indexOfFirst { it.id == photoId }.coerceAtLeast(0)
+            // scrollToPage (no animation) so the user sees the right photo instantly,
+            // not a visible snap from page 0.
+            pagerState.scrollToPage(targetPage)
+            hasScrolledToInitialPage = true
+        }
+    }
+
+    // The photo currently visible in the pager
     val currentPhoto = photoWindow.getOrNull(pagerState.currentPage)
 
-    // UI state
-    var showChrome   by remember { mutableStateOf(true) }  // TopBar + BottomBar
+    var showChrome   by remember { mutableStateOf(true) }
     var showMetadata by remember { mutableStateOf(false) }
 
     Box(
@@ -79,9 +103,8 @@ fun PhotoDetailScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // ══ HorizontalPager للتنقل بالسوايب ══════════════════════════════════
+        // ══ HorizontalPager ═══════════════════════════════════════════════════
         if (photoWindow.isEmpty()) {
-            // Loading state — single image fallback
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f))
             }
@@ -95,18 +118,13 @@ fun PhotoDetailScreen(
                     ZoomableAsyncImage(
                         model              = photo.uri,
                         contentDescription = photo.name,
-                        modifier           = Modifier
-                            .fillMaxSize()
-                            // تاب بسيط يخفي/يظهر الـ Chrome
-                            .then(
-                                Modifier // intentional tap detection handled by ZoomableAsyncImage
-                            )
+                        modifier           = Modifier.fillMaxSize()
                     )
                 }
             }
         }
 
-        // ══ Blurred Background Gradient (top & bottom) ════════════════════════
+        // ══ Blurred Background Gradient ════════════════════════════════════════
         AnimatedVisibility(
             visible  = showChrome,
             enter    = fadeIn(tween(200)),
@@ -114,7 +132,6 @@ fun PhotoDetailScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                // Top gradient
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -122,14 +139,10 @@ fun PhotoDetailScreen(
                         .align(Alignment.TopCenter)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Black.copy(alpha = 0.7f),
-                                    Color.Transparent
-                                )
+                                colors = listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
                             )
                         )
                 )
-                // Bottom gradient
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -137,10 +150,7 @@ fun PhotoDetailScreen(
                         .align(Alignment.BottomCenter)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Black.copy(alpha = 0.85f)
-                                )
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
                             )
                         )
                 )
@@ -157,9 +167,9 @@ fun PhotoDetailScreen(
                 .fillMaxWidth()
         ) {
             DetailTopBar(
-                photo   = currentPhoto,
-                onBack  = onBack,
-                onInfo  = {
+                photo       = currentPhoto,
+                onBack      = onBack,
+                onInfo      = {
                     showMetadata = !showMetadata
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 },
@@ -168,6 +178,8 @@ fun PhotoDetailScreen(
         }
 
         // ══ Page Indicator ════════════════════════════════════════════════════
+        // FIX: The indicator now shows the correct page because pagerState has been
+        // scrolled to the right photo via the LaunchedEffect above.
         AnimatedVisibility(
             visible  = showChrome && photoWindow.size > 1,
             enter    = fadeIn(),
@@ -187,7 +199,7 @@ fun PhotoDetailScreen(
             )
         }
 
-        // ══ Metadata Card (Animated bottom sheet-like) ════════════════════════
+        // ══ Metadata Card ══════════════════════════════════════════════════════
         AnimatedVisibility(
             visible  = showMetadata,
             enter    = slideInVertically { it / 2 } + fadeIn(tween(250)),
@@ -209,14 +221,14 @@ fun PhotoDetailScreen(
                 .fillMaxWidth()
         ) {
             DetailBottomBar(
-                isFavorite  = isFavorite,
-                onFavorite  = {
+                isFavorite = isFavorite,
+                onFavorite = {
                     viewModel.toggleFavorite(currentPhoto?.id ?: return@DetailBottomBar)
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 },
-                onShare     = { /* TODO */ },
-                onDelete    = { /* TODO */ },
-                onEdit      = { /* TODO */ }
+                onShare    = { /* TODO */ },
+                onDelete   = { /* TODO */ },
+                onEdit     = { /* TODO */ }
             )
         }
     }
@@ -239,7 +251,6 @@ private fun DetailTopBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment     = Alignment.CenterVertically
     ) {
-        // Back button
         IconButton(
             onClick  = onBack,
             modifier = Modifier
@@ -255,22 +266,20 @@ private fun DetailTopBar(
             )
         }
 
-        // Photo name (center)
         photo?.name?.let { name ->
             Text(
-                text      = name.substringBeforeLast('.'),
-                color     = Color.White.copy(alpha = 0.9f),
-                style     = MaterialTheme.typography.bodyMedium,
+                text       = name.substringBeforeLast('.'),
+                color      = Color.White.copy(alpha = 0.9f),
+                style      = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
-                maxLines  = 1,
-                modifier  = Modifier
+                maxLines   = 1,
+                modifier   = Modifier
                     .weight(1f)
                     .padding(horizontal = 8.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign  = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
 
-        // Info / metadata toggle
         IconButton(
             onClick  = onInfo,
             modifier = Modifier
@@ -321,20 +330,19 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Title row
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                imageVector  = Icons.Outlined.Info,
+                imageVector        = Icons.Outlined.Info,
                 contentDescription = null,
-                tint         = Color.White.copy(alpha = 0.5f),
-                modifier     = Modifier.size(16.dp)
+                tint               = Color.White.copy(alpha = 0.5f),
+                modifier           = Modifier.size(16.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text       = "Photo Details",
-                color      = Color.White.copy(alpha = 0.6f),
-                style      = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
+                text          = "Photo Details",
+                color         = Color.White.copy(alpha = 0.6f),
+                style         = MaterialTheme.typography.labelMedium,
+                fontWeight    = FontWeight.SemiBold,
                 letterSpacing = 0.5.sp
             )
         }
@@ -361,10 +369,10 @@ private fun MetadataRow(
 ) {
     Row(verticalAlignment = Alignment.Top) {
         Icon(
-            imageVector  = icon,
+            imageVector        = icon,
             contentDescription = null,
-            tint         = Color.White.copy(alpha = 0.55f),
-            modifier     = Modifier.size(18.dp).padding(top = 2.dp)
+            tint               = Color.White.copy(alpha = 0.55f),
+            modifier           = Modifier.size(18.dp).padding(top = 2.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column {
@@ -393,7 +401,6 @@ private fun DetailBottomBar(
     onDelete:   () -> Unit,
     onEdit:     () -> Unit
 ) {
-    // Animated heart scale
     val heartScale by animateFloatAsState(
         targetValue   = if (isFavorite) 1.25f else 1f,
         animationSpec = spring(
@@ -404,19 +411,14 @@ private fun DetailBottomBar(
     )
 
     Row(
-        modifier = Modifier
+        modifier              = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = 28.dp, vertical = 16.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment     = Alignment.CenterVertically
     ) {
-        BottomActionBtn(
-            icon    = Icons.Outlined.Share,
-            label   = "Share",
-            tint    = Color.White,
-            onClick = onShare
-        )
+        BottomActionBtn(icon = Icons.Outlined.Share,  label = "Share",  tint = Color.White, onClick = onShare)
         BottomActionBtn(
             icon    = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
             label   = if (isFavorite) "Saved" else "Favorite",
@@ -424,18 +426,8 @@ private fun DetailBottomBar(
             scale   = heartScale,
             onClick = onFavorite
         )
-        BottomActionBtn(
-            icon    = Icons.Outlined.Edit,
-            label   = "Edit",
-            tint    = Color.White,
-            onClick = onEdit
-        )
-        BottomActionBtn(
-            icon    = Icons.Outlined.Delete,
-            label   = "Delete",
-            tint    = Color(0xFFFF6B6B),
-            onClick = onDelete
-        )
+        BottomActionBtn(icon = Icons.Outlined.Edit,   label = "Edit",   tint = Color.White,          onClick = onEdit)
+        BottomActionBtn(icon = Icons.Outlined.Delete, label = "Delete", tint = Color(0xFFFF6B6B),    onClick = onDelete)
     }
 }
 
@@ -458,9 +450,7 @@ private fun BottomActionBtn(
             imageVector        = icon,
             contentDescription = label,
             tint               = tint,
-            modifier           = Modifier
-                .size(26.dp)
-                .then(if (scale != 1f) Modifier.then(Modifier) else Modifier)
+            modifier           = Modifier.size(26.dp)
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
