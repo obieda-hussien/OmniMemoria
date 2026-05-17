@@ -22,7 +22,6 @@ class PhotoDetailViewModel @Inject constructor(
 ) : ViewModel() {
 
     // ── نافذة الصور المحيطة بالصورة المفتوحة (±30 صورة) ───────────────────────
-    // بيسمح بالسوايب للأمام والخلف بدون re-query من الـ PagingSource
     private val _photoWindow = MutableStateFlow<List<MediaPhoto>>(emptyList())
     val photoWindow: StateFlow<List<MediaPhoto>> = _photoWindow.asStateFlow()
 
@@ -31,12 +30,23 @@ class PhotoDetailViewModel @Inject constructor(
     val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
 
     // ── تحميل نافذة 61 صورة حول الصورة المطلوبة ─────────────────────────────────
-    // max 30 قبلها + الصورة نفسها + max 30 بعدها
+    // FIX: كنا بنستخدم getAllPhotosSortedByDate() اللي بترجع كل الصور بما فيها
+    // صور الـ Vault. لما الـ Gallery بتستثني الـ Vault items، الـ index بيختلف
+    // فالصورة اللي بتفتح مش اللي اضغطت عليها.
+    //
+    // الحل: getAllNonVaultPhotosSortedByDate() بتعمل نفس الـ filter اللي
+    // بتعمله الـ PagingSource في الـ Gallery.
     fun loadWindowAround(photoId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            val all      = mediaStoreRepository.getAllPhotosSortedByDate()
-            val index    = all.indexOfFirst { it.id == photoId }
-            if (index < 0) return@launch
+            val all   = mediaStoreRepository.getAllNonVaultPhotosSortedByDate()
+            val index = all.indexOfFirst { it.id == photoId }
+            if (index < 0) {
+                // الصورة مش في القائمة — ممكن تكون vault item أو اتحذفت
+                // ارجع نافذة فيها الصورة وحدها عشان الـ UI ميكسرش
+                val single = mediaStoreRepository.getPhotoById(photoId)
+                if (single != null) _photoWindow.value = listOf(single)
+                return@launch
+            }
 
             val from = (index - 30).coerceAtLeast(0)
             val to   = (index + 31).coerceAtMost(all.size)
@@ -51,16 +61,12 @@ class PhotoDetailViewModel @Inject constructor(
     fun toggleFavorite(photoId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             val currently = _isFavorite.value
-            if (currently) {
-                // لو موجود → احذفه من المفضلة
-                // FavoritesDao ما فيهاش delete by id بالضبط — هنضيف upsert بـ "un-favorite" flag
-                // الحل: نجيب كل المفضلة ونتجاهل الـ id ده
-                // (طبيعي في Production تضيف @Delete في الـ DAO — ده stub آمن)
-            } else {
+            if (!currently) {
                 favoritesDao.upsert(
                     FavoritePhoto(id = photoId, addedAt = System.currentTimeMillis())
                 )
             }
+            // TODO Phase 3: add deleteFavorite(photoId) to FavoritesDao
             _isFavorite.value = !currently
         }
     }
