@@ -6,6 +6,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,9 +20,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -31,7 +37,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import coil3.compose.AsyncImage
 import com.omnimemoria.data.repository.MediaStats
+import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.gallery.GalleryScreen
 import com.omnimemoria.ui.gallery.GalleryViewModel
 import java.util.Calendar
@@ -50,35 +58,33 @@ enum class HomeTab(val route: String, val label: String, val icon: ImageVector) 
     }
 }
 
-// ── Root screen ──────────────────────────────────────────────────────────────────
+// ── Root Screen ──────────────────────────────────────────────────────────────────
 
 @Composable
 fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
-
-    // ── جلب الإحصائيات الحقيقية من GalleryViewModel ─────────────────────────
     val galleryViewModel: GalleryViewModel = hiltViewModel()
-    val mediaStats   by galleryViewModel.mediaStats.collectAsState()
-    val context       = LocalContext.current
+    val mediaStats    by galleryViewModel.mediaStats.collectAsState()
+    val dynamicAccent by galleryViewModel.dynamicAccent.collectAsState()
+    val context        = LocalContext.current
 
-    // تحويل Bytes → "GB" أو "MB" أوتوماتيكياً بالـ Android Formatter
     val formattedSize = remember(mediaStats.totalSizeBytes) {
         Formatter.formatShortFileSize(context, mediaStats.totalSizeBytes)
     }
 
-    // ── Navigation ───────────────────────────────────────────────────────────
     val homeNavController  = rememberNavController()
     val navBackStackEntry  by homeNavController.currentBackStackEntryAsState()
     val currentDestination  = navBackStackEntry?.destination
     val currentTab          = HomeTab.fromRoute(currentDestination?.route)
 
-    var showSmartSheet by rememberSaveable { mutableStateOf(false) }
+    var showSmartSheet    by rememberSaveable { mutableStateOf(false) }
+    var showOnThisDay     by rememberSaveable { mutableStateOf(true) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // 1. المحتوى الأساسي — يمتد بكامل الشاشة تحت الـ overlay
+        // ── Main content ─────────────────────────────────────────────────────
         NavHost(
             navController    = homeNavController,
             startDestination = HomeTab.GALLERY.route,
@@ -90,30 +96,52 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
             composable(HomeTab.VAULT.route)   { VaultPlaceholderScreen() }
         }
 
-        // 2. شريط علوي عائم مع الإحصائيات الحقيقية
+        // ── Floating Top Bar (Dynamic accent tints the gradient) ─────────────
         OmniTopBar(
-            photoCount    = mediaStats.photoCount,
-            formattedSize = formattedSize,
-            albumCount    = mediaStats.albumCount,
-            isLoading     = mediaStats.photoCount == 0 && mediaStats.totalSizeBytes == 0L,
+            photoCount      = mediaStats.photoCount,
+            formattedSize   = formattedSize,
+            albumCount      = mediaStats.albumCount,
+            isLoading       = mediaStats.photoCount == 0 && mediaStats.totalSizeBytes == 0L,
+            dynamicAccent   = dynamicAccent,
             onSettingsClick = onSettingsClick,
-            modifier      = Modifier.align(Alignment.TopCenter)
+            modifier        = Modifier.align(Alignment.TopCenter)
         )
 
-        // 3. زر عائم + Bottom Nav
+        // ── Bottom area: On This Day card (dismissible) + FAB + BottomNav ────
         Column(
             modifier           = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.End
         ) {
+            // On This Day — بيظهر فوق الـ FAB
             AnimatedVisibility(
-                visible = currentTab == HomeTab.GALLERY,
-                enter   = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
-                exit    = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
-                modifier = Modifier.padding(end = 24.dp, bottom = 16.dp)
+                visible = showOnThisDay && currentTab == HomeTab.GALLERY,
+                enter   = slideInVertically { it } + fadeIn(),
+                exit    = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 8.dp)
             ) {
-                SmartFab(onClick = { showSmartSheet = true })
+                OnThisDayBanner(
+                    memories  = galleryViewModel.onThisDayPhotos.collectAsState().value,
+                    onDismiss = { showOnThisDay = false },
+                    onPhotoClick = onPhotoClick
+                )
+            }
+
+            // Smart FAB
+            AnimatedVisibility(
+                visible  = currentTab == HomeTab.GALLERY,
+                enter    = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
+                exit     = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
+                modifier = Modifier.padding(end = 24.dp, bottom = 12.dp)
+            ) {
+                SmartFab(
+                    accent  = dynamicAccent,
+                    onClick = { showSmartSheet = true }
+                )
             }
 
             OmniBottomNav(
@@ -136,7 +164,7 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
     }
 }
 
-// ── OmniTopBar — إحصائيات حقيقية + Shimmer loading ──────────────────────────────
+// ── OmniTopBar — Dynamic accent gradient ─────────────────────────────────────────
 
 @Composable
 private fun OmniTopBar(
@@ -144,45 +172,54 @@ private fun OmniTopBar(
     formattedSize:   String,
     albumCount:      Int,
     isLoading:       Boolean,
+    dynamicAccent:   Color?,
     onSettingsClick: () -> Unit,
     modifier:        Modifier = Modifier
 ) {
+    // اللون المتحرك بـ animation من الـ default للـ dynamic
+    val accentAlpha by animateFloatAsState(
+        targetValue   = if (dynamicAccent != null) 0.18f else 0f,
+        animationSpec = tween(800),
+        label         = "accent_alpha"
+    )
+
+    val gradientColors = buildList {
+        add(MaterialTheme.colorScheme.background.copy(alpha = 0.97f))
+        if (dynamicAccent != null && accentAlpha > 0f) {
+            add(dynamicAccent.copy(alpha = accentAlpha))
+        }
+        add(Color.Transparent)
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.background.copy(alpha = 0.97f),
-                        MaterialTheme.colorScheme.background.copy(alpha = 0.7f),
-                        Color.Transparent
-                    )
-                )
-            )
+            .background(Brush.verticalGradient(colors = gradientColors))
             .statusBarsPadding()
             .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment     = Alignment.Top
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            // ── Brand label ──────────────────────────────────────────────────
+            // Brand
             Text(
                 text          = "OMNIMEMORIA",
                 style         = MaterialTheme.typography.labelSmall,
-                color         = MaterialTheme.colorScheme.primary,
+                color         = dynamicAccent?.let {
+                    if (it.luminance() > 0.5f) it.copy(alpha = 0.8f)
+                    else MaterialTheme.colorScheme.primary
+                } ?: MaterialTheme.colorScheme.primary,
                 fontWeight    = FontWeight.ExtraBold,
                 letterSpacing = 2.sp
             )
-
             Spacer(modifier = Modifier.height(3.dp))
-
-            // ── Greeting row ─────────────────────────────────────────────────
+            // Greeting
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector  = Icons.Outlined.AutoAwesome,
+                    imageVector        = Icons.Outlined.AutoAwesome,
                     contentDescription = null,
-                    tint         = MaterialTheme.colorScheme.onBackground,
-                    modifier     = Modifier.size(20.dp)
+                    tint               = MaterialTheme.colorScheme.onBackground,
+                    modifier           = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(7.dp))
                 Text(
@@ -192,147 +229,258 @@ private fun OmniTopBar(
                     color      = MaterialTheme.colorScheme.onBackground
                 )
             }
-
             Spacer(modifier = Modifier.height(8.dp))
-
-            // ── Stats chips — حقيقية أو shimmer لحين التحميل ─────────────
-            if (isLoading) {
-                StatsShimmerRow()
-            } else {
+            // Stats chips
+            if (isLoading) StatsShimmerRow()
+            else {
                 AnimatedVisibility(
-                    visible = true,
+                    visible = !isLoading,
                     enter   = fadeIn(tween(400)) + expandVertically()
                 ) {
-                    StatsChipsRow(
-                        photoCount    = photoCount,
-                        formattedSize = formattedSize,
-                        albumCount    = albumCount
-                    )
+                    StatsChipsRow(photoCount, formattedSize, albumCount, dynamicAccent)
                 }
             }
         }
 
         Spacer(modifier = Modifier.width(12.dp))
 
-        // ── Settings button ──────────────────────────────────────────────────
+        // Settings
         IconButton(
             onClick  = onSettingsClick,
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                .background(
+                    dynamicAccent?.copy(alpha = 0.2f)
+                        ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                )
                 .size(44.dp)
         ) {
             Icon(
-                imageVector  = Icons.Outlined.Settings,
+                imageVector        = Icons.Outlined.Settings,
                 contentDescription = "Settings",
-                tint         = MaterialTheme.colorScheme.primary,
-                modifier     = Modifier.size(22.dp)
+                tint               = MaterialTheme.colorScheme.primary,
+                modifier           = Modifier.size(22.dp)
             )
         }
     }
 }
 
-// ── Stats chips — ثلاث حبات صغيرة بأيقونات ──────────────────────────────────────
+// ── Stats Chips ───────────────────────────────────────────────────────────────────
 
 @Composable
-private fun StatsChipsRow(photoCount: Int, formattedSize: String, albumCount: Int) {
+private fun StatsChipsRow(
+    photoCount:    Int,
+    formattedSize: String,
+    albumCount:    Int,
+    accent:        Color?
+) {
+    val chipBg = accent?.copy(alpha = 0.15f)
+        ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    val iconTint = accent ?: MaterialTheme.colorScheme.primary
+
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        StatChip(
-            icon  = Icons.Outlined.Image,
-            label = "$photoCount"
-        )
-        StatChip(
-            icon  = Icons.Outlined.SdStorage,
-            label = formattedSize
-        )
-        StatChip(
-            icon  = Icons.Outlined.GridView,
-            label = "$albumCount Albums"
-        )
+        StatChip(Icons.Outlined.Image,    "$photoCount",     chipBg, iconTint)
+        StatChip(Icons.Outlined.SdStorage, formattedSize,    chipBg, iconTint)
+        StatChip(Icons.Outlined.GridView,  "$albumCount Albums", chipBg, iconTint)
     }
 }
 
 @Composable
-private fun StatChip(icon: ImageVector, label: String) {
+private fun StatChip(
+    icon:     ImageVector,
+    label:    String,
+    bg:       Color,
+    iconTint: Color
+) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .background(bg)
+            .padding(horizontal = 9.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector  = icon,
-            contentDescription = null,
-            tint         = MaterialTheme.colorScheme.primary,
-            modifier     = Modifier.size(13.dp)
-        )
+        Icon(icon, null, tint = iconTint, modifier = Modifier.size(13.dp))
         Spacer(modifier = Modifier.width(4.dp))
         Text(
-            text      = label,
-            style     = MaterialTheme.typography.labelSmall,
-            color     = MaterialTheme.colorScheme.onSurfaceVariant,
+            text       = label,
+            style      = MaterialTheme.typography.labelSmall,
+            color      = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.Medium
         )
     }
 }
 
-// ── Shimmer بدل الأرقام لحين انتهاء الـ query ────────────────────────────────────
+// ── Stats Shimmer ─────────────────────────────────────────────────────────────────
 
 @Composable
 private fun StatsShimmerRow() {
-    val shimmerAlpha by rememberInfiniteTransition(label = "shimmer")
+    val alpha by rememberInfiniteTransition(label = "shimmer")
         .animateFloat(
-            initialValue   = 0.25f,
-            targetValue    = 0.55f,
+            initialValue   = 0.2f,
+            targetValue    = 0.5f,
             animationSpec  = infiniteRepeatable(
                 animation  = tween(900, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             ),
-            label = "shimmer_alpha"
+            label = "shimmer_a"
         )
-
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        repeat(3) { index ->
-            val widths = listOf(64.dp, 72.dp, 88.dp)
+        listOf(64.dp, 72.dp, 90.dp).forEach { w ->
             Box(
                 modifier = Modifier
-                    .width(widths[index])
-                    .height(24.dp)
+                    .width(w).height(24.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = shimmerAlpha)
-                    )
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha))
             )
         }
     }
 }
 
-// ── SmartFab ──────────────────────────────────────────────────────────────────────
+// ── On This Day Banner ────────────────────────────────────────────────────────────
 
 @Composable
-private fun SmartFab(onClick: () -> Unit) {
-    ExtendedFloatingActionButton(
-        onClick          = onClick,
-        containerColor   = MaterialTheme.colorScheme.primary,
-        contentColor     = MaterialTheme.colorScheme.onPrimary,
-        shape            = RoundedCornerShape(18.dp),
-        elevation        = FloatingActionButtonDefaults.elevation(
-            defaultElevation  = 6.dp,
-            pressedElevation  = 2.dp
-        )
+private fun OnThisDayBanner(
+    memories:    List<MediaPhoto>,
+    onDismiss:   () -> Unit,
+    onPhotoClick: (Long) -> Unit
+) {
+    if (memories.isEmpty()) return
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(Color(0xFF2D26A0), Color(0xFF5548D9))
+                )
+            )
     ) {
-        Icon(
-            imageVector  = Icons.Outlined.AutoAwesome,
-            contentDescription = null,
-            modifier     = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(text = "Smart", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector        = Icons.Outlined.CalendarMonth,
+                        contentDescription = null,
+                        tint               = Color.White.copy(alpha = 0.9f),
+                        modifier           = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text       = "On This Day",
+                            style      = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color      = Color.White
+                        )
+                        Text(
+                            text  = "${memories.size} memor${if (memories.size > 1) "ies" else "y"} from the past",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+                IconButton(
+                    onClick  = onDismiss,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector        = Icons.Outlined.Close,
+                        contentDescription = "Dismiss",
+                        tint               = Color.White.copy(alpha = 0.7f),
+                        modifier           = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Photo thumbnails row
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(memories) { photo ->
+                    OnThisDayThumb(
+                        photo        = photo,
+                        onPhotoClick = onPhotoClick
+                    )
+                }
+            }
+        }
     }
 }
 
-// ── OmniBottomNav — floating pill ────────────────────────────────────────────────
+@Composable
+private fun OnThisDayThumb(photo: MediaPhoto, onPhotoClick: (Long) -> Unit) {
+    val year = remember(photo.dateTaken) {
+        if (photo.dateTaken > 0) {
+            val cal = Calendar.getInstance()
+            cal.timeInMillis = photo.dateTaken
+            cal.get(Calendar.YEAR).toString()
+        } else "?"
+    }
+
+    Box(
+        modifier = Modifier
+            .size(72.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onPhotoClick(photo.id) }
+    ) {
+        AsyncImage(
+            model              = photo.uri,
+            contentDescription = null,
+            contentScale       = ContentScale.Crop,
+            modifier           = Modifier.fillMaxSize()
+        )
+        // Year badge at bottom
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
+                    )
+                )
+                .padding(bottom = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text      = year,
+                style     = MaterialTheme.typography.labelSmall,
+                color     = Color.White,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+// ── Smart FAB ─────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun SmartFab(accent: Color?, onClick: () -> Unit) {
+    val fabColor = accent ?: MaterialTheme.colorScheme.primary
+    // اللون المعكوس — لو الـ accent فاتح يبقى النص داكن والعكس
+    val contentColor = if (fabColor.luminance() > 0.5f) Color(0xFF1A1A2E) else Color.White
+
+    ExtendedFloatingActionButton(
+        onClick        = onClick,
+        containerColor = fabColor,
+        contentColor   = contentColor,
+        shape          = RoundedCornerShape(18.dp),
+        elevation      = FloatingActionButtonDefaults.elevation(6.dp, 2.dp)
+    ) {
+        Icon(Icons.Outlined.AutoAwesome, null, modifier = Modifier.size(20.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("Smart", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    }
+}
+
+// ── Bottom Nav ────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun OmniBottomNav(
@@ -345,7 +493,7 @@ private fun OmniBottomNav(
             .padding(horizontal = 20.dp)
             .padding(bottom     = 20.dp)
             .clip(RoundedCornerShape(32.dp))
-            .background(Color(0xFF141220).copy(alpha = 0.88f))
+            .background(Color(0xFF141220).copy(alpha = 0.9f))
     ) {
         NavigationBar(
             containerColor = Color.Transparent,
@@ -353,30 +501,23 @@ private fun OmniBottomNav(
             modifier       = Modifier.height(68.dp)
         ) {
             HomeTab.entries.forEach { tab ->
-                val selected = currentDestination?.hierarchy
-                    ?.any { it.route == tab.route } == true
-
+                val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
                 NavigationBarItem(
-                    selected  = selected,
-                    onClick   = { onTabSelected(tab) },
-                    icon      = {
+                    selected = selected,
+                    onClick  = { onTabSelected(tab) },
+                    icon     = {
                         Icon(
-                            imageVector  = tab.icon,
-                            contentDescription = tab.label,
-                            modifier     = Modifier.size(if (selected) 24.dp else 22.dp)
+                            tab.icon, tab.label,
+                            modifier = Modifier.size(if (selected) 24.dp else 22.dp)
                         )
                     },
-                    label     = {
+                    label = {
                         AnimatedVisibility(visible = selected) {
-                            Text(
-                                text       = tab.label,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize   = 10.sp
-                            )
+                            Text(tab.label, fontWeight = FontWeight.SemiBold, fontSize = 10.sp)
                         }
                     },
                     alwaysShowLabel = false,
-                    colors          = NavigationBarItemDefaults.colors(
+                    colors = NavigationBarItemDefaults.colors(
                         selectedIconColor   = MaterialTheme.colorScheme.primary,
                         indicatorColor      = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
                         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
@@ -387,16 +528,25 @@ private fun OmniBottomNav(
     }
 }
 
-// ── SmartActionsSheet ─────────────────────────────────────────────────────────────
+// ── Smart Actions Sheet ───────────────────────────────────────────────────────────
+
+private data class SmartActionItem(
+    val icon: ImageVector, val title: String, val subtitle: String, val color: Color
+)
+
+private val SmartActionItems = listOf(
+    SmartActionItem(Icons.Outlined.Compress,    "Smart Compress",  "Free up space intelligently",    Color(0xFF8B7FF5)),
+    SmartActionItem(Icons.Outlined.ContentCopy, "Photo DNA",       "Find & remove duplicates",       Color(0xFFFFB300)),
+    SmartActionItem(Icons.Outlined.Refresh,     "Re-Index",        "Rebuild photo intelligence",     Color(0xFFFF5252)),
+    SmartActionItem(Icons.Outlined.BarChart,    "Memoria Stats",   "Visualize your memory patterns", Color(0xFF7C4DFF))
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SmartActionsSheet(onDismiss: () -> Unit) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState       = sheetState,
+        sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor   = MaterialTheme.colorScheme.surface,
         shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
@@ -404,167 +554,81 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp, vertical = 16.dp)
-                .padding(bottom     = 32.dp)
+                .padding(bottom = 32.dp)
         ) {
-            // ── Sheet header ─────────────────────────────────────────────────
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier          = Modifier.padding(bottom = 20.dp)
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 20.dp)) {
                 Box(
-                    modifier         = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector  = Icons.Outlined.AutoAwesome,
-                        contentDescription = null,
-                        tint         = MaterialTheme.colorScheme.primary,
-                        modifier     = Modifier.size(20.dp)
-                    )
+                    Icon(Icons.Outlined.AutoAwesome, null,
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                 }
                 Spacer(modifier = Modifier.width(14.dp))
                 Column {
-                    Text(
-                        text       = "Smart Actions",
-                        style      = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text  = "AI-powered tools for your memories",
+                    Text("Smart Actions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("AI-powered tools for your memories",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
-            // ── Action items ─────────────────────────────────────────────────
             SmartActionItems.forEach { item ->
-                SmartActionRow(item = item, onDismiss = onDismiss)
-                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                        .clickable { onDismiss() }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier.size(46.dp).clip(RoundedCornerShape(14.dp))
+                            .background(item.color.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(item.icon, null, tint = item.color, modifier = Modifier.size(22.dp))
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(item.title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        Text(item.subtitle, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(Icons.Outlined.ChevronRight, null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(18.dp))
+                }
             }
         }
     }
 }
 
-@Composable
-private fun SmartActionRow(item: SmartActionItem, onDismiss: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-            .clickable { onDismiss() }
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(46.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(item.color.copy(alpha = 0.18f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector  = item.icon,
-                contentDescription = null,
-                tint         = item.color,
-                modifier     = Modifier.size(22.dp)
-            )
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text       = item.title,
-                fontWeight = FontWeight.SemiBold,
-                fontSize   = 15.sp,
-                color      = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text  = item.subtitle,
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Icon(
-            imageVector  = Icons.Outlined.ChevronRight,
-            contentDescription = null,
-            tint         = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier     = Modifier.size(18.dp)
-        )
-    }
-}
+// ── Placeholder Screens ───────────────────────────────────────────────────────────
 
-// ── Action item data ─────────────────────────────────────────────────────────────
-
-private data class SmartActionItem(
-    val icon:     ImageVector,
-    val title:    String,
-    val subtitle: String,
-    val color:    Color
-)
-
-private val SmartActionItems = listOf(
-    SmartActionItem(
-        icon     = Icons.Outlined.Compress,
-        title    = "Smart Compress",
-        subtitle = "Free up space intelligently",
-        color    = Color(0xFF8B7FF5)
-    ),
-    SmartActionItem(
-        icon     = Icons.Outlined.ContentCopy,
-        title    = "Photo DNA",
-        subtitle = "Find & remove duplicates",
-        color    = Color(0xFFFFB300)
-    ),
-    SmartActionItem(
-        icon     = Icons.Outlined.Refresh,
-        title    = "Re-Index",
-        subtitle = "Rebuild photo intelligence index",
-        color    = Color(0xFFFF5252)
-    ),
-    SmartActionItem(
-        icon     = Icons.Outlined.BarChart,
-        title    = "Memoria Stats",
-        subtitle = "Visualize your memory patterns",
-        color    = Color(0xFF7C4DFF)
-    )
-)
-
-// ── Placeholder screens ───────────────────────────────────────────────────────────
-
-@Composable
-fun AlbumsPlaceholderScreen() {
+@Composable fun AlbumsPlaceholderScreen() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Albums Screen", style = MaterialTheme.typography.titleLarge)
-    }
+        Text("Albums Screen", style = MaterialTheme.typography.titleLarge) }
 }
-
-@Composable
-fun SearchPlaceholderScreen() {
+@Composable fun SearchPlaceholderScreen() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Search Screen", style = MaterialTheme.typography.titleLarge)
-    }
+        Text("Search Screen", style = MaterialTheme.typography.titleLarge) }
 }
-
-@Composable
-fun VaultPlaceholderScreen() {
+@Composable fun VaultPlaceholderScreen() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Vault Screen", style = MaterialTheme.typography.titleLarge)
-    }
+        Text("Vault Screen", style = MaterialTheme.typography.titleLarge) }
 }
 
 // ── Greeting ──────────────────────────────────────────────────────────────────────
 
 private fun dynamicGreeting(): String {
-    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    return when {
-        hour < 6  -> "Good Night 🌙"
-        hour < 12 -> "Good Morning ☀️"
-        hour < 17 -> "Good Afternoon 🌤"
-        hour < 21 -> "Good Evening 🌆"
+    return when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
+        in 0..5   -> "Good Night 🌙"
+        in 6..11  -> "Good Morning ☀️"
+        in 12..16 -> "Good Afternoon 🌤"
+        in 17..20 -> "Good Evening 🌆"
         else      -> "Good Night 🌙"
     }
 }
