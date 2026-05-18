@@ -97,10 +97,19 @@ private fun PhotoPager(
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
 
+    val safeStartPage = startPage.coerceIn(0, photoList.lastIndex.coerceAtLeast(0))
+
     val pagerState = rememberPagerState(
-        initialPage = startPage,
+        initialPage = safeStartPage,
         pageCount   = { photoList.size }
     )
+
+    LaunchedEffect(photoList.size, pagerState.currentPage) {
+        val lastIndex = photoList.lastIndex
+        if (lastIndex >= 0 && pagerState.currentPage > lastIndex) {
+            pagerState.scrollToPage(lastIndex)
+        }
+    }
 
     val currentPhoto = photoList.getOrNull(pagerState.currentPage)
 
