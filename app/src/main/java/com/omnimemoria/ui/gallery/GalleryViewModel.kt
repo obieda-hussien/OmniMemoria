@@ -40,23 +40,30 @@ sealed class GalleryItem {
     data class Photo(val photo: MediaPhoto)  : GalleryItem()
 }
 
-private fun Long.toDateGroupLabel(): String {
-    if (this <= 0L) return "Unknown"
+// ── FIX: يستخدم effectiveDateMs بدلاً من dateTaken مباشرة ───────────────────────
+// Snapchat وتطبيقات كتير بتحفظ الصور بـ dateTaken = 0،
+// فكانت بتتجمع كلها تحت "Unknown" بدل ما تتجمع بالتاريخ الصح.
+// effectiveDateMs بيجرب dateTaken أولاً، لو 0 يجرب dateModified، لو 0 يجرب dateAdded.
+private fun MediaPhoto.toDateGroupLabel(): String {
+    val ms = this.effectiveDateMs
+    if (ms <= 0L) return "Unknown Date"
+
     val today     = Calendar.getInstance()
     val yesterday = Calendar.getInstance().also { it.add(Calendar.DAY_OF_YEAR, -1) }
-    val target    = Calendar.getInstance().also { it.timeInMillis = this }
+    val target    = Calendar.getInstance().also { it.timeInMillis = ms }
+
     return when {
         target.isSameDay(today)     -> "Today"
         target.isSameDay(yesterday) -> "Yesterday"
         target.get(Calendar.YEAR) == today.get(Calendar.YEAR) ->
-            SimpleDateFormat("MMMM d", Locale.getDefault()).format(Date(this))
+            SimpleDateFormat("MMMM d", Locale.getDefault()).format(Date(ms))
         else ->
-            SimpleDateFormat("MMMM d, yyyy", Locale.getDefault()).format(Date(this))
+            SimpleDateFormat("MMMM d, yyyy", Locale.getDefault()).format(Date(ms))
     }
 }
 
 private fun Calendar.isSameDay(other: Calendar) =
-    get(Calendar.YEAR) == other.get(Calendar.YEAR) &&
+    get(Calendar.YEAR)       == other.get(Calendar.YEAR) &&
     get(Calendar.DAY_OF_YEAR) == other.get(Calendar.DAY_OF_YEAR)
 
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -98,16 +105,17 @@ class GalleryViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, SortConfig())
 
     // ── Grouped photos with Date Headers ─────────────────────────────────────────
+    // FIX: يستخدم toDateGroupLabel() على الـ MediaPhoto مباشرة (وبالتالي effectiveDateMs)
     val groupedPhotos: Flow<PagingData<GalleryItem>> = activeSortConfig
         .flatMapLatest { config -> mediaStoreRepository.getPhotosPaged(config) }
         .map { pagingData ->
             pagingData
                 .map { photo -> GalleryItem.Photo(photo) as GalleryItem }
                 .insertSeparators { before, after ->
-                    val bLabel = (before as? GalleryItem.Photo)?.photo?.dateTaken?.toDateGroupLabel()
-                    val aLabel = (after  as? GalleryItem.Photo)?.photo?.dateTaken?.toDateGroupLabel()
+                    val bLabel = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
+                    val aLabel = (after  as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
                     when {
-                        after  == null                  -> null
+                        after  == null                    -> null
                         before == null || bLabel != aLabel ->
                             GalleryItem.DateHeader(aLabel ?: "")
                         else -> null
