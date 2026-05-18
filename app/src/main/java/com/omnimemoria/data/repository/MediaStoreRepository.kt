@@ -391,11 +391,30 @@ class MediaStoreRepository @Inject constructor(
                 SortOrder.DESCENDING -> ContentResolver.QUERY_SORT_DIRECTION_DESCENDING
             }
             return Bundle().apply {
-                putStringArray(
-                    ContentResolver.QUERY_ARG_SORT_COLUMNS,
-                    arrayOf(col, fallback, MediaStore.MediaColumns._ID)
-                )
-                putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, dir)
+                if (sc.sortBy == SortBy.DATE_TAKEN) {
+                    val sqlDir = when (sc.sortOrder) {
+                        SortOrder.ASCENDING  -> "ASC"
+                        SortOrder.DESCENDING -> "DESC"
+                    }
+                    val effectiveDateOrderExpr =
+                        "CASE " +
+                            "WHEN ${MediaStore.MediaColumns.DATE_TAKEN} > 0 " +
+                            "THEN ${MediaStore.MediaColumns.DATE_TAKEN} " +
+                            "WHEN ${MediaStore.MediaColumns.DATE_MODIFIED} > 0 " +
+                            "THEN ${MediaStore.MediaColumns.DATE_MODIFIED} * 1000 " +
+                            "ELSE ${MediaStore.MediaColumns.DATE_ADDED} * 1000 " +
+                        "END"
+                    putString(
+                        ContentResolver.QUERY_ARG_SQL_SORT_ORDER,
+                        "$effectiveDateOrderExpr $sqlDir, ${MediaStore.MediaColumns._ID} $sqlDir"
+                    )
+                } else {
+                    putStringArray(
+                        ContentResolver.QUERY_ARG_SORT_COLUMNS,
+                        arrayOf(col, fallback, MediaStore.MediaColumns._ID)
+                    )
+                    putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, dir)
+                }
                 putInt(ContentResolver.QUERY_ARG_LIMIT,  limit)
                 putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
                 putString(ContentResolver.QUERY_ARG_SQL_SELECTION, mediaSelection)
