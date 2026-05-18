@@ -49,6 +49,7 @@ class MediaStoreRepository @Inject constructor(
     private val photoIntelligenceDao: PhotoIntelligenceDao
 ) {
     private val contentResolver: ContentResolver = context.contentResolver
+    private val mediaCollection: Uri = MediaStore.Files.getContentUri("external")
 
     // ══ 1. إحصائيات حقيقية ══════════════════════════════════════════════════════
     fun getMediaStats(): MediaStats {
@@ -57,12 +58,14 @@ class MediaStoreRepository @Inject constructor(
         val bucketIds  = mutableSetOf<String>()
 
         contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            arrayOf(MediaStore.Images.Media.SIZE, MediaStore.Images.Media.BUCKET_ID),
-            null, null, null
+            mediaCollection,
+            arrayOf(MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.BUCKET_ID),
+            mediaSelection,
+            mediaSelectionArgs,
+            null
         )?.use { cursor ->
-            val si = cursor.getColumnIndex(MediaStore.Images.Media.SIZE)
-            val bi = cursor.getColumnIndex(MediaStore.Images.Media.BUCKET_ID)
+            val si = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
+            val bi = cursor.getColumnIndex(MediaStore.MediaColumns.BUCKET_ID)
             while (cursor.moveToNext()) {
                 photoCount++
                 if (si >= 0) totalSize += cursor.getLong(si)
@@ -78,7 +81,7 @@ class MediaStoreRepository @Inject constructor(
             override fun onChange(selfChange: Boolean) { trySend(Unit) }
         }
         contentResolver.registerContentObserver(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, observer
+            mediaCollection, true, observer
         )
         awaitClose { contentResolver.unregisterContentObserver(observer) }
     }.debounce(1_500L)
@@ -161,10 +164,11 @@ class MediaStoreRepository @Inject constructor(
     fun getAllPhotosSortedByDate(): List<MediaPhoto> {
         val results = mutableListOf<MediaPhoto>()
         contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            mediaCollection,
             photoProjection,
-            null, null,
-            "${MediaStore.Images.Media.DATE_TAKEN} DESC"
+            mediaSelection,
+            mediaSelectionArgs,
+            "${MediaStore.MediaColumns.DATE_TAKEN} DESC"
         )?.use { cursor ->
             while (cursor.moveToNext()) results += cursor.toMediaPhoto()
         }
@@ -195,10 +199,10 @@ class MediaStoreRepository @Inject constructor(
 
     fun getPhotoById(id: Long): MediaPhoto? {
         contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            mediaCollection,
             photoProjection,
-            "${MediaStore.Images.Media._ID} = ?",
-            arrayOf(id.toString()),
+            "${MediaStore.MediaColumns._ID} = ? AND ($mediaSelection)",
+            arrayOf(id.toString(), *mediaSelectionArgs),
             null
         )?.use { cursor ->
             if (cursor.moveToFirst()) return cursor.toMediaPhoto()
@@ -210,7 +214,7 @@ class MediaStoreRepository @Inject constructor(
         if (ids.isEmpty()) return Result.success(Unit)
         return runCatching {
             val uris = ids.map {
-                ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, it)
+                ContentUris.withAppendedId(mediaCollection, it)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
                 MediaStore.createDeleteRequest(contentResolver, uris)
@@ -301,19 +305,20 @@ class MediaStoreRepository @Inject constructor(
         // DATE_MODIFIED (seconds) is always present; DATE_ADDED (seconds) is the
         // last resort. MediaPhoto.effectiveDateMs picks the best available value.
         val photoProjection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.DISPLAY_NAME,
-            MediaStore.Images.Media.SIZE,
-            MediaStore.Images.Media.MIME_TYPE,
-            MediaStore.Images.Media.DATE_TAKEN,
-            MediaStore.Images.Media.DATE_MODIFIED,   // seconds since epoch
-            MediaStore.Images.Media.DATE_ADDED,      // seconds since epoch
-            MediaStore.Images.Media.WIDTH,
-            MediaStore.Images.Media.HEIGHT,
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.MIME_TYPE,
+            MediaStore.MediaColumns.DATE_TAKEN,
+            MediaStore.MediaColumns.DATE_MODIFIED,   // seconds since epoch
+            MediaStore.MediaColumns.DATE_ADDED,      // seconds since epoch
+            MediaStore.MediaColumns.WIDTH,
+            MediaStore.MediaColumns.HEIGHT,
             MediaStore.Images.Media.LATITUDE,
             MediaStore.Images.Media.LONGITUDE,
-            MediaStore.Images.Media.BUCKET_ID,
-            MediaStore.Images.Media.BUCKET_DISPLAY_NAME
+            MediaStore.MediaColumns.BUCKET_ID,
+            MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
+            MediaStore.Files.FileColumns.MEDIA_TYPE
         )
 
         private fun queryPhotos(
@@ -321,7 +326,7 @@ class MediaStoreRepository @Inject constructor(
         ): List<MediaPhoto> {
             val results = mutableListOf<MediaPhoto>()
             cr.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                MediaStore.Files.getContentUri("external"),
                 photoProjection, buildQueryArgs(sortConfig, limit, offset), null
             )?.use { cursor ->
                 while (cursor.moveToNext()) results += cursor.toMediaPhoto()
@@ -336,18 +341,18 @@ class MediaStoreRepository @Inject constructor(
         @RequiresApi(Build.VERSION_CODES.O)
         private fun buildQueryArgs(sc: SortConfig, limit: Int, offset: Int): Bundle {
             val (col, fallback) = when (sc.sortBy) {
-                SortBy.DATE_TAKEN      -> MediaStore.Images.Media.DATE_TAKEN    to MediaStore.Images.Media.DATE_ADDED
-                SortBy.DATE_MODIFIED   -> MediaStore.Images.Media.DATE_MODIFIED to MediaStore.Images.Media.DATE_ADDED
-                SortBy.SIZE            -> MediaStore.Images.Media.SIZE          to MediaStore.Images.Media.DATE_ADDED
-                SortBy.NAME            -> MediaStore.Images.Media.DISPLAY_NAME  to MediaStore.Images.Media.DATE_ADDED
-                SortBy.TYPE            -> MediaStore.Images.Media.MIME_TYPE     to MediaStore.Images.Media.DATE_ADDED
-                SortBy.RESOLUTION      -> MediaStore.Images.Media.WIDTH         to MediaStore.Images.Media.HEIGHT
-                SortBy.DURATION        -> MediaStore.Images.Media.DATE_TAKEN    to MediaStore.Images.Media.DATE_ADDED
+                SortBy.DATE_TAKEN      -> MediaStore.MediaColumns.DATE_TAKEN    to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.DATE_MODIFIED   -> MediaStore.MediaColumns.DATE_MODIFIED to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.SIZE            -> MediaStore.MediaColumns.SIZE          to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.NAME            -> MediaStore.MediaColumns.DISPLAY_NAME  to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.TYPE            -> MediaStore.MediaColumns.MIME_TYPE     to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.RESOLUTION      -> MediaStore.MediaColumns.WIDTH         to MediaStore.MediaColumns.HEIGHT
+                SortBy.DURATION        -> MediaStore.Video.Media.DURATION       to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.FAVORITES_FIRST ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-                        MediaStore.MediaColumns.IS_FAVORITE to MediaStore.Images.Media.DATE_TAKEN
+                        MediaStore.MediaColumns.IS_FAVORITE to MediaStore.MediaColumns.DATE_TAKEN
                     else
-                        MediaStore.Images.Media.DATE_TAKEN  to MediaStore.Images.Media.DATE_ADDED
+                        MediaStore.MediaColumns.DATE_TAKEN  to MediaStore.MediaColumns.DATE_ADDED
             }
             val dir = when (sc.sortOrder) {
                 SortOrder.ASCENDING  -> ContentResolver.QUERY_SORT_DIRECTION_ASCENDING
@@ -358,6 +363,8 @@ class MediaStoreRepository @Inject constructor(
                 putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, dir)
                 putInt(ContentResolver.QUERY_ARG_LIMIT,  limit)
                 putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
+                putString(ContentResolver.QUERY_ARG_SQL_SELECTION, mediaSelection)
+                putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, mediaSelectionArgs)
             }
         }
 
@@ -373,20 +380,27 @@ class MediaStoreRepository @Inject constructor(
                     ContentResolver.QUERY_SORT_DIRECTION_DESCENDING
                 )
             }
-            cr.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, photoProjection, args, null)
+            cr.query(
+                MediaStore.Files.getContentUri("external"),
+                photoProjection,
+                Bundle(args).apply {
+                    putString(ContentResolver.QUERY_ARG_SQL_SELECTION, mediaSelection)
+                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, mediaSelectionArgs)
+                },
+                null
+            )
                 ?.use { cursor ->
-                    val idC = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-                    val biC = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
-                    val bnC = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
-                    val dtC = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
+                    val idC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                    val biC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_ID)
+                    val bnC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
+                    val dtC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_TAKEN)
                     while (cursor.moveToNext()) {
                         val bid  = cursor.getString(biC) ?: continue
                         val name = cursor.getString(bnC) ?: "Unknown"
                         val pid  = cursor.getLong(idC)
                         val dt   = cursor.getLong(dtC)
-                        val uri  = ContentUris.withAppendedId(
-                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, pid
-                        )
+                        val mime = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE))
+                        val uri  = contentUriForMime(pid, mime)
                         val ex = map[bid]
                         if (ex == null) map[bid] = FolderAccumulator(bid, name, uri, 1, dt)
                         else {
@@ -402,22 +416,39 @@ class MediaStoreRepository @Inject constructor(
 
         // ── FIX: maps DATE_MODIFIED and DATE_ADDED from cursor ────────────────
         fun android.database.Cursor.toMediaPhoto(): MediaPhoto {
-            val id = getLong(getColumnIndexOrThrow(MediaStore.Images.Media._ID))
+            val id = getLong(getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
+            val mime = getStringOrEmpty(MediaStore.MediaColumns.MIME_TYPE)
             return MediaPhoto(
                 id           = id,
-                uri          = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id),
-                name         = getStringOrEmpty(MediaStore.Images.Media.DISPLAY_NAME),
-                size         = getLongOrZero(MediaStore.Images.Media.SIZE),
-                mimeType     = getStringOrEmpty(MediaStore.Images.Media.MIME_TYPE),
-                dateTaken    = getLongOrZero(MediaStore.Images.Media.DATE_TAKEN),
-                dateModified = getLongOrZero(MediaStore.Images.Media.DATE_MODIFIED),
-                dateAdded    = getLongOrZero(MediaStore.Images.Media.DATE_ADDED),
-                width        = getIntOrZero(MediaStore.Images.Media.WIDTH),
-                height       = getIntOrZero(MediaStore.Images.Media.HEIGHT),
+                uri          = contentUriForMime(id, mime),
+                name         = getStringOrEmpty(MediaStore.MediaColumns.DISPLAY_NAME),
+                size         = getLongOrZero(MediaStore.MediaColumns.SIZE),
+                mimeType     = mime,
+                dateTaken    = getLongOrZero(MediaStore.MediaColumns.DATE_TAKEN),
+                dateModified = getLongOrZero(MediaStore.MediaColumns.DATE_MODIFIED),
+                dateAdded    = getLongOrZero(MediaStore.MediaColumns.DATE_ADDED),
+                width        = getIntOrZero(MediaStore.MediaColumns.WIDTH),
+                height       = getIntOrZero(MediaStore.MediaColumns.HEIGHT),
                 latitude     = getDoubleOrNull(MediaStore.Images.Media.LATITUDE),
                 longitude    = getDoubleOrNull(MediaStore.Images.Media.LONGITUDE)
             )
         }
+
+        private fun contentUriForMime(id: Long, mimeType: String): Uri {
+            val base = if (mimeType.startsWith("video/", ignoreCase = true)) {
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            } else {
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            }
+            return ContentUris.withAppendedId(base, id)
+        }
+
+        private val mediaSelection =
+            "(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?)"
+        private val mediaSelectionArgs = arrayOf(
+            MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+            MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
+        )
 
         private fun android.database.Cursor.getStringOrEmpty(c: String) =
             getColumnIndex(c).let { if (it >= 0) getString(it).orEmpty() else "" }

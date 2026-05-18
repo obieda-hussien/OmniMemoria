@@ -185,7 +185,7 @@ fun GalleryScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 80.dp)
+                .padding(bottom = 148.dp)
         ) {
             SelectionActionBar(
                 count    = selectedIds.size,

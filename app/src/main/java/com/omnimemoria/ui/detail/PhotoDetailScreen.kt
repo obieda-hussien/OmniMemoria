@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import com.omnimemoria.domain.model.MediaPhoto
@@ -48,6 +49,7 @@ import java.util.Locale
 fun PhotoDetailScreen(
     photoId:   Long,
     onBack:    () -> Unit,
+    onOpenVideo: (Long) -> Unit,
     viewModel: PhotoDetailViewModel = hiltViewModel()
 ) {
     BackHandler(onBack = onBack)
@@ -77,6 +79,7 @@ fun PhotoDetailScreen(
             startPage  = initialPage,
             isFavorite = isFavorite,
             onBack     = onBack,
+            onOpenVideo = onOpenVideo,
             onFavorite = { id ->
                 viewModel.toggleFavorite(id)
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -94,6 +97,7 @@ private fun PhotoPager(
     startPage:  Int,
     isFavorite: Boolean,
     onBack:     () -> Unit,
+    onOpenVideo: (Long) -> Unit,
     onFavorite: (Long) -> Unit
 ) {
     val sharedTransitionScope = LocalSharedTransitionScope.current
@@ -138,7 +142,7 @@ private fun PhotoPager(
                 val imageRequest = remember(photo.id, photo.uri) {
                     ImageRequest.Builder(context)
                         .data(photo.uri)
-                        .memoryCachePolicy(CachePolicy.READ_ONLY)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
                         .build()
                 }
 
@@ -160,14 +164,42 @@ private fun PhotoPager(
                 }
 
                 key(photo.id) {
-                    ZoomableAsyncImage(
-                        model              = imageRequest,
-                        contentDescription = photo.name,
-                        modifier           = Modifier
-                            .fillMaxSize()
-                            .then(imageModifier),
-                        onClick            = { showChrome = !showChrome }
-                    )
+                    val mediaModifier = Modifier
+                        .fillMaxSize()
+                        .then(imageModifier)
+
+                    if (photo.mimeType.startsWith("video/", ignoreCase = true)) {
+                        Box(modifier = mediaModifier.clickable { showChrome = !showChrome }) {
+                            AsyncImage(
+                                model              = imageRequest,
+                                contentDescription = photo.name,
+                                contentScale       = ContentScale.Fit,
+                                modifier           = Modifier.fillMaxSize()
+                            )
+                            IconButton(
+                                onClick = { onOpenVideo(photo.id) },
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .size(86.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.45f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayCircleFilled,
+                                    contentDescription = "Play video",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(56.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        ZoomableAsyncImage(
+                            model              = imageRequest,
+                            contentDescription = photo.name,
+                            modifier           = mediaModifier,
+                            onClick            = { showChrome = !showChrome }
+                        )
+                    }
                 }
             }
         }
@@ -389,9 +421,9 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
         }
         photo?.mimeType?.takeIf { it.isNotBlank() }?.let { mime ->
             MetadataRow(
-                Icons.Outlined.Image,
+                if (mime.startsWith("video/", ignoreCase = true)) Icons.Outlined.VideoFile else Icons.Outlined.Image,
                 "Format",
-                mime.uppercase().replace("IMAGE/", "")
+                mime.uppercase().replace("IMAGE/", "").replace("VIDEO/", "")
             )
         }
     }

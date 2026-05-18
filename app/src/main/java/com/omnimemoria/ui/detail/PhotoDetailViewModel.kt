@@ -44,6 +44,11 @@ class PhotoDetailViewModel @Inject constructor(
     // ── تحميل كل الصور مرة واحدة ─────────────────────────────────────────────
     fun loadAllPhotos(photoId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
+            mediaStoreRepository.getPhotoById(photoId)?.let { seed ->
+                _photoList.value = listOf(seed)
+                _initialPage.value = 0
+            }
+
             val all = mediaStoreRepository.getAllNonVaultPhotosSortedByDate()
 
             // لو الصورة مش موجودة (vault item أو اتحذفت) → اعرضها وحدها
