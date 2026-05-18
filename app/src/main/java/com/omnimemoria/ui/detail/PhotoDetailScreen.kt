@@ -30,6 +30,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
@@ -96,6 +98,7 @@ private fun PhotoPager(
 ) {
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
+    val context = LocalContext.current
 
     val safeStartPage = startPage.coerceIn(0, photoList.lastIndex.coerceAtLeast(0))
 
@@ -127,10 +130,18 @@ private fun PhotoPager(
         // ══ HorizontalPager ═══════════════════════════════════════════════════
         HorizontalPager(
             state    = pagerState,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            beyondViewportPageCount = 0
         ) { page ->
             val photo = photoList.getOrNull(page)
             if (photo != null) {
+                val imageRequest = remember(photo.id, photo.uri) {
+                    ImageRequest.Builder(context)
+                        .data(photo.uri)
+                        .memoryCachePolicy(CachePolicy.DISABLED)
+                        .build()
+                }
+
                 // ── Shared Element — detail side ─────────────────────────────
                 val imageModifier = if (
                     sharedTransitionScope != null &&
@@ -148,14 +159,16 @@ private fun PhotoPager(
                     Modifier
                 }
 
-                ZoomableAsyncImage(
-                    model              = photo.uri,
-                    contentDescription = photo.name,
-                    modifier           = Modifier
-                        .fillMaxSize()
-                        .then(imageModifier),
-                    onClick            = { showChrome = !showChrome }
-                )
+                key(photo.id) {
+                    ZoomableAsyncImage(
+                        model              = imageRequest,
+                        contentDescription = photo.name,
+                        modifier           = Modifier
+                            .fillMaxSize()
+                            .then(imageModifier),
+                        onClick            = { showChrome = !showChrome }
+                    )
+                }
             }
         }
 
