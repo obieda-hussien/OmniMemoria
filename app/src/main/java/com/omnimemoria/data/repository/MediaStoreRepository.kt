@@ -347,7 +347,7 @@ class MediaStoreRepository @Inject constructor(
                 SortBy.NAME            -> MediaStore.MediaColumns.DISPLAY_NAME  to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.TYPE            -> MediaStore.MediaColumns.MIME_TYPE     to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.RESOLUTION      -> MediaStore.MediaColumns.WIDTH         to MediaStore.MediaColumns.HEIGHT
-                SortBy.DURATION        -> MediaStore.Video.Media.DURATION       to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.DURATION        -> MediaStore.MediaColumns.DATE_TAKEN    to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.FAVORITES_FIRST ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
                         MediaStore.MediaColumns.IS_FAVORITE to MediaStore.MediaColumns.DATE_TAKEN

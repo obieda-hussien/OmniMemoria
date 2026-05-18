@@ -22,6 +22,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,16 +40,23 @@ import androidx.hilt.navigation.compose.hiltViewModel
 
 @Composable
 fun VideoPlayerScreen(
-    photoId: Long,
+    mediaId: Long,
     onBack: () -> Unit,
     viewModel: PhotoDetailViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    var media by remember(photoId) { mutableStateOf<com.omnimemoria.domain.model.MediaPhoto?>(null) }
+    val mediaController = remember(context) { MediaController(context) }
+    var media by remember(mediaId) { mutableStateOf<com.omnimemoria.domain.model.MediaPhoto?>(null) }
     var loadedVideoId by remember { mutableStateOf<Long?>(null) }
 
-    LaunchedEffect(photoId) {
-        media = viewModel.getPhoto(photoId)
+    LaunchedEffect(mediaId) {
+        media = viewModel.getPhoto(mediaId)
+    }
+
+    DisposableEffect(mediaController) {
+        onDispose {
+            mediaController.hide()
+        }
     }
 
     Box(
@@ -67,7 +75,7 @@ fun VideoPlayerScreen(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
                     VideoView(ctx).apply {
-                        setMediaController(MediaController(ctx))
+                        setMediaController(mediaController)
                     }
                 },
                 update = { videoView ->

@@ -19,11 +19,11 @@ import com.omnimemoria.ui.settings.SettingsScreen
 object AppRoutes {
     const val Home     = "home"
     const val Detail   = "detail/{photoId}"
-    const val Video    = "video/{photoId}"
+    const val Video    = "video/{mediaId}"
     const val Settings = "settings"
 
     fun detail(photoId: Long): String = "detail/$photoId"
-    fun video(photoId: Long): String = "video/$photoId"
+    fun video(mediaId: Long): String = "video/$mediaId"
 }
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -77,12 +77,12 @@ fun AppNavGraph() {
 
                 composable(
                     route = AppRoutes.Video,
-                    arguments = listOf(navArgument("photoId") { type = NavType.LongType })
+                    arguments = listOf(navArgument("mediaId") { type = NavType.LongType })
                 ) { backStackEntry ->
-                    val photoId = backStackEntry.arguments?.getLong("photoId") ?: 0L
+                    val mediaId = backStackEntry.arguments?.getLong("mediaId") ?: 0L
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                         VideoPlayerScreen(
-                            photoId = photoId,
+                            mediaId = mediaId,
                             onBack = { navController.popBackStack() }
                         )
                     }

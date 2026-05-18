@@ -49,7 +49,7 @@ import java.util.Locale
 fun PhotoDetailScreen(
     photoId:   Long,
     onBack:    () -> Unit,
-    onOpenVideo: (Long) -> Unit,
+    onOpenVideo: (mediaId: Long) -> Unit,
     viewModel: PhotoDetailViewModel = hiltViewModel()
 ) {
     BackHandler(onBack = onBack)
@@ -97,7 +97,7 @@ private fun PhotoPager(
     startPage:  Int,
     isFavorite: Boolean,
     onBack:     () -> Unit,
-    onOpenVideo: (Long) -> Unit,
+    onOpenVideo: (mediaId: Long) -> Unit,
     onFavorite: (Long) -> Unit
 ) {
     val sharedTransitionScope = LocalSharedTransitionScope.current
