@@ -115,11 +115,11 @@ class GalleryViewModel @Inject constructor(
                     val bLabel = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
                     val aLabel = (after  as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
                         when {
-                            after  == null                    -> null
+                            after !is GalleryItem.Photo -> null
                             before == null || bLabel != aLabel ->
                                 GalleryItem.DateHeader(
                                     label = aLabel ?: "",
-                                    anchorPhotoId = (after as? GalleryItem.Photo)?.photo?.id ?: -1L
+                                    anchorPhotoId = after.photo.id
                                 )
                             else -> null
                         }
