@@ -37,14 +37,16 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Size
+import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
+import com.omnimemoria.ui.LocalSharedTransitionScope
 import com.omnimemoria.ui.theme.AmberVibe
 import com.omnimemoria.ui.theme.RoseMemory
-
-// FIX: use rememberTransformableState — it handles zoom without consuming scroll events.
-// The old detectTransformGestures on the outer Box was intercepting all touch events,
-// breaking both scroll and long-press simultaneously.
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.ui.platform.LocalDensity
+
+// ── Shared Element key helper — مُستخدم في GalleryScreen و PhotoDetailScreen ─────
+fun photoSharedKey(photoId: Long) = "photo_$photoId"
 
 // ── Vibe chips placeholder data ──────────────────────────────────────────────────
 private data class VibeChip(val emoji: String, val label: String, val color: Color)
@@ -58,6 +60,7 @@ private val placeholderVibes = listOf(
 
 // ─────────────────────────────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun GalleryScreen(
     onPhotoClick: (Long) -> Unit,
@@ -68,16 +71,14 @@ fun GalleryScreen(
     val selectedIds   by viewModel.selectedIds.collectAsState()
     val isSelecting   by viewModel.isInSelectionMode.collectAsState()
     val columnCount   by viewModel.columnCount.collectAsState()
-
-    // FIX: use mediaStats.photoCount for the real photo count,
-    // not groupedPhotos.itemCount which includes DateHeader separators.
     val mediaStats    by viewModel.mediaStats.collectAsState()
+
+    // Shared element scope من الـ CompositionLocal
+    val sharedTransitionScope   = LocalSharedTransitionScope.current
+    val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
 
     val gridState = rememberLazyGridState()
 
-    // ── FIX: rememberTransformableState handles pinch without consuming scroll ─
-    // Old code used detectTransformGestures on the outer Box which ate all touch
-    // events. transformable() only reacts to scale gestures, leaving scrolling alone.
     var cumulativeZoom by remember { mutableFloatStateOf(1f) }
     val transformableState = rememberTransformableState { zoomChange, _, _ ->
         cumulativeZoom *= zoomChange
@@ -101,9 +102,6 @@ fun GalleryScreen(
             ),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalArrangement   = Arrangement.spacedBy(3.dp),
-            // FIX: transformable is applied to the grid itself so it only captures
-            // multi-touch scale events. lockRotationOnZoomPan = true prevents
-            // rotation from interfering with the zoom detection.
             modifier = Modifier
                 .fillMaxSize()
                 .transformable(
@@ -111,18 +109,13 @@ fun GalleryScreen(
                     lockRotationOnZoomPan = true
                 )
         ) {
-            // ── Vibe Albums Row ──────────────────────────────────────────────
             item(span = { GridItemSpan(maxLineSpan) }) {
                 VibeAlbumsRow(modifier = Modifier.padding(bottom = 20.dp))
             }
 
-            // ── Section header with REAL photo count ─────────────────────────
             item(span = { GridItemSpan(maxLineSpan) }) {
                 SectionSubHeader(
                     title     = "All Photos",
-                    // FIX: mediaStats.photoCount is the actual number of photos from
-                    // MediaStore. groupedPhotos.itemCount was wrong because it counted
-                    // DateHeader items as well as Photo items.
                     count     = mediaStats.photoCount,
                     isLoading = groupedPhotos.loadState.refresh is LoadState.Loading,
                     onSort    = { /* TODO: open sort sheet */ },
@@ -130,17 +123,13 @@ fun GalleryScreen(
                 )
             }
 
-            // ── Skeleton shimmer while first page loads ──────────────────────
             if (groupedPhotos.loadState.refresh is LoadState.Loading) {
                 items(count = 30, span = { GridItemSpan(1) }) {
                     SkeletonPhotoCell(size = (360 / columnCount).dp)
                 }
             } else {
-                // ── Real items (Photos + Date Headers) ───────────────────────
                 items(
                     count = groupedPhotos.itemCount,
-                    // FIX: stable keys prevent unnecessary recompositions when
-                    // column count changes (required by Prompt 9.3).
                     key   = { index ->
                         when (val item = groupedPhotos.peek(index)) {
                             is GalleryItem.DateHeader -> "header_${item.label}"
@@ -162,14 +151,18 @@ fun GalleryScreen(
                         is GalleryItem.Photo -> {
                             val photo      = item.photo
                             val isSelected = photo.id in selectedIds
-                            // FIX: PhotoCell now uses combinedClickable which provides
-                            // proper long-press detection out of the box. The old
-                            // awaitPointerEventScope stub did absolutely nothing.
+
+                            // ── Shared Element — gallery side ─────────────────
+                            // لو الـ scopes متاحين ندّي الـ cell الـ sharedElement modifier.
+                            // بالشكل ده لما المستخدم يضغط على صورة، Compose بتعمل
+                            // zoom-in ناعم من مكان الـ thumbnail لحد شاشة التفاصيل.
                             PhotoCell(
-                                uri         = photo.uri.toString(),
-                                photoId     = photo.id,
-                                isSelected  = isSelected,
-                                isSelecting = isSelecting,
+                                uri                 = photo.uri.toString(),
+                                photoId             = photo.id,
+                                isSelected          = isSelected,
+                                isSelecting         = isSelecting,
+                                sharedTransitionScope   = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
                                 onClick     = {
                                     if (isSelecting) viewModel.toggleSelection(photo.id)
                                     else onPhotoClick(photo.id)
@@ -190,19 +183,27 @@ fun GalleryScreen(
             }
         }
 
-        // ── Multi-Select Action Bar ──────────────────────────────────────────
+        // ── FIX: Selection Action Bar فوق الـ Nav Bar ─────────────────────────
+        // المشكلة القديمة: الـ bar كانت بتتعرض بدون navigationBarsPadding فكانت
+        // بتتغطى وراء الـ System Navigation Bar ومش ممكن تتك عليها.
+        //
+        // الحل: نضيف .navigationBarsPadding() على الـ bar نفسها، وبما إن
+        // HomeScreen بيحط الـ GalleryScreen في Box كبيرة، الـ padding بيشتغل صح.
         AnimatedVisibility(
             visible  = isSelecting,
             enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit     = slideOutVertically(targetOffsetY  = { it }) + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()   // ← الإصلاح
+                .padding(bottom = 80.dp)   // ← فوق الـ BottomNav بمسافة مريحة
         ) {
             SelectionActionBar(
-                count   = selectedIds.size,
-                onClose = { viewModel.clearSelection() },
-                onShare = { /* TODO */ },
+                count    = selectedIds.size,
+                onClose  = { viewModel.clearSelection() },
+                onShare  = { /* TODO */ },
                 onDelete = { /* TODO */ },
-                onMore  = { /* TODO */ }
+                onMore   = { /* TODO */ }
             )
         }
     }
@@ -232,18 +233,16 @@ private fun VibeAlbumsRow(modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.primary
             )
         }
-
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding        = PaddingValues(horizontal = 8.dp)
         ) {
-            items(placeholderVibes) { vibe ->
-                VibeChipCard(vibe = vibe)
-            }
+            items(placeholderVibes) { vibe -> VibeChipCard(vibe = vibe) }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun VibeChipCard(vibe: VibeChip) {
     Box(
@@ -251,11 +250,7 @@ private fun VibeChipCard(vibe: VibeChip) {
             .width(100.dp)
             .height(120.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(vibe.color, vibe.color.copy(alpha = 0.7f))
-                )
-            )
+            .background(Brush.linearGradient(listOf(vibe.color, vibe.color.copy(alpha = 0.7f))))
             .combinedClickable(onClick = {})
             .padding(12.dp),
         contentAlignment = Alignment.BottomStart
@@ -274,8 +269,9 @@ private fun VibeChipCard(vibe: VibeChip) {
     }
 }
 
-// ── Section Sub-header ─────────────────────────────────────────────────────────
+// ── Section Sub-header ─────────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SectionSubHeader(
     title:     String,
@@ -305,15 +301,14 @@ private fun SectionSubHeader(
                         .padding(horizontal = 7.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text  = "$count",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text       = "$count",
+                        style      = MaterialTheme.typography.labelSmall,
+                        color      = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     )
                 }
             }
         }
-
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier          = Modifier
@@ -321,18 +316,9 @@ private fun SectionSubHeader(
                 .combinedClickable(onClick = onSort)
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
-            Icon(
-                imageVector        = Icons.Outlined.Tune,
-                contentDescription = "Sort",
-                modifier           = Modifier.size(16.dp),
-                tint               = MaterialTheme.colorScheme.primary
-            )
+            Icon(Icons.Outlined.Tune, "Sort", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text  = "Sort",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Text("Sort", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -355,20 +341,19 @@ private fun DateHeaderRow(label: String) {
     }
 }
 
-// ── Photo Cell ────────────────────────────────────────────────────────────────────
-// FIX: replaced the broken pointerInput stub with combinedClickable.
-// combinedClickable handles: single tap, long press, double tap — all correctly.
-// The scale animation is preserved.
+// ── Photo Cell — مع Shared Element Transition ─────────────────────────────────────
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 private fun PhotoCell(
-    uri:         String,
-    photoId:     Long,
-    isSelected:  Boolean,
-    isSelecting: Boolean,
-    onClick:     () -> Unit,
-    onLongClick: () -> Unit
+    uri:                    String,
+    photoId:                Long,
+    isSelected:             Boolean,
+    isSelecting:            Boolean,
+    sharedTransitionScope:   SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    onClick:                () -> Unit,
+    onLongClick:            () -> Unit
 ) {
     val scale by animateFloatAsState(
         targetValue   = if (isSelected) 0.88f else 1f,
@@ -376,22 +361,38 @@ private fun PhotoCell(
         label         = "photo_scale_$photoId"
     )
 
+    // ── Shared Element modifier ───────────────────────────────────────────────
+    // بنحسب الـ sharedElement modifier هنا وبنطبقه على الـ AsyncImage مباشرة —
+    // مش على الـ Box الخارجي عشان الـ clip والـ scale ميأثروش على الـ animation.
+    val sharedModifier: Modifier = if (
+        sharedTransitionScope   != null &&
+        animatedVisibilityScope != null &&
+        !isSelecting               // أثناء الـ multi-select مفيش shared transition
+    ) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                state             = rememberSharedContentState(key = photoSharedKey(photoId)),
+                animatedVisibilityScope = animatedVisibilityScope,
+                boundsTransform   = com.omnimemoria.ui.detail.photosBoundsTransform
+            )
+        }
+    } else Modifier
+
     Box(
         modifier = Modifier
             .aspectRatio(1f)
             .scale(scale)
             .clip(RoundedCornerShape(if (isSelected) 14.dp else 8.dp))
-            // FIX: combinedClickable provides real long-press detection.
-            // onLongClick triggers selection mode; onClick navigates or toggles selection.
             .combinedClickable(
                 onClick     = onClick,
                 onLongClick = onLongClick
             )
     ) {
-        // تم استبدال AsyncImage بـ CachedThumbnail هنا
         CachedThumbnail(
             uri      = uri,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .then(sharedModifier)   // shared element على الصورة نفسها
         )
 
         // ── Selection overlay ─────────────────────────────────────────────────
@@ -404,10 +405,8 @@ private fun PhotoCell(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        if (isSelected)
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-                        else
-                            Color.Black.copy(alpha = 0.15f)
+                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                        else Color.Black.copy(alpha = 0.15f)
                     )
             ) {
                 if (isSelected) {
@@ -415,10 +414,7 @@ private fun PhotoCell(
                         imageVector        = Icons.Filled.CheckCircle,
                         contentDescription = "Selected",
                         tint               = MaterialTheme.colorScheme.primary,
-                        modifier           = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .size(22.dp)
+                        modifier           = Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp)
                     )
                 } else {
                     Box(
@@ -427,11 +423,7 @@ private fun PhotoCell(
                             .padding(6.dp)
                             .size(22.dp)
                             .clip(CircleShape)
-                            .border(
-                                width = 2.dp,
-                                color = Color.White.copy(alpha = 0.8f),
-                                shape = CircleShape
-                            )
+                            .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape)
                     )
                 }
             }
@@ -447,8 +439,6 @@ private fun CachedThumbnail(uri: String, modifier: Modifier) {
     AsyncImage(
         model = ImageRequest.Builder(context)
             .data(uri)
-            // Fixed decode size → single disk cache entry per photo,
-            // shared across all column-count configurations.
             .size(Size(512, 512))
             .build(),
         contentDescription = null,
@@ -471,7 +461,6 @@ private fun SkeletonPhotoCell(size: Dp) {
             ),
             label = "skeleton_alpha"
         )
-
     Box(
         modifier = Modifier
             .aspectRatio(1f)
@@ -480,7 +469,7 @@ private fun SkeletonPhotoCell(size: Dp) {
     )
 }
 
-// ── Selection Action Bar ──────────────────────────────────────────────────────────
+// ── Selection Action Bar — FIX: فوق الـ Nav Bar ──────────────────────────────────
 
 @Composable
 private fun SelectionActionBar(
@@ -493,14 +482,11 @@ private fun SelectionActionBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(horizontal = 20.dp)
             .clip(RoundedCornerShape(24.dp))
             .background(
                 Brush.horizontalGradient(
-                    colors = listOf(
-                        Color(0xFF1E1C30).copy(alpha = 0.95f),
-                        Color(0xFF2D26A0).copy(alpha = 0.9f)
-                    )
+                    listOf(Color(0xFF1E1C30).copy(alpha = 0.95f), Color(0xFF2D26A0).copy(alpha = 0.9f))
                 )
             )
     ) {
@@ -522,17 +508,10 @@ private fun SelectionActionBar(
                     color      = Color.White
                 )
             }
-
             Row {
-                IconButton(onClick = onShare) {
-                    Icon(Icons.Outlined.Share,    null, tint = Color.White,          modifier = Modifier.size(22.dp))
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Outlined.Delete,   null, tint = Color(0xFFFF6B6B),    modifier = Modifier.size(22.dp))
-                }
-                IconButton(onClick = onMore) {
-                    Icon(Icons.Outlined.MoreVert, null, tint = Color.White,          modifier = Modifier.size(22.dp))
-                }
+                IconButton(onClick = onShare)  { Icon(Icons.Outlined.Share,    null, tint = Color.White,       modifier = Modifier.size(22.dp)) }
+                IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete,   null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(22.dp)) }
+                IconButton(onClick = onMore)   { Icon(Icons.Outlined.MoreVert, null, tint = Color.White,       modifier = Modifier.size(22.dp)) }
             }
         }
     }
