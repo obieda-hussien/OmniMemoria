@@ -50,6 +50,7 @@ fun photoSharedKey(photoId: Long) = "photo_$photoId"
 
 // ── Vibe chips placeholder data ──────────────────────────────────────────────────
 private data class VibeChip(val emoji: String, val label: String, val color: Color)
+private val SelectionBarBottomPadding = 148.dp
 private val placeholderVibes = listOf(
     VibeChip("🌅", "Golden\nHour",   AmberVibe),
     VibeChip("🌊", "Quiet\nMoments", Color(0xFF2D26A0)),
@@ -185,7 +186,7 @@ fun GalleryScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 148.dp)
+                .padding(bottom = SelectionBarBottomPadding)
         ) {
             SelectionActionBar(
                 count    = selectedIds.size,

@@ -1,6 +1,7 @@
 package com.omnimemoria.ui.detail
 
 import android.widget.MediaController
+import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -76,6 +77,10 @@ fun VideoPlayerScreen(
                 factory = { ctx ->
                     VideoView(ctx).apply {
                         setMediaController(mediaController)
+                        setOnErrorListener { _, _, _ ->
+                            Toast.makeText(ctx, "Couldn't play this video.", Toast.LENGTH_SHORT).show()
+                            true
+                        }
                     }
                 },
                 update = { videoView ->
