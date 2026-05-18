@@ -5,9 +5,11 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -67,8 +69,14 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
     val dynamicAccent by galleryViewModel.dynamicAccent.collectAsState()
     val context        = LocalContext.current
 
-    val formattedSize = remember(mediaStats.totalSizeBytes) {
+    val totalFormattedSize = remember(mediaStats.totalSizeBytes) {
         Formatter.formatShortFileSize(context, mediaStats.totalSizeBytes)
+    }
+    val photosFormattedSize = remember(mediaStats.photoSizeBytes) {
+        Formatter.formatShortFileSize(context, mediaStats.photoSizeBytes)
+    }
+    val videosFormattedSize = remember(mediaStats.videoSizeBytes) {
+        Formatter.formatShortFileSize(context, mediaStats.videoSizeBytes)
     }
 
     val homeNavController  = rememberNavController()
@@ -98,13 +106,16 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
 
         // ── Floating Top Bar (Dynamic accent tints the gradient) ─────────────
         OmniTopBar(
-            photoCount      = mediaStats.photoCount,
-            formattedSize   = formattedSize,
-            albumCount      = mediaStats.albumCount,
-            isLoading       = mediaStats.photoCount == 0 && mediaStats.totalSizeBytes == 0L,
-            dynamicAccent   = dynamicAccent,
-            onSettingsClick = onSettingsClick,
-            modifier        = Modifier.align(Alignment.TopCenter)
+            photoCount          = mediaStats.photoCount,
+            videoCount          = mediaStats.videoCount,
+            photosFormattedSize = photosFormattedSize,
+            videosFormattedSize = videosFormattedSize,
+            totalFormattedSize  = totalFormattedSize,
+            albumCount          = mediaStats.albumCount,
+            isLoading           = mediaStats.totalCount == 0 && mediaStats.totalSizeBytes == 0L,
+            dynamicAccent       = dynamicAccent,
+            onSettingsClick     = onSettingsClick,
+            modifier            = Modifier.align(Alignment.TopCenter)
         )
 
         // ── Bottom area: On This Day card (dismissible) + FAB + BottomNav ────
@@ -168,13 +179,16 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
 
 @Composable
 private fun OmniTopBar(
-    photoCount:      Int,
-    formattedSize:   String,
-    albumCount:      Int,
-    isLoading:       Boolean,
-    dynamicAccent:   Color?,
-    onSettingsClick: () -> Unit,
-    modifier:        Modifier = Modifier
+    photoCount:          Int,
+    videoCount:          Int,
+    photosFormattedSize: String,
+    videosFormattedSize: String,
+    totalFormattedSize:  String,
+    albumCount:          Int,
+    isLoading:           Boolean,
+    dynamicAccent:       Color?,
+    onSettingsClick:     () -> Unit,
+    modifier:            Modifier = Modifier
 ) {
     // اللون المتحرك بـ animation من الـ default للـ dynamic
     val accentAlpha by animateFloatAsState(
@@ -237,7 +251,15 @@ private fun OmniTopBar(
                     visible = !isLoading,
                     enter   = fadeIn(tween(400)) + expandVertically()
                 ) {
-                    StatsChipsRow(photoCount, formattedSize, albumCount, dynamicAccent)
+                    StatsChipsRow(
+                        photoCount = photoCount,
+                        videoCount = videoCount,
+                        photosFormattedSize = photosFormattedSize,
+                        videosFormattedSize = videosFormattedSize,
+                        totalFormattedSize = totalFormattedSize,
+                        albumCount = albumCount,
+                        accent = dynamicAccent
+                    )
                 }
             }
         }
@@ -269,19 +291,28 @@ private fun OmniTopBar(
 
 @Composable
 private fun StatsChipsRow(
-    photoCount:    Int,
-    formattedSize: String,
-    albumCount:    Int,
-    accent:        Color?
+    photoCount:          Int,
+    videoCount:          Int,
+    photosFormattedSize: String,
+    videosFormattedSize: String,
+    totalFormattedSize:  String,
+    albumCount:          Int,
+    accent:              Color?
 ) {
     val chipBg = accent?.copy(alpha = 0.15f)
         ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     val iconTint = accent ?: MaterialTheme.colorScheme.primary
 
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        StatChip(Icons.Outlined.Image,    "$photoCount",     chipBg, iconTint)
-        StatChip(Icons.Outlined.SdStorage, formattedSize,    chipBg, iconTint)
-        StatChip(Icons.Outlined.GridView,  "$albumCount Albums", chipBg, iconTint)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.horizontalScroll(rememberScrollState())
+    ) {
+        StatChip(Icons.Outlined.Image, "$photoCount Photos", chipBg, iconTint)
+        StatChip(Icons.Outlined.Videocam, "$videoCount Videos", chipBg, iconTint)
+        StatChip(Icons.Outlined.Image, "Photos $photosFormattedSize", chipBg, iconTint)
+        StatChip(Icons.Outlined.VideoFile, "Videos $videosFormattedSize", chipBg, iconTint)
+        StatChip(Icons.Outlined.SdStorage, "Total $totalFormattedSize", chipBg, iconTint)
+        StatChip(Icons.Outlined.GridView, "$albumCount Albums", chipBg, iconTint)
     }
 }
 

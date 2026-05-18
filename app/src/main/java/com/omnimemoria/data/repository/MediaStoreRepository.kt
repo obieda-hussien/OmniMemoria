@@ -38,10 +38,16 @@ import javax.inject.Singleton
 
 // ── Stats model ──────────────────────────────────────────────────────────────────
 data class MediaStats(
-    val photoCount:     Int  = 0,
-    val totalSizeBytes: Long = 0L,
-    val albumCount:     Int  = 0
-)
+    val photoCount:      Int  = 0,
+    val videoCount:      Int  = 0,
+    val photoSizeBytes:  Long = 0L,
+    val videoSizeBytes:  Long = 0L,
+    val totalSizeBytes:  Long = 0L,
+    val albumCount:      Int  = 0
+) {
+    val totalCount: Int
+        get() = photoCount + videoCount
+}
 
 @Singleton
 class MediaStoreRepository @Inject constructor(
@@ -54,25 +60,46 @@ class MediaStoreRepository @Inject constructor(
     // ══ 1. إحصائيات حقيقية ══════════════════════════════════════════════════════
     fun getMediaStats(): MediaStats {
         var photoCount = 0
-        var totalSize  = 0L
+        var videoCount = 0
+        var photoSize  = 0L
+        var videoSize  = 0L
         val bucketIds  = mutableSetOf<String>()
 
         contentResolver.query(
             mediaCollection,
-            arrayOf(MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.BUCKET_ID),
+            arrayOf(
+                MediaStore.MediaColumns.SIZE,
+                MediaStore.MediaColumns.BUCKET_ID,
+                MediaStore.Files.FileColumns.MEDIA_TYPE
+            ),
             mediaSelection,
             mediaSelectionArgs,
             null
         )?.use { cursor ->
             val si = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
             val bi = cursor.getColumnIndex(MediaStore.MediaColumns.BUCKET_ID)
+            val mi = cursor.getColumnIndex(MediaStore.Files.FileColumns.MEDIA_TYPE)
             while (cursor.moveToNext()) {
-                photoCount++
-                if (si >= 0) totalSize += cursor.getLong(si)
+                val size = if (si >= 0) cursor.getLong(si) else 0L
+                val mediaType = if (mi >= 0 && !cursor.isNull(mi)) cursor.getInt(mi) else null
+                if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) {
+                    videoCount++
+                    videoSize += size
+                } else {
+                    photoCount++
+                    photoSize += size
+                }
                 if (bi >= 0) cursor.getString(bi)?.let { bucketIds.add(it) }
             }
         }
-        return MediaStats(photoCount, totalSize, bucketIds.size)
+        return MediaStats(
+            photoCount = photoCount,
+            videoCount = videoCount,
+            photoSizeBytes = photoSize,
+            videoSizeBytes = videoSize,
+            totalSizeBytes = photoSize + videoSize,
+            albumCount = bucketIds.size
+        )
     }
 
     // ══ 2. Live ContentObserver → Flow (debounced 1.5s) ════════════════════════
@@ -168,7 +195,9 @@ class MediaStoreRepository @Inject constructor(
             photoProjection,
             mediaSelection,
             mediaSelectionArgs,
-            "${MediaStore.MediaColumns.DATE_TAKEN} DESC"
+            "${MediaStore.MediaColumns.DATE_TAKEN} DESC, " +
+                "${MediaStore.MediaColumns.DATE_ADDED} DESC, " +
+                "${MediaStore.MediaColumns._ID} DESC"
         )?.use { cursor ->
             while (cursor.moveToNext()) results += cursor.toMediaPhoto()
         }
@@ -357,7 +386,10 @@ class MediaStoreRepository @Inject constructor(
                 SortOrder.DESCENDING -> ContentResolver.QUERY_SORT_DIRECTION_DESCENDING
             }
             return Bundle().apply {
-                putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(col, fallback))
+                putStringArray(
+                    ContentResolver.QUERY_ARG_SORT_COLUMNS,
+                    arrayOf(col, fallback, MediaStore.MediaColumns._ID)
+                )
                 putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, dir)
                 putInt(ContentResolver.QUERY_ARG_LIMIT,  limit)
                 putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
