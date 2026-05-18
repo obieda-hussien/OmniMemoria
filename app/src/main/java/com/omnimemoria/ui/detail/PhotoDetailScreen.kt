@@ -30,6 +30,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
@@ -46,6 +48,7 @@ import java.util.Locale
 fun PhotoDetailScreen(
     photoId:   Long,
     onBack:    () -> Unit,
+    onOpenVideo: (mediaId: Long) -> Unit,
     viewModel: PhotoDetailViewModel = hiltViewModel()
 ) {
     BackHandler(onBack = onBack)
@@ -75,6 +78,7 @@ fun PhotoDetailScreen(
             startPage  = initialPage,
             isFavorite = isFavorite,
             onBack     = onBack,
+            onOpenVideo = onOpenVideo,
             onFavorite = { id ->
                 viewModel.toggleFavorite(id)
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -92,15 +96,29 @@ private fun PhotoPager(
     startPage:  Int,
     isFavorite: Boolean,
     onBack:     () -> Unit,
+    onOpenVideo: (mediaId: Long) -> Unit,
     onFavorite: (Long) -> Unit
 ) {
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
+    val context = LocalContext.current
+
+    val safeStartPage = startPage.coerceIn(0, photoList.lastIndex.coerceAtLeast(0))
 
     val pagerState = rememberPagerState(
-        initialPage = startPage,
+        initialPage = safeStartPage,
         pageCount   = { photoList.size }
     )
+
+    LaunchedEffect(photoList.size) {
+        val lastIndex = photoList.lastIndex
+        if (lastIndex >= 0 &&
+            pagerState.currentPage > lastIndex &&
+            !pagerState.isScrollInProgress
+        ) {
+            pagerState.scrollToPage(lastIndex)
+        }
+    }
 
     val currentPhoto = photoList.getOrNull(pagerState.currentPage)
 
@@ -115,10 +133,17 @@ private fun PhotoPager(
         // ══ HorizontalPager ═══════════════════════════════════════════════════
         HorizontalPager(
             state    = pagerState,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            beyondViewportPageCount = 1
         ) { page ->
             val photo = photoList.getOrNull(page)
             if (photo != null) {
+                val imageRequest = remember(photo.id, photo.uri) {
+                    ImageRequest.Builder(context)
+                        .data(photo.uri)
+                        .build()
+                }
+
                 // ── Shared Element — detail side ─────────────────────────────
                 val imageModifier = if (
                     sharedTransitionScope != null &&
@@ -136,14 +161,44 @@ private fun PhotoPager(
                     Modifier
                 }
 
-                ZoomableAsyncImage(
-                    model              = photo.uri,
-                    contentDescription = photo.name,
-                    modifier           = Modifier
+                key(photo.id) {
+                    val mediaModifier = Modifier
                         .fillMaxSize()
-                        .then(imageModifier),
-                    onClick            = { showChrome = !showChrome }
-                )
+                        .then(imageModifier)
+
+                    if (photo.isVideoMedia()) {
+                        Box(modifier = mediaModifier.clickable { showChrome = !showChrome }) {
+                            AsyncImage(
+                                model              = imageRequest,
+                                contentDescription = photo.name,
+                                contentScale       = ContentScale.Fit,
+                                modifier           = Modifier.fillMaxSize()
+                            )
+                            IconButton(
+                                onClick = { onOpenVideo(photo.id) },
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .size(86.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.45f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayCircleFilled,
+                                    contentDescription = "Play video",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(56.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        ZoomableAsyncImage(
+                            model              = imageRequest,
+                            contentDescription = photo.name,
+                            modifier           = mediaModifier,
+                            onClick            = { showChrome = !showChrome }
+                        )
+                    }
+                }
             }
         }
 
@@ -364,9 +419,9 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
         }
         photo?.mimeType?.takeIf { it.isNotBlank() }?.let { mime ->
             MetadataRow(
-                Icons.Outlined.Image,
+                if (photo?.isVideoMedia() == true) Icons.Outlined.VideoFile else Icons.Outlined.Image,
                 "Format",
-                mime.uppercase().replace("IMAGE/", "")
+                mime.uppercase().replace("IMAGE/", "").replace("VIDEO/", "")
             )
         }
     }
@@ -481,3 +536,6 @@ internal val photosBoundsTransform = BoundsTransform { _, _ ->
         stiffness    = Spring.StiffnessMediumLow
     )
 }
+
+private fun MediaPhoto.isVideoMedia(): Boolean =
+    mimeType.startsWith("video/", ignoreCase = true)

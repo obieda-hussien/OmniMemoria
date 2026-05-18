@@ -5,12 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.omnimemoria.data.local.db.FavoritePhoto
 import com.omnimemoria.data.local.db.FavoritesDao
 import com.omnimemoria.data.repository.MediaStoreRepository
+import com.omnimemoria.data.repository.SortPresetRepository
 import com.omnimemoria.domain.model.MediaPhoto
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -18,7 +20,8 @@ import javax.inject.Inject
 @HiltViewModel
 class PhotoDetailViewModel @Inject constructor(
     private val mediaStoreRepository: MediaStoreRepository,
-    private val favoritesDao: FavoritesDao
+    private val favoritesDao: FavoritesDao,
+    private val sortPresetRepository: SortPresetRepository
 ) : ViewModel() {
 
     // ── FIX 1: كل الصور بدون حد — مش ±30 ────────────────────────────────────
@@ -44,7 +47,14 @@ class PhotoDetailViewModel @Inject constructor(
     // ── تحميل كل الصور مرة واحدة ─────────────────────────────────────────────
     fun loadAllPhotos(photoId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            val all = mediaStoreRepository.getAllNonVaultPhotosSortedByDate()
+            mediaStoreRepository.getPhotoById(photoId)?.let { seed ->
+                _photoList.value = listOf(seed)
+                _initialPage.value = 0
+            }
+
+            // جلب الترتيب الحالي لكي يتطابق تماماً مع الـ Grid
+            val currentSortConfig = sortPresetRepository.getCurrentSort().first()
+            val all = mediaStoreRepository.getAllNonVaultPhotos(currentSortConfig)
 
             // لو الصورة مش موجودة (vault item أو اتحذفت) → اعرضها وحدها
             val targetIndex = all.indexOfFirst { it.id == photoId }

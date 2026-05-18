@@ -36,7 +36,7 @@ import javax.inject.Inject
 
 // ── sealed class للـ Grid items ──────────────────────────────────────────────────
 sealed class GalleryItem {
-    data class DateHeader(val label: String) : GalleryItem()
+    data class DateHeader(val label: String, val anchorPhotoId: Long) : GalleryItem()
     data class Photo(val photo: MediaPhoto)  : GalleryItem()
 }
 
@@ -114,13 +114,16 @@ class GalleryViewModel @Inject constructor(
                 .insertSeparators { before, after ->
                     val bLabel = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
                     val aLabel = (after  as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
-                    when {
-                        after  == null                    -> null
-                        before == null || bLabel != aLabel ->
-                            GalleryItem.DateHeader(aLabel ?: "")
-                        else -> null
+                        when {
+                            after == null || after !is GalleryItem.Photo -> null
+                            before == null || bLabel != aLabel ->
+                                GalleryItem.DateHeader(
+                                    label = aLabel ?: "",
+                                    anchorPhotoId = after.photo.id
+                                )
+                            else -> null
+                        }
                     }
-                }
         }
         .cachedIn(viewModelScope)
 

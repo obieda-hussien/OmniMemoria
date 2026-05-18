@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -50,6 +51,7 @@ fun photoSharedKey(photoId: Long) = "photo_$photoId"
 
 // ── Vibe chips placeholder data ──────────────────────────────────────────────────
 private data class VibeChip(val emoji: String, val label: String, val color: Color)
+private val SelectionBarBottomPadding = 148.dp
 private val placeholderVibes = listOf(
     VibeChip("🌅", "Golden\nHour",   AmberVibe),
     VibeChip("🌊", "Quiet\nMoments", Color(0xFF2D26A0)),
@@ -114,8 +116,8 @@ fun GalleryScreen(
 
             item(span = { GridItemSpan(maxLineSpan) }) {
                 SectionSubHeader(
-                    title     = "All Photos",
-                    count     = mediaStats.photoCount,
+                    title     = "All Media",
+                    count     = mediaStats.totalCount,
                     isLoading = groupedPhotos.loadState.refresh is LoadState.Loading,
                     onSort    = { /* TODO: open sort sheet */ },
                     modifier  = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -131,7 +133,7 @@ fun GalleryScreen(
                     count = groupedPhotos.itemCount,
                     key   = { index ->
                         when (val item = groupedPhotos.peek(index)) {
-                            is GalleryItem.DateHeader -> "header_${item.label}"
+                            is GalleryItem.DateHeader -> "header_${item.anchorPhotoId}"
                             is GalleryItem.Photo      -> "photo_${item.photo.id}"
                             null                      -> "placeholder_$index"
                         }
@@ -154,6 +156,7 @@ fun GalleryScreen(
                             PhotoCell(
                                 uri                 = photo.uri.toString(),
                                 photoId             = photo.id,
+                                isVideo             = photo.mimeType.startsWith("video/", ignoreCase = true),
                                 isSelected          = isSelected,
                                 isSelecting         = isSelecting,
                                 sharedTransitionScope   = sharedTransitionScope,
@@ -185,7 +188,7 @@ fun GalleryScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 80.dp)
+                .padding(bottom = SelectionBarBottomPadding)
         ) {
             SelectionActionBar(
                 count    = selectedIds.size,
@@ -337,6 +340,7 @@ private fun DateHeaderRow(label: String) {
 private fun PhotoCell(
     uri:                    String,
     photoId:                Long,
+    isVideo:                Boolean,
     isSelected:             Boolean,
     isSelecting:            Boolean,
     sharedTransitionScope:   SharedTransitionScope?,
@@ -380,6 +384,25 @@ private fun PhotoCell(
                 .fillMaxSize()
                 .then(sharedModifier)
         )
+
+        if (isVideo) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = "Video",
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
 
         AnimatedVisibility(
             visible = isSelecting,
