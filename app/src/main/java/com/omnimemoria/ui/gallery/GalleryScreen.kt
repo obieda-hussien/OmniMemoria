@@ -132,7 +132,7 @@ fun GalleryScreen(
                     count = groupedPhotos.itemCount,
                     key   = { index ->
                         when (val item = groupedPhotos.peek(index)) {
-                            is GalleryItem.DateHeader -> "header_${item.label}"
+                            is GalleryItem.DateHeader -> "header_${item.anchorPhotoId}"
                             is GalleryItem.Photo      -> "photo_${item.photo.id}"
                             null                      -> "placeholder_$index"
                         }
