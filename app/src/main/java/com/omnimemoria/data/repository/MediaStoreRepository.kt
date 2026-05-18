@@ -147,11 +147,11 @@ class MediaStoreRepository @Inject constructor(
             val end = start + 24L * 60 * 60 * 1000 - 1
 
             contentResolver.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                mediaCollection,
                 photoProjection,
-                "${MediaStore.Images.Media.DATE_TAKEN} BETWEEN ? AND ?",
-                arrayOf(start.toString(), end.toString()),
-                "${MediaStore.Images.Media.DATE_TAKEN} DESC"
+                "${MediaStore.MediaColumns.DATE_TAKEN} BETWEEN ? AND ? AND ($mediaSelection)",
+                arrayOf(start.toString(), end.toString(), *mediaSelectionArgs),
+                "${MediaStore.MediaColumns.DATE_TAKEN} DESC"
             )?.use { cursor ->
                 if (cursor.moveToFirst()) results.add(cursor.toMediaPhoto())
             }
