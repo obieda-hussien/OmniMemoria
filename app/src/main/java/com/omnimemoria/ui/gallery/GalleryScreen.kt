@@ -45,7 +45,7 @@ import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.ui.platform.LocalDensity
 
-// ── Shared Element key helper — مُستخدم في GalleryScreen و PhotoDetailScreen ─────
+// ── Shared Element key helper ────────────────────────────────────────────────────
 fun photoSharedKey(photoId: Long) = "photo_$photoId"
 
 // ── Vibe chips placeholder data ──────────────────────────────────────────────────
@@ -73,7 +73,6 @@ fun GalleryScreen(
     val columnCount   by viewModel.columnCount.collectAsState()
     val mediaStats    by viewModel.mediaStats.collectAsState()
 
-    // Shared element scope من الـ CompositionLocal
     val sharedTransitionScope   = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
 
@@ -152,10 +151,6 @@ fun GalleryScreen(
                             val photo      = item.photo
                             val isSelected = photo.id in selectedIds
 
-                            // ── Shared Element — gallery side ─────────────────
-                            // لو الـ scopes متاحين ندّي الـ cell الـ sharedElement modifier.
-                            // بالشكل ده لما المستخدم يضغط على صورة، Compose بتعمل
-                            // zoom-in ناعم من مكان الـ thumbnail لحد شاشة التفاصيل.
                             PhotoCell(
                                 uri                 = photo.uri.toString(),
                                 photoId             = photo.id,
@@ -183,20 +178,14 @@ fun GalleryScreen(
             }
         }
 
-        // ── FIX: Selection Action Bar فوق الـ Nav Bar ─────────────────────────
-        // المشكلة القديمة: الـ bar كانت بتتعرض بدون navigationBarsPadding فكانت
-        // بتتغطى وراء الـ System Navigation Bar ومش ممكن تتك عليها.
-        //
-        // الحل: نضيف .navigationBarsPadding() على الـ bar نفسها، وبما إن
-        // HomeScreen بيحط الـ GalleryScreen في Box كبيرة، الـ padding بيشتغل صح.
         AnimatedVisibility(
             visible  = isSelecting,
             enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit     = slideOutVertically(targetOffsetY  = { it }) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()   // ← الإصلاح
-                .padding(bottom = 80.dp)   // ← فوق الـ BottomNav بمسافة مريحة
+                .navigationBarsPadding()
+                .padding(bottom = 80.dp)
         ) {
             SelectionActionBar(
                 count    = selectedIds.size,
@@ -341,7 +330,7 @@ private fun DateHeaderRow(label: String) {
     }
 }
 
-// ── Photo Cell — مع Shared Element Transition ─────────────────────────────────────
+// ── Photo Cell ────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -361,17 +350,14 @@ private fun PhotoCell(
         label         = "photo_scale_$photoId"
     )
 
-    // ── Shared Element modifier ───────────────────────────────────────────────
-    // بنحسب الـ sharedElement modifier هنا وبنطبقه على الـ AsyncImage مباشرة —
-    // مش على الـ Box الخارجي عشان الـ clip والـ scale ميأثروش على الـ animation.
     val sharedModifier: Modifier = if (
         sharedTransitionScope   != null &&
         animatedVisibilityScope != null &&
-        !isSelecting               // أثناء الـ multi-select مفيش shared transition
+        !isSelecting
     ) {
         with(sharedTransitionScope) {
             Modifier.sharedElement(
-                state             = rememberSharedContentState(key = photoSharedKey(photoId)),
+                sharedContentState = rememberSharedContentState(key = photoSharedKey(photoId)),
                 animatedVisibilityScope = animatedVisibilityScope,
                 boundsTransform   = com.omnimemoria.ui.detail.photosBoundsTransform
             )
@@ -392,10 +378,9 @@ private fun PhotoCell(
             uri      = uri,
             modifier = Modifier
                 .fillMaxSize()
-                .then(sharedModifier)   // shared element على الصورة نفسها
+                .then(sharedModifier)
         )
 
-        // ── Selection overlay ─────────────────────────────────────────────────
         AnimatedVisibility(
             visible = isSelecting,
             enter   = fadeIn(tween(150)),
@@ -469,7 +454,7 @@ private fun SkeletonPhotoCell(size: Dp) {
     )
 }
 
-// ── Selection Action Bar — FIX: فوق الـ Nav Bar ──────────────────────────────────
+// ── Selection Action Bar ──────────────────────────────────────────────────────────
 
 @Composable
 private fun SelectionActionBar(
