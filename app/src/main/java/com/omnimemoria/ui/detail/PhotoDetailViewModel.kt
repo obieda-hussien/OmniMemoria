@@ -21,38 +21,46 @@ class PhotoDetailViewModel @Inject constructor(
     private val favoritesDao: FavoritesDao
 ) : ViewModel() {
 
-    // ── نافذة الصور المحيطة بالصورة المفتوحة (±30 صورة) ───────────────────────
-    private val _photoWindow = MutableStateFlow<List<MediaPhoto>>(emptyList())
-    val photoWindow: StateFlow<List<MediaPhoto>> = _photoWindow.asStateFlow()
+    // ── FIX 1: كل الصور بدون حد — مش ±30 ────────────────────────────────────
+    // السبب الجذري لمشكلة "31/31":
+    //   الكود القديم كان بيعمل subList(index-30, index+31) يعني بيحصر
+    //   الـ pager في نافذة ثابتة من 61 صورة بحد أقصى. كل مرة بتفتح صورة
+    //   في مكان مختلف من الـ gallery بيتغير الـ window وبتتغير الـ "31/31".
+    //
+    // الحل: نحمّل كل الصور غير الـ vault في list واحدة. على الأجهزة الحديثة
+    // قائمة بـ 10,000 MediaPhoto بتاخد ~5MB في الـ heap — مقبول تماماً.
+    // الـ HorizontalPager بيعرض صورة واحدة بس في كل وقت، يعني Coil مش
+    // هيحمّل أكثر من 3-5 Bitmaps في نفس الوقت (current + neighbors prefetch).
 
-    // ── حالة المفضلة للصورة الحالية ─────────────────────────────────────────────
+    private val _photoList  = MutableStateFlow<List<MediaPhoto>>(emptyList())
+    val photoList: StateFlow<List<MediaPhoto>> = _photoList.asStateFlow()
+
+    private val _initialPage = MutableStateFlow(0)
+    val initialPage: StateFlow<Int> = _initialPage.asStateFlow()
+
     private val _isFavorite = MutableStateFlow(false)
     val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
 
-    // ── تحميل نافذة 61 صورة حول الصورة المطلوبة ─────────────────────────────────
-    // FIX: كنا بنستخدم getAllPhotosSortedByDate() اللي بترجع كل الصور بما فيها
-    // صور الـ Vault. لما الـ Gallery بتستثني الـ Vault items، الـ index بيختلف
-    // فالصورة اللي بتفتح مش اللي اضغطت عليها.
-    //
-    // الحل: getAllNonVaultPhotosSortedByDate() بتعمل نفس الـ filter اللي
-    // بتعمله الـ PagingSource في الـ Gallery.
-    fun loadWindowAround(photoId: Long) {
+    // ── تحميل كل الصور مرة واحدة ─────────────────────────────────────────────
+    fun loadAllPhotos(photoId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            val all   = mediaStoreRepository.getAllNonVaultPhotosSortedByDate()
-            val index = all.indexOfFirst { it.id == photoId }
-            if (index < 0) {
-                // الصورة مش في القائمة — ممكن تكون vault item أو اتحذفت
-                // ارجع نافذة فيها الصورة وحدها عشان الـ UI ميكسرش
+            val all = mediaStoreRepository.getAllNonVaultPhotosSortedByDate()
+
+            // لو الصورة مش موجودة (vault item أو اتحذفت) → اعرضها وحدها
+            val targetIndex = all.indexOfFirst { it.id == photoId }
+            if (targetIndex < 0) {
                 val single = mediaStoreRepository.getPhotoById(photoId)
-                if (single != null) _photoWindow.value = listOf(single)
+                if (single != null) {
+                    _photoList.value  = listOf(single)
+                    _initialPage.value = 0
+                }
                 return@launch
             }
 
-            val from = (index - 30).coerceAtLeast(0)
-            val to   = (index + 31).coerceAtMost(all.size)
-            _photoWindow.value = all.subList(from, to)
+            _photoList.value   = all
+            _initialPage.value = targetIndex
 
-            // هل الصورة الحالية في المفضلة؟
+            // هل الصورة في المفضلة؟
             _isFavorite.value = favoritesDao.getAll().any { it.id == photoId }
         }
     }
@@ -71,7 +79,6 @@ class PhotoDetailViewModel @Inject constructor(
         }
     }
 
-    // ── جلب صورة واحدة بالـ ID ─────────────────────────────────────────────────
     suspend fun getPhoto(photoId: Long): MediaPhoto? = withContext(Dispatchers.IO) {
         mediaStoreRepository.getPhotoById(photoId)
     }
