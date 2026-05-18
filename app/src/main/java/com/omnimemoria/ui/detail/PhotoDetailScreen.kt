@@ -62,12 +62,6 @@ fun PhotoDetailScreen(
     }
 
     // ── FIX: pagerState صح ───────────────────────────────────────────────────
-    // ننتظر الـ photoList يتحمل (مش فاضي) قبل ما ننشئ الـ pagerState.
-    // لو عملنا rememberPagerState قبل التحميل، initialPage هيبقى 0 دايماً
-    // وCompose مش بتعيد-create الـ pagerState لو الـ key اتغير.
-    //
-    // الحل: نستخدم key(initialPage, photoList.size) عشان Compose تعيد
-    // إنشاء الـ pagerState لما البيانات تتحمل للمرة الأولى.
     if (photoList.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f))
@@ -75,8 +69,6 @@ fun PhotoDetailScreen(
         return
     }
 
-    // بعد التحميل ننشئ الـ pagerState بـ initialPage الصح مباشرة —
-    // مفيش حاجة لـ LaunchedEffect + scrollToPage لأن الـ key بيضمن re-create.
     key(initialPage, photoList.size) {
         PhotoPager(
             photoList  = photoList,
@@ -91,7 +83,7 @@ fun PhotoDetailScreen(
     }
 }
 
-// ── الـ Pager الفعلي — مفصول في composable منفصل عشان الـ key() يشتغل صح ────────
+// ── الـ Pager الفعلي ─────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -128,16 +120,14 @@ private fun PhotoPager(
             val photo = photoList.getOrNull(page)
             if (photo != null) {
                 // ── Shared Element — detail side ─────────────────────────────
-                // بنستخدم نفس الـ key اللي استخدمناه في GalleryScreen لكل صورة.
-                // لو الـ scope مش متاح (مثلاً في Preview) بنعرض عادي.
                 val imageModifier = if (
                     sharedTransitionScope != null &&
                     animatedVisibilityScope != null &&
-                    page == pagerState.currentPage   // shared element بس للصورة الحالية
+                    page == pagerState.currentPage
                 ) {
                     with(sharedTransitionScope) {
                         Modifier.sharedElement(
-                            state             = rememberSharedContentState(key = photoSharedKey(photo.id)),
+                            sharedContentState = rememberSharedContentState(key = photoSharedKey(photo.id)),
                             animatedVisibilityScope = animatedVisibilityScope,
                             boundsTransform   = photosBoundsTransform
                         )
@@ -201,9 +191,7 @@ private fun PhotoPager(
             )
         }
 
-        // ══ Page Counter — FIX: عداد صحيح بيعكس كل الصور ════════════════════
-        // القديم كان بيعرض "31 / 31" لأن الـ window كانت 31 صورة فقط.
-        // دلوقتي photoList.size = كل الصور، عداد حقيقي.
+        // ══ Page Counter ══════════════════════════════════════════════════════
         AnimatedVisibility(
             visible  = showChrome && photoList.size > 1,
             enter    = fadeIn(),
@@ -319,19 +307,12 @@ private fun DetailTopBar(
     }
 }
 
-// ── Metadata Card — FIX: يستخدم effectiveDateMs مش dateTaken مباشرة ─────────────
+// ── Metadata Card ─────────────────────────────────────────────────────────────────
 
 @Composable
 private fun PhotoMetadataCard(photo: MediaPhoto?) {
     val context = LocalContext.current
 
-    // ── FIX: تاريخ الصورة المجهول ────────────────────────────────────────────
-    // الكود القديم كان بيستخدم photo.dateTaken مباشرة —
-    // Snapchat وكثير من التطبيقات بتحفظ الصور بـ dateTaken = 0،
-    // فكان بيظهر "Unknown date".
-    //
-    // الحل: effectiveDateMs بيجرب dateTaken أولاً، لو 0 يجرب
-    // dateModified (seconds → ms)، لو 0 يجرب dateAdded.
     val dateText = photo?.effectiveDateMs?.takeIf { it > 0 }?.let {
         SimpleDateFormat("EEE, MMM d yyyy  •  h:mm a", Locale.getDefault()).format(Date(it))
     } ?: "Unknown date"
@@ -491,7 +472,7 @@ private fun BottomActionBtn(
     }
 }
 
-// ── Shared Element Helpers — مُشتركة مع GalleryScreen ────────────────────────────
+// ── Shared Element Helpers ───────────────────────────────────────────────────────
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 internal val photosBoundsTransform = BoundsTransform { _, _ ->
