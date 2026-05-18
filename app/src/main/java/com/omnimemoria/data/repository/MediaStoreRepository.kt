@@ -192,29 +192,32 @@ class MediaStoreRepository @Inject constructor(
         return results
     }
 
-    // ══ 6. كل الصور مرتبة بالتاريخ — للـ PhotoDetail swipe window ══════════════
-    fun getAllPhotosSortedByDate(): List<MediaPhoto> {
+    // ══ 6. كل الصور مرتبة بناءً على الإعدادات — للـ PhotoDetail swipe window ══════════════
+    fun getAllPhotos(sortConfig: SortConfig): List<MediaPhoto> {
         val results = mutableListOf<MediaPhoto>()
         contentResolver.query(
             mediaCollection,
             photoProjection,
-            mediaSelection,
-            mediaSelectionArgs,
-            "${MediaStore.MediaColumns.DATE_TAKEN} DESC, " +
-                "${MediaStore.MediaColumns.DATE_ADDED} DESC, " +
-                "${MediaStore.MediaColumns._ID} DESC"
+            // تمرير null للـ limit و offset لجلب كل الصور
+            buildQueryArgs(sortConfig, null, null),
+            null
         )?.use { cursor ->
             while (cursor.moveToNext()) results += cursor.toMediaPhoto()
         }
-        return results
+        
+        if (sortConfig.sortBy != SortBy.RESOLUTION) return results
+        return when (sortConfig.sortOrder) {
+            SortOrder.ASCENDING  -> results.sortedBy { it.width.toLong() * it.height }
+            SortOrder.DESCENDING -> results.sortedByDescending { it.width.toLong() * it.height }
+        }
     }
 
     // ══ 7. All non-vault photos — unlimited swipe source for PhotoDetail ═════════
     // Filters out vault items so the pager index matches the gallery grid exactly.
-    suspend fun getAllNonVaultPhotosSortedByDate(): List<MediaPhoto> =
+    suspend fun getAllNonVaultPhotos(sortConfig: SortConfig): List<MediaPhoto> =
         withContext(Dispatchers.IO) {
             val vaultIds = photoIntelligenceDao.getVaultPhotoIds().toHashSet()
-            getAllPhotosSortedByDate().filterNot { it.id in vaultIds }
+            getAllPhotos(sortConfig).filterNot { it.id in vaultIds }
         }
 
     // ══ Paging ══════════════════════════════════════════════════════════════════
@@ -371,7 +374,7 @@ class MediaStoreRepository @Inject constructor(
         }
 
         @RequiresApi(Build.VERSION_CODES.O)
-        private fun buildQueryArgs(sc: SortConfig, limit: Int, offset: Int): Bundle {
+        private fun buildQueryArgs(sc: SortConfig, limit: Int?, offset: Int?): Bundle {
             val (col, fallback) = when (sc.sortBy) {
                 SortBy.DATE_TAKEN      -> MediaStore.MediaColumns.DATE_TAKEN    to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.DATE_MODIFIED   -> MediaStore.MediaColumns.DATE_MODIFIED to MediaStore.MediaColumns.DATE_ADDED
@@ -415,8 +418,10 @@ class MediaStoreRepository @Inject constructor(
                     )
                     putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, dir)
                 }
-                putInt(ContentResolver.QUERY_ARG_LIMIT,  limit)
-                putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
+                
+                if (limit != null) putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
+                if (offset != null) putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
+                
                 putString(ContentResolver.QUERY_ARG_SQL_SELECTION, mediaSelection)
                 putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, mediaSelectionArgs)
             }
