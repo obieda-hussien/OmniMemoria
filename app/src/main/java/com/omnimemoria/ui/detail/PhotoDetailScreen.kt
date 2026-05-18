@@ -131,14 +131,14 @@ private fun PhotoPager(
         HorizontalPager(
             state    = pagerState,
             modifier = Modifier.fillMaxSize(),
-            beyondViewportPageCount = 0
+            beyondViewportPageCount = 1
         ) { page ->
             val photo = photoList.getOrNull(page)
             if (photo != null) {
                 val imageRequest = remember(photo.id, photo.uri) {
                     ImageRequest.Builder(context)
                         .data(photo.uri)
-                        .memoryCachePolicy(CachePolicy.DISABLED)
+                        .memoryCachePolicy(CachePolicy.READ_ONLY)
                         .build()
                 }
 
