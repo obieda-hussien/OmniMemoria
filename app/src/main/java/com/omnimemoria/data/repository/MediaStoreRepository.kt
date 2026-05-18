@@ -399,9 +399,11 @@ class MediaStoreRepository @Inject constructor(
                         val name = cursor.getString(bnC) ?: "Unknown"
                         val pid  = cursor.getLong(idC)
                         val dt   = cursor.getLong(dtC)
-                        val mime = cursor.getStringOrEmpty(MediaStore.MediaColumns.MIME_TYPE)
-                        val mediaType = cursor.getIntOrNull(MediaStore.Files.FileColumns.MEDIA_TYPE)
-                        val uri  = contentUriForMime(pid, mime, mediaType)
+                        val uri  = contentUriForMime(
+                            pid,
+                            cursor.getStringOrEmpty(MediaStore.MediaColumns.MIME_TYPE),
+                            cursor.getIntOrNull(MediaStore.Files.FileColumns.MEDIA_TYPE)
+                        )
                         val ex = map[bid]
                         if (ex == null) map[bid] = FolderAccumulator(bid, name, uri, 1, dt)
                         else {

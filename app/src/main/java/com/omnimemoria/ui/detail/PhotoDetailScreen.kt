@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
-import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
@@ -142,7 +141,6 @@ private fun PhotoPager(
                 val imageRequest = remember(photo.id, photo.uri) {
                     ImageRequest.Builder(context)
                         .data(photo.uri)
-                        .memoryCachePolicy(CachePolicy.ENABLED)
                         .build()
                 }
 

@@ -46,11 +46,11 @@ fun VideoPlayerScreen(
 ) {
     val context = LocalContext.current
     val mediaController = remember(context) { MediaController(context) }
-    var mediaPhoto by remember(mediaId) { mutableStateOf<com.omnimemoria.domain.model.MediaPhoto?>(null) }
+    var mediaItem by remember(mediaId) { mutableStateOf<com.omnimemoria.domain.model.MediaPhoto?>(null) }
     var loadedVideoId by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(mediaId) {
-        mediaPhoto = viewModel.getPhoto(mediaId)
+        mediaItem = viewModel.getPhoto(mediaId)
     }
 
     DisposableEffect(mediaController) {
@@ -64,7 +64,7 @@ fun VideoPlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        val item = mediaPhoto
+        val item = mediaItem
         if (item == null) {
             CircularProgressIndicator(
                 color = Color.White.copy(alpha = 0.8f),
@@ -111,7 +111,7 @@ fun VideoPlayerScreen(
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
-            mediaPhoto?.name?.let { fileName ->
+            mediaItem?.name?.let { fileName ->
                 Text(
                     text = fileName.substringBeforeLast('.'),
                     color = Color.White.copy(alpha = 0.9f),
