@@ -399,8 +399,9 @@ class MediaStoreRepository @Inject constructor(
                         val name = cursor.getString(bnC) ?: "Unknown"
                         val pid  = cursor.getLong(idC)
                         val dt   = cursor.getLong(dtC)
-                        val mime = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE))
-                        val uri  = contentUriForMime(pid, mime)
+                        val mime = cursor.getStringOrEmpty(MediaStore.MediaColumns.MIME_TYPE)
+                        val mediaType = cursor.getIntOrNull(MediaStore.Files.FileColumns.MEDIA_TYPE)
+                        val uri  = contentUriForMime(pid, mime, mediaType)
                         val ex = map[bid]
                         if (ex == null) map[bid] = FolderAccumulator(bid, name, uri, 1, dt)
                         else {
@@ -418,9 +419,10 @@ class MediaStoreRepository @Inject constructor(
         fun android.database.Cursor.toMediaPhoto(): MediaPhoto {
             val id = getLong(getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
             val mime = getStringOrEmpty(MediaStore.MediaColumns.MIME_TYPE)
+            val mediaType = getIntOrNull(MediaStore.Files.FileColumns.MEDIA_TYPE)
             return MediaPhoto(
                 id           = id,
-                uri          = contentUriForMime(id, mime),
+                uri          = contentUriForMime(id, mime, mediaType),
                 name         = getStringOrEmpty(MediaStore.MediaColumns.DISPLAY_NAME),
                 size         = getLongOrZero(MediaStore.MediaColumns.SIZE),
                 mimeType     = mime,
@@ -434,8 +436,10 @@ class MediaStoreRepository @Inject constructor(
             )
         }
 
-        private fun contentUriForMime(id: Long, mimeType: String): Uri {
-            val base = if (mimeType.startsWith("video/", ignoreCase = true)) {
+        private fun contentUriForMime(id: Long, mimeType: String, mediaType: Int?): Uri {
+            val isVideo = mimeType.startsWith("video/", ignoreCase = true) ||
+                mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO
+            val base = if (isVideo) {
                 MediaStore.Video.Media.EXTERNAL_CONTENT_URI
             } else {
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI
@@ -456,6 +460,8 @@ class MediaStoreRepository @Inject constructor(
             getColumnIndex(c).let { if (it >= 0) getLong(it) else 0L }
         private fun android.database.Cursor.getIntOrZero(c: String) =
             getColumnIndex(c).let { if (it >= 0) getInt(it) else 0 }
+        private fun android.database.Cursor.getIntOrNull(c: String) =
+            getColumnIndex(c).let { if (it >= 0 && !isNull(it)) getInt(it) else null }
         private fun android.database.Cursor.getDoubleOrNull(c: String) =
             getColumnIndex(c).let { if (it >= 0 && !isNull(it)) getDouble(it) else null }
     }

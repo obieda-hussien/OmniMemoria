@@ -168,7 +168,7 @@ private fun PhotoPager(
                         .fillMaxSize()
                         .then(imageModifier)
 
-                    if (photo.mimeType.startsWith("video/", ignoreCase = true)) {
+                    if (photo.isVideoMedia()) {
                         Box(modifier = mediaModifier.clickable { showChrome = !showChrome }) {
                             AsyncImage(
                                 model              = imageRequest,
@@ -421,7 +421,7 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
         }
         photo?.mimeType?.takeIf { it.isNotBlank() }?.let { mime ->
             MetadataRow(
-                if (mime.startsWith("video/", ignoreCase = true)) Icons.Outlined.VideoFile else Icons.Outlined.Image,
+                if (photo?.isVideoMedia() == true) Icons.Outlined.VideoFile else Icons.Outlined.Image,
                 "Format",
                 mime.uppercase().replace("IMAGE/", "").replace("VIDEO/", "")
             )
@@ -538,3 +538,6 @@ internal val photosBoundsTransform = BoundsTransform { _, _ ->
         stiffness    = Spring.StiffnessMediumLow
     )
 }
+
+private fun MediaPhoto.isVideoMedia(): Boolean =
+    mimeType.startsWith("video/", ignoreCase = true)
