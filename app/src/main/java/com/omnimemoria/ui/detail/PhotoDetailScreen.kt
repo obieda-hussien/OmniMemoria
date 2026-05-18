@@ -26,11 +26,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil3.compose.AsyncImage
 import com.omnimemoria.domain.model.MediaPhoto
+import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
+import com.omnimemoria.ui.LocalSharedTransitionScope
+import com.omnimemoria.ui.gallery.photoSharedKey
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -38,6 +41,7 @@ import java.util.Locale
 
 // ─────────────────────────────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun PhotoDetailScreen(
     photoId:   Long,
@@ -48,52 +52,65 @@ fun PhotoDetailScreen(
 
     val haptic      = LocalHapticFeedback.current
     val context     = LocalContext.current
-    val photoWindow by viewModel.photoWindow.collectAsState()
+    val photoList   by viewModel.photoList.collectAsState()
+    val initialPage by viewModel.initialPage.collectAsState()
     val isFavorite  by viewModel.isFavorite.collectAsState()
 
+    // هنحمّل مرة واحدة فقط لما الـ composable يتفتح أول مرة
     LaunchedEffect(photoId) {
-        viewModel.loadWindowAround(photoId)
+        viewModel.loadAllPhotos(photoId)
     }
 
-    // ── FIX: pagerState ─────────────────────────────────────────────────────────
-    // Root cause of "wrong photo" bug:
+    // ── FIX: pagerState صح ───────────────────────────────────────────────────
+    // ننتظر الـ photoList يتحمل (مش فاضي) قبل ما ننشئ الـ pagerState.
+    // لو عملنا rememberPagerState قبل التحميل، initialPage هيبقى 0 دايماً
+    // وCompose مش بتعيد-create الـ pagerState لو الـ key اتغير.
     //
-    //   1. loadWindowAround() is async — when pagerState is first created, photoWindow
-    //      is still empty so initialPage = 0 always (first photo in window, not the
-    //      one the user tapped).
-    //
-    //   2. Even if we calculate initialPage from the empty list correctly (0), once
-    //      the window loads Compose doesn't re-create pagerState (it's remembered),
-    //      so the pager stays on page 0.
-    //
-    // Fix:
-    //   • Start pagerState at 0 (window is empty at first creation anyway).
-    //   • Add a LaunchedEffect that fires once when photoWindow loads, calculates
-    //     the real target page, and calls scrollToPage() without animation so the
-    //     user sees the correct photo immediately.
-    //   • Once scrolled to the right photo, subsequent window loads (should not
-    //     happen) are guarded by the `hasScrolledToInitialPage` flag so we don't
-    //     jump back unexpectedly during swipe.
+    // الحل: نستخدم key(initialPage, photoList.size) عشان Compose تعيد
+    // إنشاء الـ pagerState لما البيانات تتحمل للمرة الأولى.
+    if (photoList.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f))
+        }
+        return
+    }
+
+    // بعد التحميل ننشئ الـ pagerState بـ initialPage الصح مباشرة —
+    // مفيش حاجة لـ LaunchedEffect + scrollToPage لأن الـ key بيضمن re-create.
+    key(initialPage, photoList.size) {
+        PhotoPager(
+            photoList  = photoList,
+            startPage  = initialPage,
+            isFavorite = isFavorite,
+            onBack     = onBack,
+            onFavorite = { id ->
+                viewModel.toggleFavorite(id)
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
+        )
+    }
+}
+
+// ── الـ Pager الفعلي — مفصول في composable منفصل عشان الـ key() يشتغل صح ────────
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun PhotoPager(
+    photoList:  List<MediaPhoto>,
+    startPage:  Int,
+    isFavorite: Boolean,
+    onBack:     () -> Unit,
+    onFavorite: (Long) -> Unit
+) {
+    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
 
     val pagerState = rememberPagerState(
-        initialPage = 0,
-        pageCount   = { photoWindow.size.coerceAtLeast(1) }
+        initialPage = startPage,
+        pageCount   = { photoList.size }
     )
 
-    var hasScrolledToInitialPage by remember { mutableStateOf(false) }
-
-    LaunchedEffect(photoWindow) {
-        if (photoWindow.isNotEmpty() && !hasScrolledToInitialPage) {
-            val targetPage = photoWindow.indexOfFirst { it.id == photoId }.coerceAtLeast(0)
-            // scrollToPage (no animation) so the user sees the right photo instantly,
-            // not a visible snap from page 0.
-            pagerState.scrollToPage(targetPage)
-            hasScrolledToInitialPage = true
-        }
-    }
-
-    // The photo currently visible in the pager
-    val currentPhoto = photoWindow.getOrNull(pagerState.currentPage)
+    val currentPhoto = photoList.getOrNull(pagerState.currentPage)
 
     var showChrome   by remember { mutableStateOf(true) }
     var showMetadata by remember { mutableStateOf(false) }
@@ -104,27 +121,43 @@ fun PhotoDetailScreen(
             .background(Color.Black)
     ) {
         // ══ HorizontalPager ═══════════════════════════════════════════════════
-        if (photoWindow.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f))
-            }
-        } else {
-            HorizontalPager(
-                state    = pagerState,
-                modifier = Modifier.fillMaxSize()
-            ) { page ->
-                val photo = photoWindow.getOrNull(page)
-                if (photo != null) {
-                    ZoomableAsyncImage(
-                        model              = photo.uri,
-                        contentDescription = photo.name,
-                        modifier           = Modifier.fillMaxSize()
-                    )
+        HorizontalPager(
+            state    = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            val photo = photoList.getOrNull(page)
+            if (photo != null) {
+                // ── Shared Element — detail side ─────────────────────────────
+                // بنستخدم نفس الـ key اللي استخدمناه في GalleryScreen لكل صورة.
+                // لو الـ scope مش متاح (مثلاً في Preview) بنعرض عادي.
+                val imageModifier = if (
+                    sharedTransitionScope != null &&
+                    animatedVisibilityScope != null &&
+                    page == pagerState.currentPage   // shared element بس للصورة الحالية
+                ) {
+                    with(sharedTransitionScope) {
+                        Modifier.sharedElement(
+                            state             = rememberSharedContentState(key = photoSharedKey(photo.id)),
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            boundsTransform   = photosBoundsTransform
+                        )
+                    }
+                } else {
+                    Modifier
                 }
+
+                ZoomableAsyncImage(
+                    model              = photo.uri,
+                    contentDescription = photo.name,
+                    modifier           = Modifier
+                        .fillMaxSize()
+                        .then(imageModifier),
+                    onClick            = { showChrome = !showChrome }
+                )
             }
         }
 
-        // ══ Blurred Background Gradient ════════════════════════════════════════
+        // ══ Gradient overlays ═════════════════════════════════════════════════
         AnimatedVisibility(
             visible  = showChrome,
             enter    = fadeIn(tween(200)),
@@ -137,22 +170,18 @@ fun PhotoDetailScreen(
                         .fillMaxWidth()
                         .height(160.dp)
                         .align(Alignment.TopCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
-                            )
-                        )
+                        .background(Brush.verticalGradient(
+                            listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
+                        ))
                 )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(220.dp)
                         .align(Alignment.BottomCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
-                            )
-                        )
+                        .background(Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                        ))
                 )
             }
         }
@@ -162,26 +191,21 @@ fun PhotoDetailScreen(
             visible  = showChrome,
             enter    = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
             exit     = slideOutVertically(targetOffsetY  = { -it }) + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
         ) {
             DetailTopBar(
                 photo       = currentPhoto,
                 onBack      = onBack,
-                onInfo      = {
-                    showMetadata = !showMetadata
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                },
+                onInfo      = { showMetadata = !showMetadata },
                 showingInfo = showMetadata
             )
         }
 
-        // ══ Page Indicator ════════════════════════════════════════════════════
-        // FIX: The indicator now shows the correct page because pagerState has been
-        // scrolled to the right photo via the LaunchedEffect above.
+        // ══ Page Counter — FIX: عداد صحيح بيعكس كل الصور ════════════════════
+        // القديم كان بيعرض "31 / 31" لأن الـ window كانت 31 صورة فقط.
+        // دلوقتي photoList.size = كل الصور، عداد حقيقي.
         AnimatedVisibility(
-            visible  = showChrome && photoWindow.size > 1,
+            visible  = showChrome && photoList.size > 1,
             enter    = fadeIn(),
             exit     = fadeOut(),
             modifier = Modifier
@@ -189,10 +213,10 @@ fun PhotoDetailScreen(
                 .padding(top = 56.dp)
         ) {
             Text(
-                text      = "${pagerState.currentPage + 1} / ${photoWindow.size}",
-                color     = Color.White.copy(alpha = 0.7f),
-                style     = MaterialTheme.typography.labelSmall,
-                modifier  = Modifier
+                text     = "${pagerState.currentPage + 1} / ${photoList.size}",
+                color    = Color.White.copy(alpha = 0.7f),
+                style    = MaterialTheme.typography.labelSmall,
+                modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.Black.copy(alpha = 0.3f))
                     .padding(horizontal = 8.dp, vertical = 3.dp)
@@ -216,16 +240,11 @@ fun PhotoDetailScreen(
             visible  = showChrome,
             enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit     = slideOutVertically(targetOffsetY  = { it }) + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
         ) {
             DetailBottomBar(
                 isFavorite = isFavorite,
-                onFavorite = {
-                    viewModel.toggleFavorite(currentPhoto?.id ?: return@DetailBottomBar)
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                },
+                onFavorite = { onFavorite(currentPhoto?.id ?: return@DetailBottomBar) },
                 onShare    = { /* TODO */ },
                 onDelete   = { /* TODO */ },
                 onEdit     = { /* TODO */ }
@@ -276,7 +295,7 @@ private fun DetailTopBar(
                 modifier   = Modifier
                     .weight(1f)
                     .padding(horizontal = 8.dp),
-                textAlign  = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign  = TextAlign.Center
             )
         }
 
@@ -293,20 +312,27 @@ private fun DetailTopBar(
             Icon(
                 imageVector        = Icons.Outlined.Info,
                 contentDescription = "Info",
-                tint               = if (showingInfo) Color.White else Color.White.copy(alpha = 0.8f),
+                tint               = Color.White.copy(alpha = if (showingInfo) 1f else 0.8f),
                 modifier           = Modifier.size(22.dp)
             )
         }
     }
 }
 
-// ── Metadata Card ─────────────────────────────────────────────────────────────────
+// ── Metadata Card — FIX: يستخدم effectiveDateMs مش dateTaken مباشرة ─────────────
 
 @Composable
 private fun PhotoMetadataCard(photo: MediaPhoto?) {
     val context = LocalContext.current
 
-    val dateText = photo?.dateTaken?.takeIf { it > 0 }?.let {
+    // ── FIX: تاريخ الصورة المجهول ────────────────────────────────────────────
+    // الكود القديم كان بيستخدم photo.dateTaken مباشرة —
+    // Snapchat وكثير من التطبيقات بتحفظ الصور بـ dateTaken = 0،
+    // فكان بيظهر "Unknown date".
+    //
+    // الحل: effectiveDateMs بيجرب dateTaken أولاً، لو 0 يجرب
+    // dateModified (seconds → ms)، لو 0 يجرب dateAdded.
+    val dateText = photo?.effectiveDateMs?.takeIf { it > 0 }?.let {
         SimpleDateFormat("EEE, MMM d yyyy  •  h:mm a", Locale.getDefault()).format(Date(it))
     } ?: "Unknown date"
 
@@ -356,7 +382,11 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
             MetadataRow(Icons.Outlined.LocationOn, "Location", locationText)
         }
         photo?.mimeType?.takeIf { it.isNotBlank() }?.let { mime ->
-            MetadataRow(Icons.Outlined.Image, "Format", mime.uppercase().replace("IMAGE/", ""))
+            MetadataRow(
+                Icons.Outlined.Image,
+                "Format",
+                mime.uppercase().replace("IMAGE/", "")
+            )
         }
     }
 }
@@ -411,7 +441,7 @@ private fun DetailBottomBar(
     )
 
     Row(
-        modifier              = Modifier
+        modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = 28.dp, vertical = 16.dp),
@@ -426,8 +456,8 @@ private fun DetailBottomBar(
             scale   = heartScale,
             onClick = onFavorite
         )
-        BottomActionBtn(icon = Icons.Outlined.Edit,   label = "Edit",   tint = Color.White,          onClick = onEdit)
-        BottomActionBtn(icon = Icons.Outlined.Delete, label = "Delete", tint = Color(0xFFFF6B6B),    onClick = onDelete)
+        BottomActionBtn(icon = Icons.Outlined.Edit,   label = "Edit",   tint = Color.White,       onClick = onEdit)
+        BottomActionBtn(icon = Icons.Outlined.Delete, label = "Delete", tint = Color(0xFFFF6B6B), onClick = onDelete)
     }
 }
 
@@ -450,7 +480,7 @@ private fun BottomActionBtn(
             imageVector        = icon,
             contentDescription = label,
             tint               = tint,
-            modifier           = Modifier.size(26.dp)
+            modifier           = Modifier.size(26.dp * scale)
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
@@ -459,4 +489,14 @@ private fun BottomActionBtn(
             style = MaterialTheme.typography.labelSmall
         )
     }
+}
+
+// ── Shared Element Helpers — مُشتركة مع GalleryScreen ────────────────────────────
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+internal val photosBoundsTransform = BoundsTransform { _, _ ->
+    spring(
+        dampingRatio = Spring.DampingRatioLowBouncy,
+        stiffness    = Spring.StiffnessMediumLow
+    )
 }
