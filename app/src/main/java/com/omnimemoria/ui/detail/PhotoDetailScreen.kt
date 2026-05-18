@@ -104,7 +104,7 @@ private fun PhotoPager(
         pageCount   = { photoList.size }
     )
 
-    LaunchedEffect(photoList.size, pagerState.currentPage) {
+    LaunchedEffect(photoList.size) {
         val lastIndex = photoList.lastIndex
         if (lastIndex >= 0 && pagerState.currentPage > lastIndex) {
             pagerState.scrollToPage(lastIndex)
