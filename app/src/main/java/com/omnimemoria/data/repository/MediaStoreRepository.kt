@@ -70,6 +70,7 @@ class MediaStoreRepository @Inject constructor(
             arrayOf(
                 MediaStore.MediaColumns.SIZE,
                 MediaStore.MediaColumns.BUCKET_ID,
+                MediaStore.MediaColumns.MIME_TYPE,
                 MediaStore.Files.FileColumns.MEDIA_TYPE
             ),
             mediaSelection,
@@ -78,11 +79,15 @@ class MediaStoreRepository @Inject constructor(
         )?.use { cursor ->
             val si = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
             val bi = cursor.getColumnIndex(MediaStore.MediaColumns.BUCKET_ID)
+            val pi = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
             val mi = cursor.getColumnIndex(MediaStore.Files.FileColumns.MEDIA_TYPE)
             while (cursor.moveToNext()) {
                 val size = if (si >= 0) cursor.getLong(si) else 0L
                 val mediaType = if (mi >= 0 && !cursor.isNull(mi)) cursor.getInt(mi) else null
-                if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) {
+                val mimeType = if (pi >= 0 && !cursor.isNull(pi)) cursor.getString(pi).orEmpty() else ""
+                val isVideo = mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO ||
+                    (mediaType == null && mimeType.startsWith("video/", ignoreCase = true))
+                if (isVideo) {
                     videoCount++
                     videoSize += size
                 } else {
