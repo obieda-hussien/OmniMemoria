@@ -314,8 +314,6 @@ class MediaStoreRepository @Inject constructor(
             MediaStore.MediaColumns.DATE_ADDED,      // seconds since epoch
             MediaStore.MediaColumns.WIDTH,
             MediaStore.MediaColumns.HEIGHT,
-            MediaStore.Images.Media.LATITUDE,
-            MediaStore.Images.Media.LONGITUDE,
             MediaStore.MediaColumns.BUCKET_ID,
             MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
             MediaStore.Files.FileColumns.MEDIA_TYPE
