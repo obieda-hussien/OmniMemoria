@@ -66,6 +66,7 @@ fun FilterSortBottomSheet(
         val max = bytesToNormalized(pendingFilterConfig.maxSizeBytes ?: MAX_SIZE_BYTES)
         min..max
     }
+    val hasChanges = pendingSortConfig != activeSortConfig || pendingFilterConfig != activeFilterConfig
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -129,13 +130,7 @@ fun FilterSortBottomSheet(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val typeOptions = listOf(
-                    MediaType.IMAGE to "Images",
-                    MediaType.VIDEO to "Video",
-                    MediaType.GIF to "GIF",
-                    MediaType.RAW to "RAW"
-                )
-                typeOptions.forEach { (type, label) ->
+                TYPE_OPTIONS.forEach { (type, label) ->
                     FilterChip(
                         selected = type in pendingFilterConfig.mediaTypes,
                         onClick = {
@@ -157,16 +152,7 @@ fun FilterSortBottomSheet(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val mimeOptions = listOf(
-                    "image/jpeg" to "JPEG",
-                    "image/png" to "PNG",
-                    "image/webp" to "WEBP",
-                    "image/heic" to "HEIC",
-                    "image/avif" to "AVIF",
-                    "video/mp4" to "MP4",
-                    "video/x-matroska" to "MKV"
-                )
-                mimeOptions.forEach { (mimeType, label) ->
+                MIME_OPTIONS.forEach { (mimeType, label) ->
                     FilterChip(
                         selected = mimeType in pendingFilterConfig.mimeTypes,
                         onClick = {
@@ -264,7 +250,7 @@ fun FilterSortBottomSheet(
             Spacer(modifier = Modifier.height(28.dp))
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
-                    selected = pendingSortConfig == SortConfig() && pendingFilterConfig == FilterConfig(),
+                    selected = false,
                     onClick = {
                         pendingSortConfig = SortConfig()
                         pendingFilterConfig = FilterConfig()
@@ -274,10 +260,11 @@ fun FilterSortBottomSheet(
                     label = { Text("Reset") }
                 )
                 SegmentedButton(
-                    selected = pendingSortConfig != activeSortConfig || pendingFilterConfig != activeFilterConfig,
+                    selected = false,
                     onClick = {
                         onApply(pendingSortConfig, pendingFilterConfig)
                     },
+                    enabled = hasChanges,
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                     label = { Text("✓ Apply") }
                 )
@@ -370,7 +357,23 @@ private enum class DateFilterOption(val label: String) {
 }
 
 private const val MB = 1024L * 1024L
+// Requested UX scope for basic filtering is 0..500MB.
 private const val MAX_SIZE_BYTES = 500L * MB
+private val TYPE_OPTIONS = listOf(
+    MediaType.IMAGE to "Images",
+    MediaType.VIDEO to "Video",
+    MediaType.GIF to "GIF",
+    MediaType.RAW to "RAW"
+)
+private val MIME_OPTIONS = listOf(
+    "image/jpeg" to "JPEG",
+    "image/png" to "PNG",
+    "image/webp" to "WEBP",
+    "image/heic" to "HEIC",
+    "image/avif" to "AVIF",
+    "video/mp4" to "MP4",
+    "video/x-matroska" to "MKV"
+)
 
 private fun normalizedToBytes(value: Float): Long {
     if (value <= 0f) return 0L
@@ -386,7 +389,7 @@ private fun bytesToNormalized(bytes: Long): Float {
 
 private fun formatSizeValue(sizeBytes: Long): String = when {
     sizeBytes < MB -> "<1MB"
-    else -> "${(sizeBytes / MB).coerceAtMost(500)}MB"
+    else -> "${(sizeBytes / MB).coerceAtMost(MAX_SIZE_BYTES / MB)}MB"
 }
 
 private fun getCurrentWeekRange(): Pair<Long, Long> {
