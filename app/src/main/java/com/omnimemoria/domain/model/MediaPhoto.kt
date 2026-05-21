@@ -17,7 +17,8 @@ data class MediaPhoto(
     val width: Int,
     val height: Int,
     val latitude: Double?,
-    val longitude: Double?
+    val longitude: Double?,
+    val isFavorite: Boolean = false
 ) {
     /**
      * Best-effort display timestamp in milliseconds.

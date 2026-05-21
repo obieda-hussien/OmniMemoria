@@ -1,6 +1,7 @@
 package com.omnimemoria.ui.detail
 
 import android.text.format.Formatter
+import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -24,7 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -53,11 +54,11 @@ fun PhotoDetailScreen(
 ) {
     BackHandler(onBack = onBack)
 
-    val haptic      = LocalHapticFeedback.current
+    val view        = LocalView.current
     val context     = LocalContext.current
     val photoList   by viewModel.photoList.collectAsState()
     val initialPage by viewModel.initialPage.collectAsState()
-    val isFavorite  by viewModel.isFavorite.collectAsState()
+    val favoriteIds by viewModel.favoriteIds.collectAsState()
 
     // هنحمّل مرة واحدة فقط لما الـ composable يتفتح أول مرة
     LaunchedEffect(photoId) {
@@ -76,12 +77,12 @@ fun PhotoDetailScreen(
         PhotoPager(
             photoList  = photoList,
             startPage  = initialPage,
-            isFavorite = isFavorite,
+            favoriteIds = favoriteIds,
             onBack     = onBack,
             onOpenVideo = onOpenVideo,
             onFavorite = { id ->
                 viewModel.toggleFavorite(id)
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
             }
         )
     }
@@ -94,7 +95,7 @@ fun PhotoDetailScreen(
 private fun PhotoPager(
     photoList:  List<MediaPhoto>,
     startPage:  Int,
-    isFavorite: Boolean,
+    favoriteIds: Set<Long>,
     onBack:     () -> Unit,
     onOpenVideo: (mediaId: Long) -> Unit,
     onFavorite: (Long) -> Unit
@@ -121,6 +122,7 @@ private fun PhotoPager(
     }
 
     val currentPhoto = photoList.getOrNull(pagerState.currentPage)
+    val isFavorite = currentPhoto?.id?.let { it in favoriteIds } == true
 
     var showChrome   by remember { mutableStateOf(true) }
     var showMetadata by remember { mutableStateOf(false) }
@@ -470,8 +472,8 @@ private fun DetailBottomBar(
     val heartScale by animateFloatAsState(
         targetValue   = if (isFavorite) 1.25f else 1f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness    = Spring.StiffnessMedium
+            dampingRatio = 0.3f,
+            stiffness    = 400f
         ),
         label = "heart_scale"
     )

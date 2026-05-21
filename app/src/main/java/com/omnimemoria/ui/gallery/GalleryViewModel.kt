@@ -7,6 +7,7 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.insertSeparators
 import androidx.paging.map
+import com.omnimemoria.data.repository.FavoritesRepository
 import com.omnimemoria.data.repository.MediaStats
 import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.data.repository.SortPresetRepository
@@ -93,7 +94,8 @@ private fun buildHeaderLabel(title: String, count: Int): String {
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
     private val mediaStoreRepository: MediaStoreRepository,
-    private val sortPresetRepository:  SortPresetRepository
+    private val sortPresetRepository:  SortPresetRepository,
+    private val favoritesRepository: FavoritesRepository
 ) : ViewModel() {
 
     // ── Stats ────────────────────────────────────────────────────────────────────
@@ -145,15 +147,20 @@ class GalleryViewModel @Inject constructor(
     val activeFilterConfig: StateFlow<FilterConfig> = _activeFilterConfig.asStateFlow()
     private val _activeBucketId = MutableStateFlow<String?>(null)
     val activeBucketId: StateFlow<String?> = _activeBucketId.asStateFlow()
+    val favoriteIds: StateFlow<Set<Long>> = favoritesRepository.getAllFavoriteIds()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     val groupedPhotos: Flow<PagingData<GalleryItem>> = combine(
         activeSortConfig,
-        activeBucketId
-    ) { sortConfig, bucketId -> sortConfig to bucketId }
-        .flatMapLatest { (sortConfig, bucketId) ->
+        activeBucketId,
+        favoriteIds
+    ) { sortConfig, bucketId, favorites -> Triple(sortConfig, bucketId, favorites) }
+        .flatMapLatest { (sortConfig, bucketId, favorites) ->
             if (sortConfig.groupBy == null) {
                 mediaStoreRepository.getPhotosPaged(sortConfig, bucketId).map { pagingData ->
-                    pagingData.map { photo -> GalleryItem.PhotoItem(photo) as GalleryItem }
+                    pagingData.map { photo ->
+                        GalleryItem.PhotoItem(photo.copy(isFavorite = photo.id in favorites)) as GalleryItem
+                    }
                 }
             } else {
                 flow {
@@ -166,7 +173,9 @@ class GalleryViewModel @Inject constructor(
                     emitAll(
                         mediaStoreRepository.getPhotosPaged(sortConfig, bucketId).map { pagingData ->
                             pagingData
-                                .map { photo -> GalleryItem.PhotoItem(photo) as GalleryItem }
+                                .map { photo ->
+                                    GalleryItem.PhotoItem(photo.copy(isFavorite = photo.id in favorites)) as GalleryItem
+                                }
                                 .insertSeparators { before, after ->
                                     val afterPhoto = (after as? GalleryItem.PhotoItem)?.photo ?: return@insertSeparators null
                                     val beforePhoto = (before as? GalleryItem.PhotoItem)?.photo
@@ -234,5 +243,11 @@ class GalleryViewModel @Inject constructor(
 
     fun updateBucketFilter(bucketId: String?) {
         _activeBucketId.value = bucketId
+    }
+
+    fun toggleFavorite(photoId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            favoritesRepository.toggleFavorite(photoId)
+        }
     }
 }

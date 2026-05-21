@@ -45,6 +45,7 @@ import androidx.navigation.navArgument
 import coil3.compose.AsyncImage
 import com.omnimemoria.data.repository.MediaStats
 import com.omnimemoria.domain.model.MediaPhoto
+import com.omnimemoria.ui.favorites.FavoritesScreen
 import com.omnimemoria.ui.gallery.GalleryScreen
 import com.omnimemoria.ui.gallery.GalleryViewModel
 import com.omnimemoria.ui.folders.FolderScreen
@@ -56,7 +57,7 @@ enum class HomeTab(val route: String, val label: String, val icon: ImageVector) 
     GALLERY("home/gallery", "📷 Gallery",  Icons.Outlined.PhotoLibrary),
     ALBUMS ("home/albums",  "📁 Albums",   Icons.Outlined.GridView),
     SEARCH ("home/search",  "🔍 Search",   Icons.Outlined.Search),
-    VAULT  ("home/vault",   "Vault",    Icons.Outlined.Lock);
+    FAVORITES("home/favorites", "⭐ Favorites", Icons.Outlined.FavoriteBorder);
 
     companion object {
         fun fromRoute(route: String?): HomeTab =
@@ -125,7 +126,7 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
                 )
             }
             composable(HomeTab.SEARCH.route)  { SearchPlaceholderScreen() }
-            composable(HomeTab.VAULT.route)   { VaultPlaceholderScreen() }
+            composable(HomeTab.FAVORITES.route) { FavoritesScreen(onPhotoClick = onPhotoClick) }
         }
 
         // ── Floating Top Bar (Dynamic accent tints the gradient) ─────────────

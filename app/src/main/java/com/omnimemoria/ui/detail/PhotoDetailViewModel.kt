@@ -2,17 +2,19 @@ package com.omnimemoria.ui.detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.omnimemoria.data.local.db.FavoritePhoto
-import com.omnimemoria.data.local.db.FavoritesDao
+import com.omnimemoria.data.repository.FavoritesRepository
 import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.data.repository.SortPresetRepository
 import com.omnimemoria.domain.model.MediaPhoto
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -20,7 +22,7 @@ import javax.inject.Inject
 @HiltViewModel
 class PhotoDetailViewModel @Inject constructor(
     private val mediaStoreRepository: MediaStoreRepository,
-    private val favoritesDao: FavoritesDao,
+    private val favoritesRepository: FavoritesRepository,
     private val sortPresetRepository: SortPresetRepository
 ) : ViewModel() {
 
@@ -41,8 +43,8 @@ class PhotoDetailViewModel @Inject constructor(
     private val _initialPage = MutableStateFlow(0)
     val initialPage: StateFlow<Int> = _initialPage.asStateFlow()
 
-    private val _isFavorite = MutableStateFlow(false)
-    val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
+    val favoriteIds: StateFlow<Set<Long>> = favoritesRepository.getAllFavoriteIds()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     // ── تحميل كل الصور مرة واحدة ─────────────────────────────────────────────
     fun loadAllPhotos(photoId: Long) {
@@ -69,25 +71,17 @@ class PhotoDetailViewModel @Inject constructor(
 
             _photoList.value   = all
             _initialPage.value = targetIndex
-
-            // هل الصورة في المفضلة؟
-            _isFavorite.value = favoritesDao.getAll().any { it.id == photoId }
         }
     }
 
     // ── Toggle Favorite ──────────────────────────────────────────────────────────
     fun toggleFavorite(photoId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            val currently = _isFavorite.value
-            if (!currently) {
-                favoritesDao.upsert(
-                    FavoritePhoto(id = photoId, addedAt = System.currentTimeMillis())
-                )
-            }
-            // TODO Phase 3: add deleteFavorite(photoId) to FavoritesDao
-            _isFavorite.value = !currently
+            favoritesRepository.toggleFavorite(photoId)
         }
     }
+
+    fun isFavorite(photoId: Long): Flow<Boolean> = favoritesRepository.isFavorite(photoId)
 
     suspend fun getPhoto(photoId: Long): MediaPhoto? = withContext(Dispatchers.IO) {
         mediaStoreRepository.getPhotoById(photoId)
