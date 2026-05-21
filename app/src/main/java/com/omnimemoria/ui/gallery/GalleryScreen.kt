@@ -40,7 +40,6 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Size
-import com.omnimemoria.domain.model.FilterConfig
 import com.omnimemoria.ui.gallery.components.FilterSortBottomSheet
 import com.omnimemoria.ui.gallery.components.QuickSortBar
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
@@ -79,6 +78,7 @@ fun GalleryScreen(
     val columnCount   by viewModel.columnCount.collectAsState()
     val mediaStats    by viewModel.mediaStats.collectAsState()
     val activeSortConfig by viewModel.activeSortConfig.collectAsState()
+    val activeFilterConfig by viewModel.activeFilterConfig.collectAsState()
     val currentSortLabel by viewModel.currentSortLabel.collectAsState()
 
     val sharedTransitionScope   = LocalSharedTransitionScope.current
@@ -86,7 +86,6 @@ fun GalleryScreen(
 
     val gridState = rememberLazyGridState()
     var showSortSheet by remember { mutableStateOf(false) }
-    var activeFilterConfig by remember { mutableStateOf(FilterConfig()) }
 
     var cumulativeZoom by remember { mutableFloatStateOf(1f) }
     val transformableState = rememberTransformableState { zoomChange, _, _ ->
@@ -224,7 +223,7 @@ fun GalleryScreen(
             onDismiss = { showSortSheet = false },
             onApply = { sortConfig, filterConfig ->
                 viewModel.updateSort(sortConfig)
-                activeFilterConfig = filterConfig
+                viewModel.updateFilter(filterConfig)
                 showSortSheet = false
             }
         )

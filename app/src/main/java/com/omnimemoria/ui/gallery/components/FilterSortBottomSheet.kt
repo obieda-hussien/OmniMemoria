@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -186,7 +185,7 @@ fun FilterSortBottomSheet(
             val minSize = normalizedToBytes(sliderValues.start)
             val maxSize = normalizedToBytes(sliderValues.endInclusive)
             Text(
-                text = "${formatSizeLabel(minSize)} - ${formatSizeLabel(maxSize)}",
+                text = "${formatSizeValue(minSize)} - ${formatSizeValue(maxSize)}",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
@@ -213,7 +212,8 @@ fun FilterSortBottomSheet(
                     SizePreset("Over 100MB", 100L * MB, MAX_SIZE_BYTES)
                 )
                 presets.forEach { preset ->
-                    val selected = pendingFilterConfig.minSizeBytes == preset.min && pendingFilterConfig.maxSizeBytes == preset.max
+                    val selected = (pendingFilterConfig.minSizeBytes ?: 0L) == preset.min &&
+                        (pendingFilterConfig.maxSizeBytes ?: MAX_SIZE_BYTES) == preset.max
                     FilterChip(
                         selected = selected,
                         onClick = {
@@ -384,11 +384,9 @@ private fun bytesToNormalized(bytes: Long): Float {
     return (ln((bytes + 1L).toDouble()) / ln(max)).toFloat().coerceIn(0f, 1f)
 }
 
-private fun formatSizeLabel(sizeBytes: Long): String = when {
-    sizeBytes < MB -> "Under 1MB"
-    sizeBytes < 10 * MB -> "1-10MB"
-    sizeBytes < 100 * MB -> "10-100MB"
-    else -> "Over 100MB"
+private fun formatSizeValue(sizeBytes: Long): String = when {
+    sizeBytes < MB -> "<1MB"
+    else -> "${(sizeBytes / MB).coerceAtMost(500)}MB"
 }
 
 private fun getCurrentWeekRange(): Pair<Long, Long> {

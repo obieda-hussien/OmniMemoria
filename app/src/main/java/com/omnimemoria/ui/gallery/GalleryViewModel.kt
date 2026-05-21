@@ -11,6 +11,7 @@ import androidx.paging.map
 import com.omnimemoria.data.repository.MediaStats
 import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.data.repository.SortPresetRepository
+import com.omnimemoria.domain.model.FilterConfig
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
@@ -123,6 +124,9 @@ class GalleryViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, "Date ↓")
 
+    private val _activeFilterConfig = MutableStateFlow(FilterConfig())
+    val activeFilterConfig: StateFlow<FilterConfig> = _activeFilterConfig.asStateFlow()
+
     // ── Grouped photos with Date Headers ─────────────────────────────────────────
     // FIX: يستخدم toDateGroupLabel() على الـ MediaPhoto مباشرة (وبالتالي effectiveDateMs)
     val groupedPhotos: Flow<PagingData<GalleryItem>> = activeSortConfig
@@ -186,5 +190,9 @@ class GalleryViewModel @Inject constructor(
         viewModelScope.launch {
             sortPresetRepository.saveLastUsed(config)
         }
+    }
+
+    fun updateFilter(config: FilterConfig) {
+        _activeFilterConfig.value = config
     }
 }
