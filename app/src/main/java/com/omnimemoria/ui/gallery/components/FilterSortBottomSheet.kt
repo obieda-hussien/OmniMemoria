@@ -38,11 +38,9 @@ import com.omnimemoria.domain.model.SortOrder
 fun FilterSortBottomSheet(
     activeSortConfig: SortConfig,
     onDismiss: () -> Unit,
-    onApply: (SortConfig) -> Unit,
-    onReset: (SortConfig) -> Unit
+    onApply: (SortConfig) -> Unit
 ) {
     var pendingConfig by remember(activeSortConfig) { mutableStateOf(activeSortConfig) }
-    var selectedActionIndex by remember(activeSortConfig) { mutableStateOf(1) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -101,18 +99,16 @@ fun FilterSortBottomSheet(
             Spacer(modifier = Modifier.height(28.dp))
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
-                    selected = selectedActionIndex == 0,
+                    selected = pendingConfig == SortConfig(),
                     onClick = {
-                        selectedActionIndex = 0
-                        pendingConfig = SortConfig().also { onReset(it) }
+                        pendingConfig = SortConfig()
                     },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                     label = { Text("Reset") }
                 )
                 SegmentedButton(
-                    selected = selectedActionIndex == 1,
+                    selected = pendingConfig != SortConfig(),
                     onClick = {
-                        selectedActionIndex = 1
                         onApply(pendingConfig)
                     },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),

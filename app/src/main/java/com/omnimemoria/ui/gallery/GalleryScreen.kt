@@ -222,10 +222,6 @@ fun GalleryScreen(
             onApply = { config ->
                 viewModel.updateSort(config)
                 showSortSheet = false
-            },
-            onReset = { defaultConfig ->
-                viewModel.updateSort(defaultConfig)
-                showSortSheet = false
             }
         )
     }
