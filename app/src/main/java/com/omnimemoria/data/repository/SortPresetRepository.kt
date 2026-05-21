@@ -49,24 +49,15 @@ class SortPresetRepository @Inject constructor(
         ensureDefaultsSeeded()
         seedMutex.withLock {
             sortPresetDao.clearDefault()
-            val existing = sortPresetDao.getByName(LAST_USED_PRESET_NAME)
-            val lastUsedPreset = if (existing != null) {
-                existing.copy(
-                    name = LAST_USED_PRESET_NAME,
-                    sortBy = config.sortBy.name,
-                    sortOrder = config.sortOrder.name,
-                    groupBy = config.groupBy?.name,
-                    isDefault = true
-                )
-            } else {
-                SortPreset(
-                    name = LAST_USED_PRESET_NAME,
-                    sortBy = config.sortBy.name,
-                    sortOrder = config.sortOrder.name,
-                    groupBy = config.groupBy?.name,
-                    isDefault = true
-                )
-            }
+            val existingId = sortPresetDao.getByName(LAST_USED_PRESET_NAME)?.id ?: 0
+            val lastUsedPreset = SortPreset(
+                id = existingId,
+                name = LAST_USED_PRESET_NAME,
+                sortBy = config.sortBy.name,
+                sortOrder = config.sortOrder.name,
+                groupBy = config.groupBy?.name,
+                isDefault = true
+            )
             sortPresetDao.insert(lastUsedPreset)
         }
     }

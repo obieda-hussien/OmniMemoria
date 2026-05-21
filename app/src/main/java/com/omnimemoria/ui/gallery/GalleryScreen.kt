@@ -38,7 +38,6 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Size
-import com.omnimemoria.domain.model.SortConfig
 import com.omnimemoria.ui.gallery.components.FilterSortBottomSheet
 import com.omnimemoria.ui.gallery.components.QuickSortBar
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
@@ -47,7 +46,6 @@ import com.omnimemoria.ui.theme.AmberVibe
 import com.omnimemoria.ui.theme.RoseMemory
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
-import androidx.compose.ui.platform.LocalDensity
 
 // ── Shared Element key helper ────────────────────────────────────────────────────
 fun photoSharedKey(photoId: Long) = "photo_$photoId"
@@ -55,6 +53,8 @@ fun photoSharedKey(photoId: Long) = "photo_$photoId"
 // ── Vibe chips placeholder data ──────────────────────────────────────────────────
 private data class VibeChip(val emoji: String, val label: String, val color: Color)
 private val SelectionBarBottomPadding = 148.dp
+private val QuickSortBarTopPadding = 112.dp
+private val GalleryGridTopPadding = 164.dp
 private val placeholderVibes = listOf(
     VibeChip("🌅", "Golden\nHour",   AmberVibe),
     VibeChip("🌊", "Quiet\nMoments", Color(0xFF2D26A0)),
@@ -102,7 +102,7 @@ fun GalleryScreen(
             state             = gridState,
             columns           = GridCells.Fixed(columnCount),
             contentPadding    = PaddingValues(
-                top    = 164.dp,
+                top    = GalleryGridTopPadding,
                 bottom = 130.dp,
                 start  = 6.dp,
                 end    = 6.dp
@@ -193,7 +193,7 @@ fun GalleryScreen(
             onSortChanged = { viewModel.updateSort(it) },
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 112.dp)
+                .padding(top = QuickSortBarTopPadding)
         )
 
         AnimatedVisibility(

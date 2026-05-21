@@ -42,7 +42,7 @@ fun FilterSortBottomSheet(
     onReset: (SortConfig) -> Unit
 ) {
     var pendingConfig by remember(activeSortConfig) { mutableStateOf(activeSortConfig) }
-    var selectedActionIndex by remember { mutableStateOf(1) }
+    var selectedActionIndex by remember(activeSortConfig) { mutableStateOf(1) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
