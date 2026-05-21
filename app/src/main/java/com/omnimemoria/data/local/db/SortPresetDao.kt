@@ -18,6 +18,9 @@ interface SortPresetDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(preset: SortPreset)
 
+    @Query("SELECT * FROM sort_presets WHERE name = :name LIMIT 1")
+    suspend fun getByName(name: String): SortPreset?
+
     @Query("DELETE FROM sort_presets WHERE id = :id")
     suspend fun delete(id: Int)
 

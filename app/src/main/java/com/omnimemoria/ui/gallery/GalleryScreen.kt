@@ -38,6 +38,9 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Size
+import com.omnimemoria.domain.model.SortConfig
+import com.omnimemoria.ui.gallery.components.FilterSortBottomSheet
+import com.omnimemoria.ui.gallery.components.QuickSortBar
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
 import com.omnimemoria.ui.theme.AmberVibe
@@ -74,11 +77,14 @@ fun GalleryScreen(
     val isSelecting   by viewModel.isInSelectionMode.collectAsState()
     val columnCount   by viewModel.columnCount.collectAsState()
     val mediaStats    by viewModel.mediaStats.collectAsState()
+    val activeSortConfig by viewModel.activeSortConfig.collectAsState()
+    val currentSortLabel by viewModel.currentSortLabel.collectAsState()
 
     val sharedTransitionScope   = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
 
     val gridState = rememberLazyGridState()
+    var showSortSheet by remember { mutableStateOf(false) }
 
     var cumulativeZoom by remember { mutableFloatStateOf(1f) }
     val transformableState = rememberTransformableState { zoomChange, _, _ ->
@@ -96,7 +102,7 @@ fun GalleryScreen(
             state             = gridState,
             columns           = GridCells.Fixed(columnCount),
             contentPadding    = PaddingValues(
-                top    = 112.dp,
+                top    = 164.dp,
                 bottom = 130.dp,
                 start  = 6.dp,
                 end    = 6.dp
@@ -119,7 +125,8 @@ fun GalleryScreen(
                     title     = "All Media",
                     count     = mediaStats.totalCount,
                     isLoading = groupedPhotos.loadState.refresh is LoadState.Loading,
-                    onSort    = { /* TODO: open sort sheet */ },
+                    onSort    = { showSortSheet = true },
+                    sortLabel = currentSortLabel,
                     modifier  = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
@@ -181,6 +188,14 @@ fun GalleryScreen(
             }
         }
 
+        QuickSortBar(
+            activeSortConfig = activeSortConfig,
+            onSortChanged = { viewModel.updateSort(it) },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 112.dp)
+        )
+
         AnimatedVisibility(
             visible  = isSelecting,
             enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -198,6 +213,21 @@ fun GalleryScreen(
                 onMore   = { /* TODO */ }
             )
         }
+    }
+
+    if (showSortSheet) {
+        FilterSortBottomSheet(
+            activeSortConfig = activeSortConfig,
+            onDismiss = { showSortSheet = false },
+            onApply = { config ->
+                viewModel.updateSort(config)
+                showSortSheet = false
+            },
+            onReset = { defaultConfig ->
+                viewModel.updateSort(defaultConfig)
+                showSortSheet = false
+            }
+        )
     }
 }
 
@@ -270,6 +300,7 @@ private fun SectionSubHeader(
     count:     Int,
     isLoading: Boolean,
     onSort:    () -> Unit,
+    sortLabel: String,
     modifier:  Modifier = Modifier
 ) {
     Row(
@@ -310,7 +341,11 @@ private fun SectionSubHeader(
         ) {
             Icon(Icons.Outlined.Tune, "Sort", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.width(4.dp))
-            Text("Sort", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(
+                text = sortLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

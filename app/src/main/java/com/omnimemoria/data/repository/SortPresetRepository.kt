@@ -19,6 +19,10 @@ import kotlinx.coroutines.sync.withLock
 class SortPresetRepository @Inject constructor(
     private val sortPresetDao: SortPresetDao
 ) {
+    private companion object {
+        const val LAST_USED_PRESET_NAME = "Last Used"
+    }
+
     private val seedMutex = Mutex()
 
     fun getCurrentSort(): Flow<SortConfig> = flow {
@@ -40,6 +44,29 @@ class SortPresetRepository @Inject constructor(
     suspend fun delete(id: Int) = sortPresetDao.delete(id)
 
     suspend fun setDefault(id: Int) = sortPresetDao.setDefault(id)
+
+    suspend fun saveLastUsed(config: SortConfig) {
+        ensureDefaultsSeeded()
+        seedMutex.withLock {
+            sortPresetDao.clearDefault()
+            val existing = sortPresetDao.getByName(LAST_USED_PRESET_NAME)
+            val lastUsedPreset = (existing ?: SortPreset(
+                name = LAST_USED_PRESET_NAME,
+                sortBy = config.sortBy.name,
+                sortOrder = config.sortOrder.name,
+                groupBy = config.groupBy?.name,
+                isDefault = true
+            ))
+                .copy(
+                    name = LAST_USED_PRESET_NAME,
+                    sortBy = config.sortBy.name,
+                    sortOrder = config.sortOrder.name,
+                    groupBy = config.groupBy?.name,
+                    isDefault = true
+                )
+            sortPresetDao.insert(lastUsedPreset)
+        }
+    }
 
     private suspend fun ensureDefaultsSeeded() {
         seedMutex.withLock {

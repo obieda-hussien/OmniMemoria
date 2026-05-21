@@ -12,7 +12,9 @@ import com.omnimemoria.data.repository.MediaStats
 import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.data.repository.SortPresetRepository
 import com.omnimemoria.domain.model.MediaPhoto
+import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
+import com.omnimemoria.domain.model.SortOrder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -104,6 +106,23 @@ class GalleryViewModel @Inject constructor(
     val activeSortConfig: StateFlow<SortConfig> = sortPresetRepository.getCurrentSort()
         .stateIn(viewModelScope, SharingStarted.Eagerly, SortConfig())
 
+    val currentSortLabel: StateFlow<String> = activeSortConfig
+        .map { config ->
+            val sortByLabel = when (config.sortBy) {
+                SortBy.DATE_TAKEN -> "Date"
+                SortBy.DATE_MODIFIED -> "Modified"
+                SortBy.SIZE -> "Size"
+                SortBy.NAME -> "Name"
+                SortBy.TYPE -> "Type"
+                SortBy.RESOLUTION -> "Resolution"
+                SortBy.DURATION -> "Duration"
+                SortBy.FAVORITES_FIRST -> "Favorites"
+            }
+            val direction = if (config.sortOrder == SortOrder.ASCENDING) "↑" else "↓"
+            "$sortByLabel $direction"
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "Date ↓")
+
     // ── Grouped photos with Date Headers ─────────────────────────────────────────
     // FIX: يستخدم toDateGroupLabel() على الـ MediaPhoto مباشرة (وبالتالي effectiveDateMs)
     val groupedPhotos: Flow<PagingData<GalleryItem>> = activeSortConfig
@@ -162,4 +181,10 @@ class GalleryViewModel @Inject constructor(
         }
     }
     fun setColumnCount(count: Int) { _columnCount.value = count.coerceIn(2, 5) }
+
+    fun updateSort(config: SortConfig) {
+        viewModelScope.launch {
+            sortPresetRepository.saveLastUsed(config)
+        }
+    }
 }
