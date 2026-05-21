@@ -42,6 +42,7 @@ fun FilterSortBottomSheet(
     onReset: (SortConfig) -> Unit
 ) {
     var pendingConfig by remember(activeSortConfig) { mutableStateOf(activeSortConfig) }
+    var selectedActionIndex by remember { mutableStateOf(1) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -100,14 +101,20 @@ fun FilterSortBottomSheet(
             Spacer(modifier = Modifier.height(28.dp))
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
-                    selected = false,
-                    onClick = { onReset(SortConfig()) },
+                    selected = selectedActionIndex == 0,
+                    onClick = {
+                        selectedActionIndex = 0
+                        onReset(SortConfig())
+                    },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                     label = { Text("Reset") }
                 )
                 SegmentedButton(
-                    selected = true,
-                    onClick = { onApply(pendingConfig) },
+                    selected = selectedActionIndex == 1,
+                    onClick = {
+                        selectedActionIndex = 1
+                        onApply(pendingConfig)
+                    },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                     label = { Text("✓ Apply") }
                 )

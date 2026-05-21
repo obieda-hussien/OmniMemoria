@@ -50,20 +50,23 @@ class SortPresetRepository @Inject constructor(
         seedMutex.withLock {
             sortPresetDao.clearDefault()
             val existing = sortPresetDao.getByName(LAST_USED_PRESET_NAME)
-            val lastUsedPreset = (existing ?: SortPreset(
-                name = LAST_USED_PRESET_NAME,
-                sortBy = config.sortBy.name,
-                sortOrder = config.sortOrder.name,
-                groupBy = config.groupBy?.name,
-                isDefault = true
-            ))
-                .copy(
+            val lastUsedPreset = if (existing != null) {
+                existing.copy(
                     name = LAST_USED_PRESET_NAME,
                     sortBy = config.sortBy.name,
                     sortOrder = config.sortOrder.name,
                     groupBy = config.groupBy?.name,
                     isDefault = true
                 )
+            } else {
+                SortPreset(
+                    name = LAST_USED_PRESET_NAME,
+                    sortBy = config.sortBy.name,
+                    sortOrder = config.sortOrder.name,
+                    groupBy = config.groupBy?.name,
+                    isDefault = true
+                )
+            }
             sortPresetDao.insert(lastUsedPreset)
         }
     }
