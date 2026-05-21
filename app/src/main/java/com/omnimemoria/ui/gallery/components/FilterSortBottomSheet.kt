@@ -104,7 +104,7 @@ fun FilterSortBottomSheet(
                     selected = selectedActionIndex == 0,
                     onClick = {
                         selectedActionIndex = 0
-                        onReset(SortConfig())
+                        pendingConfig = SortConfig().also { onReset(it) }
                     },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                     label = { Text("Reset") }
