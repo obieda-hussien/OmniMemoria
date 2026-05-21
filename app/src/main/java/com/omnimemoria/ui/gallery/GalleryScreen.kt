@@ -69,6 +69,7 @@ private val placeholderVibes = listOf(
 @Composable
 fun GalleryScreen(
     onPhotoClick: (Long) -> Unit,
+    bucketId: String? = null,
     viewModel:    GalleryViewModel = hiltViewModel()
 ) {
     val haptic        = LocalHapticFeedback.current
@@ -86,6 +87,9 @@ fun GalleryScreen(
 
     val gridState = rememberLazyGridState()
     var showSortSheet by remember { mutableStateOf(false) }
+    LaunchedEffect(bucketId) {
+        viewModel.updateBucketFilter(bucketId)
+    }
 
     var cumulativeZoom by remember { mutableFloatStateOf(1f) }
     val transformableState = rememberTransformableState { zoomChange, _, _ ->
@@ -137,49 +141,53 @@ fun GalleryScreen(
                     SkeletonPhotoCell(size = (360 / columnCount).dp)
                 }
             } else {
-                items(
-                    count = groupedPhotos.itemCount,
-                    key   = { index ->
-                        when (val item = groupedPhotos.peek(index)) {
-                            is GalleryItem.DateHeader -> "header_${item.anchorPhotoId}"
-                            is GalleryItem.Photo      -> "photo_${item.photo.id}"
-                            null                      -> "placeholder_$index"
+                for (index in 0 until groupedPhotos.itemCount) {
+                    when (val peekItem = groupedPhotos.peek(index)) {
+                        is GalleryItem.HeaderItem -> {
+                            stickyHeader(
+                                key = "header_${peekItem.label}_$index",
+                                contentType = "header"
+                            ) {
+                                DateHeaderRow(label = peekItem.label)
+                            }
                         }
-                    },
-                    span  = { index ->
-                        when (groupedPhotos[index]) {
-                            is GalleryItem.DateHeader -> GridItemSpan(maxLineSpan)
-                            else                      -> GridItemSpan(1)
-                        }
-                    }
-                ) { index ->
-                    when (val item = groupedPhotos[index]) {
-                        is GalleryItem.DateHeader -> {
-                            DateHeaderRow(label = item.label)
-                        }
-                        is GalleryItem.Photo -> {
-                            val photo      = item.photo
-                            val isSelected = photo.id in selectedIds
-
-                            PhotoCell(
-                                uri                 = photo.uri.toString(),
-                                photoId             = photo.id,
-                                isVideo             = photo.mimeType.startsWith("video/", ignoreCase = true),
-                                isSelected          = isSelected,
-                                isSelecting         = isSelecting,
-                                sharedTransitionScope   = sharedTransitionScope,
-                                animatedVisibilityScope = animatedVisibilityScope,
-                                onClick     = {
-                                    if (isSelecting) viewModel.toggleSelection(photo.id)
-                                    else onPhotoClick(photo.id)
+                        else -> {
+                            item(
+                                key = when (peekItem) {
+                                    is GalleryItem.PhotoItem -> "photo_${peekItem.photo.id}"
+                                    null -> "placeholder_$index"
+                                    else -> "item_$index"
                                 },
-                                onLongClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    viewModel.toggleSelection(photo.id)
+                                contentType = "photo",
+                                span = { GridItemSpan(1) }
+                            ) {
+                                when (val item = groupedPhotos[index]) {
+                                    is GalleryItem.PhotoItem -> {
+                                        val photo      = item.photo
+                                        val isSelected = photo.id in selectedIds
+
+                                        PhotoCell(
+                                            uri                 = photo.uri.toString(),
+                                            photoId             = photo.id,
+                                            isVideo             = photo.mimeType.startsWith("video/", ignoreCase = true),
+                                            isSelected          = isSelected,
+                                            isSelecting         = isSelecting,
+                                            sharedTransitionScope   = sharedTransitionScope,
+                                            animatedVisibilityScope = animatedVisibilityScope,
+                                            onClick     = {
+                                                if (isSelecting) viewModel.toggleSelection(photo.id)
+                                                else onPhotoClick(photo.id)
+                                            },
+                                            onLongClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                viewModel.toggleSelection(photo.id)
+                                            }
+                                        )
+                                    }
+                                    else -> SkeletonPhotoCell(size = (360 / columnCount).dp)
                                 }
-                            )
+                            }
                         }
-                        null -> SkeletonPhotoCell(size = (360 / columnCount).dp)
                     }
                 }
             }

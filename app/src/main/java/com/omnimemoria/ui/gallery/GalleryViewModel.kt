@@ -1,6 +1,5 @@
 package com.omnimemoria.ui.gallery
 
-import android.content.Context
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,12 +11,12 @@ import com.omnimemoria.data.repository.MediaStats
 import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.data.repository.SortPresetRepository
 import com.omnimemoria.domain.model.FilterConfig
+import com.omnimemoria.domain.model.GroupBy
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
 import com.omnimemoria.domain.model.SortOrder
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -25,12 +24,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -39,35 +42,50 @@ import javax.inject.Inject
 
 // ── sealed class للـ Grid items ──────────────────────────────────────────────────
 sealed class GalleryItem {
-    data class DateHeader(val label: String, val anchorPhotoId: Long) : GalleryItem()
-    data class Photo(val photo: MediaPhoto)  : GalleryItem()
+    data class PhotoItem(val photo: MediaPhoto) : GalleryItem()
+    data class HeaderItem(val label: String) : GalleryItem()
 }
 
 // ── FIX: يستخدم effectiveDateMs بدلاً من dateTaken مباشرة ───────────────────────
 // Snapchat وتطبيقات كتير بتحفظ الصور بـ dateTaken = 0،
 // فكانت بتتجمع كلها تحت "Unknown" بدل ما تتجمع بالتاريخ الصح.
 // effectiveDateMs بيجرب dateTaken أولاً، لو 0 يجرب dateModified، لو 0 يجرب dateAdded.
-private fun MediaPhoto.toDateGroupLabel(): String {
-    val ms = this.effectiveDateMs
-    if (ms <= 0L) return "Unknown Date"
-
-    val today     = Calendar.getInstance()
-    val yesterday = Calendar.getInstance().also { it.add(Calendar.DAY_OF_YEAR, -1) }
-    val target    = Calendar.getInstance().also { it.timeInMillis = ms }
-
-    return when {
-        target.isSameDay(today)     -> "Today"
-        target.isSameDay(yesterday) -> "Yesterday"
-        target.get(Calendar.YEAR) == today.get(Calendar.YEAR) ->
-            SimpleDateFormat("MMMM d", Locale.getDefault()).format(Date(ms))
-        else ->
-            SimpleDateFormat("MMMM d, yyyy", Locale.getDefault()).format(Date(ms))
+private fun MediaPhoto.groupKey(groupBy: GroupBy): String {
+    if (effectiveDateMs <= 0L) return "unknown"
+    val calendar = Calendar.getInstance().apply { timeInMillis = effectiveDateMs }
+    return when (groupBy) {
+        GroupBy.DAY -> "%04d-%02d-%02d".format(
+            Locale.ROOT,
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH) + 1,
+            calendar.get(Calendar.DAY_OF_MONTH)
+        )
+        GroupBy.MONTH -> "%04d-%02d".format(
+            Locale.ROOT,
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH) + 1
+        )
+        GroupBy.YEAR -> "%04d".format(Locale.ROOT, calendar.get(Calendar.YEAR))
+        GroupBy.LOCATION -> if (latitude != null && longitude != null) "with_location" else "unknown_location"
     }
 }
 
-private fun Calendar.isSameDay(other: Calendar) =
-    get(Calendar.YEAR)       == other.get(Calendar.YEAR) &&
-    get(Calendar.DAY_OF_YEAR) == other.get(Calendar.DAY_OF_YEAR)
+private fun MediaPhoto.groupTitle(groupBy: GroupBy): String {
+    if (effectiveDateMs <= 0L) return "Unknown Date"
+    val locale = Locale.getDefault()
+    return when (groupBy) {
+        GroupBy.DAY -> SimpleDateFormat("MMMM d, yyyy", locale).format(Date(effectiveDateMs))
+        GroupBy.MONTH -> SimpleDateFormat("MMMM yyyy", locale).format(Date(effectiveDateMs))
+        GroupBy.YEAR -> SimpleDateFormat("yyyy", locale).format(Date(effectiveDateMs))
+        GroupBy.LOCATION -> if (latitude != null && longitude != null) "With location" else "Unknown location"
+    }
+}
+
+private fun buildHeaderLabel(title: String, count: Int): String {
+    val localizedCount = NumberFormat.getIntegerInstance(Locale.getDefault()).format(count)
+    val unit = if (count == 1) "photo" else "photos"
+    return "$title • $localizedCount $unit"
+}
 
 // ─────────────────────────────────────────────────────────────────────────────────
 
@@ -75,8 +93,7 @@ private fun Calendar.isSameDay(other: Calendar) =
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
     private val mediaStoreRepository: MediaStoreRepository,
-    private val sortPresetRepository:  SortPresetRepository,
-    @ApplicationContext private val context: Context
+    private val sortPresetRepository:  SortPresetRepository
 ) : ViewModel() {
 
     // ── Stats ────────────────────────────────────────────────────────────────────
@@ -126,27 +143,46 @@ class GalleryViewModel @Inject constructor(
 
     private val _activeFilterConfig = MutableStateFlow(FilterConfig())
     val activeFilterConfig: StateFlow<FilterConfig> = _activeFilterConfig.asStateFlow()
+    private val _activeBucketId = MutableStateFlow<String?>(null)
+    val activeBucketId: StateFlow<String?> = _activeBucketId.asStateFlow()
 
-    // ── Grouped photos with Date Headers ─────────────────────────────────────────
-    // FIX: يستخدم toDateGroupLabel() على الـ MediaPhoto مباشرة (وبالتالي effectiveDateMs)
-    val groupedPhotos: Flow<PagingData<GalleryItem>> = activeSortConfig
-        .flatMapLatest { config -> mediaStoreRepository.getPhotosPaged(config) }
-        .map { pagingData ->
-            pagingData
-                .map { photo -> GalleryItem.Photo(photo) as GalleryItem }
-                .insertSeparators { before, after ->
-                    val bLabel = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
-                    val aLabel = (after  as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
-                        when {
-                            after == null || after !is GalleryItem.Photo -> null
-                            before == null || bLabel != aLabel ->
-                                GalleryItem.DateHeader(
-                                    label = aLabel ?: "",
-                                    anchorPhotoId = after.photo.id
-                                )
-                            else -> null
+    val groupedPhotos: Flow<PagingData<GalleryItem>> = combine(
+        activeSortConfig,
+        activeBucketId
+    ) { sortConfig, bucketId -> sortConfig to bucketId }
+        .flatMapLatest { (sortConfig, bucketId) ->
+            if (sortConfig.groupBy == null) {
+                mediaStoreRepository.getPhotosPaged(sortConfig, bucketId).map { pagingData ->
+                    pagingData.map { photo -> GalleryItem.PhotoItem(photo) as GalleryItem }
+                }
+            } else {
+                flow {
+                    val groupBy = sortConfig.groupBy
+                    val countsByKey = mediaStoreRepository
+                        .getAllNonVaultPhotos(sortConfig, bucketId)
+                        .groupingBy { photo -> photo.groupKey(groupBy) }
+                        .eachCount()
+
+                    emitAll(
+                        mediaStoreRepository.getPhotosPaged(sortConfig, bucketId).map { pagingData ->
+                            pagingData
+                                .map { photo -> GalleryItem.PhotoItem(photo) as GalleryItem }
+                                .insertSeparators { before, after ->
+                                    val afterPhoto = (after as? GalleryItem.PhotoItem)?.photo ?: return@insertSeparators null
+                                    val beforePhoto = (before as? GalleryItem.PhotoItem)?.photo
+                                    val beforeKey = beforePhoto?.groupKey(groupBy)
+                                    val afterKey = afterPhoto.groupKey(groupBy)
+                                    if (before == null || beforeKey != afterKey) {
+                                        val count = countsByKey[afterKey] ?: 0
+                                        GalleryItem.HeaderItem(buildHeaderLabel(afterPhoto.groupTitle(groupBy), count))
+                                    } else {
+                                        null
+                                    }
+                                }
                         }
-                    }
+                    )
+                }
+            }
         }
         .cachedIn(viewModelScope)
 
@@ -194,5 +230,9 @@ class GalleryViewModel @Inject constructor(
 
     fun updateFilter(config: FilterConfig) {
         _activeFilterConfig.value = config
+    }
+
+    fun updateBucketFilter(bucketId: String?) {
+        _activeBucketId.value = bucketId
     }
 }

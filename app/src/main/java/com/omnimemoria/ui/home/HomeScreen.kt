@@ -1,5 +1,6 @@
 package com.omnimemoria.ui.home
 
+import android.net.Uri
 import android.text.format.Formatter
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -35,28 +36,31 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import coil3.compose.AsyncImage
 import com.omnimemoria.data.repository.MediaStats
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.gallery.GalleryScreen
 import com.omnimemoria.ui.gallery.GalleryViewModel
+import com.omnimemoria.ui.folders.FolderScreen
 import java.util.Calendar
 
 // ── Tab definitions ──────────────────────────────────────────────────────────────
 
 enum class HomeTab(val route: String, val label: String, val icon: ImageVector) {
-    GALLERY("home/gallery", "Gallery",  Icons.Outlined.PhotoLibrary),
-    ALBUMS ("home/albums",  "Albums",   Icons.Outlined.GridView),
-    SEARCH ("home/search",  "Search",   Icons.Outlined.Search),
+    GALLERY("home/gallery", "📷 Gallery",  Icons.Outlined.PhotoLibrary),
+    ALBUMS ("home/albums",  "📁 Albums",   Icons.Outlined.GridView),
+    SEARCH ("home/search",  "🔍 Search",   Icons.Outlined.Search),
     VAULT  ("home/vault",   "Vault",    Icons.Outlined.Lock);
 
     companion object {
         fun fromRoute(route: String?): HomeTab =
-            entries.firstOrNull { it.route == route } ?: GALLERY
+            entries.firstOrNull { tab -> route?.startsWith(tab.route) == true } ?: GALLERY
     }
 }
 
@@ -98,8 +102,28 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
             startDestination = HomeTab.GALLERY.route,
             modifier         = Modifier.fillMaxSize()
         ) {
-            composable(HomeTab.GALLERY.route) { GalleryScreen(onPhotoClick = onPhotoClick) }
-            composable(HomeTab.ALBUMS.route)  { AlbumsPlaceholderScreen() }
+            composable(
+                route = "${HomeTab.GALLERY.route}?bucketId={bucketId}",
+                arguments = listOf(
+                    navArgument("bucketId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) { backStackEntry ->
+                GalleryScreen(
+                    onPhotoClick = onPhotoClick,
+                    bucketId = backStackEntry.arguments?.getString("bucketId")
+                )
+            }
+            composable(HomeTab.ALBUMS.route)  {
+                FolderScreen(
+                    onOpenFolder = { bucketId ->
+                        homeNavController.navigate("${HomeTab.GALLERY.route}?bucketId=${Uri.encode(bucketId)}")
+                    }
+                )
+            }
             composable(HomeTab.SEARCH.route)  { SearchPlaceholderScreen() }
             composable(HomeTab.VAULT.route)   { VaultPlaceholderScreen() }
         }
