@@ -51,7 +51,6 @@ class SortPresetRepository @Inject constructor(
             sortPresetDao.clearDefault()
             val existing = sortPresetDao.getByName(LAST_USED_PRESET_NAME)
             val lastUsedPreset = existing?.copy(
-                name = LAST_USED_PRESET_NAME,
                 sortBy = config.sortBy.name,
                 sortOrder = config.sortOrder.name,
                 groupBy = config.groupBy?.name,

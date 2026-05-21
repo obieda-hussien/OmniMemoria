@@ -107,7 +107,7 @@ fun FilterSortBottomSheet(
                     label = { Text("Reset") }
                 )
                 SegmentedButton(
-                    selected = pendingConfig != SortConfig(),
+                    selected = pendingConfig != activeSortConfig,
                     onClick = {
                         onApply(pendingConfig)
                     },
