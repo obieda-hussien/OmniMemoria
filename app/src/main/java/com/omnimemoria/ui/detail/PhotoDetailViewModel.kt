@@ -45,7 +45,7 @@ class PhotoDetailViewModel @Inject constructor(
     val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
 
     // ── تحميل كل الصور مرة واحدة ─────────────────────────────────────────────
-    fun loadAllPhotos(photoId: Long) {
+    fun loadAllPhotos(photoId: Long, bucketId: String?) {
         viewModelScope.launch(Dispatchers.IO) {
             mediaStoreRepository.getPhotoById(photoId)?.let { seed ->
                 _photoList.value = listOf(seed)
@@ -54,7 +54,11 @@ class PhotoDetailViewModel @Inject constructor(
 
             // جلب الترتيب الحالي لكي يتطابق تماماً مع الـ Grid
             val currentSortConfig = sortPresetRepository.getCurrentSort().first()
-            val all = mediaStoreRepository.getAllNonVaultPhotos(currentSortConfig)
+            val all = if (bucketId.isNullOrBlank()) {
+                mediaStoreRepository.getAllNonVaultPhotos(currentSortConfig)
+            } else {
+                mediaStoreRepository.getAllNonVaultPhotosByFolder(bucketId, currentSortConfig)
+            }
 
             // لو الصورة مش موجودة (vault item أو اتحذفت) → اعرضها وحدها
             val targetIndex = all.indexOfFirst { it.id == photoId }

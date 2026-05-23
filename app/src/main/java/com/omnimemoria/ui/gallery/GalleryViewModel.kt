@@ -100,6 +100,9 @@ class GalleryViewModel @Inject constructor(
     private val _columnCount = MutableStateFlow(3)
     val columnCount: StateFlow<Int> = _columnCount.asStateFlow()
 
+    private val _compactTopBar = MutableStateFlow(false)
+    val compactTopBar: StateFlow<Boolean> = _compactTopBar.asStateFlow()
+
     // ── Sort config ──────────────────────────────────────────────────────────────
     val activeSortConfig: StateFlow<SortConfig> = sortPresetRepository.getCurrentSort()
         .stateIn(viewModelScope, SharingStarted.Eagerly, SortConfig())
@@ -162,4 +165,8 @@ class GalleryViewModel @Inject constructor(
         }
     }
     fun setColumnCount(count: Int) { _columnCount.value = count.coerceIn(2, 5) }
+
+    fun setCompactTopBar(enabled: Boolean) {
+        _compactTopBar.value = enabled
+    }
 }

@@ -20,6 +20,8 @@ import androidx.paging.PagingData
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.omnimemoria.data.local.db.PhotoIntelligenceDao
+import com.omnimemoria.domain.model.FolderSortBy
+import com.omnimemoria.domain.model.FolderSortConfig
 import com.omnimemoria.domain.model.MediaFolder
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.domain.model.SortConfig
@@ -229,10 +231,63 @@ class MediaStoreRepository @Inject constructor(
         }
     ).flow
 
-    fun getFoldersPaged(): Flow<PagingData<MediaFolder>> = Pager(
+    fun getFoldersPaged(sortConfig: FolderSortConfig = FolderSortConfig()): Flow<PagingData<MediaFolder>> = Pager(
         config              = PagingConfig(pageSize = PAGE_SIZE),
-        pagingSourceFactory = { MediaFolderPagingSource(contentResolver) }
+        pagingSourceFactory = { MediaFolderPagingSource(contentResolver, sortConfig) }
     ).flow
+
+    fun getPhotosByFolder(bucketId: String, sortConfig: SortConfig): Flow<PagingData<MediaPhoto>> = Pager(
+        config              = PagingConfig(pageSize = PAGE_SIZE),
+        pagingSourceFactory = {
+            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, sortConfig, bucketId)
+        }
+    ).flow
+
+    suspend fun getAllNonVaultPhotosByFolder(bucketId: String, sortConfig: SortConfig): List<MediaPhoto> =
+        withContext(Dispatchers.IO) {
+            val vaultIds = photoIntelligenceDao.getVaultPhotoIds().toHashSet()
+            getAllPhotosByFolder(bucketId, sortConfig).filterNot { it.id in vaultIds }
+        }
+
+    fun getAllPhotosByFolder(bucketId: String, sortConfig: SortConfig): List<MediaPhoto> {
+        val results = mutableListOf<MediaPhoto>()
+        contentResolver.query(
+            mediaCollection,
+            photoProjection,
+            buildQueryArgs(sortConfig, null, null, bucketId),
+            null
+        )?.use { cursor ->
+            while (cursor.moveToNext()) results += cursor.toMediaPhoto()
+        }
+
+        if (sortConfig.sortBy != SortBy.RESOLUTION) return results
+        return when (sortConfig.sortOrder) {
+            SortOrder.ASCENDING -> results.sortedBy { it.width.toLong() * it.height }
+            SortOrder.DESCENDING -> results.sortedByDescending { it.width.toLong() * it.height }
+        }
+    }
+
+    fun getFolderByBucketId(bucketId: String): MediaFolder? {
+        return queryFolders(contentResolver, FolderSortConfig()).firstOrNull { it.bucketId == bucketId }
+    }
+
+    fun searchPhotosByDisplayName(query: String, limit: Int = 100): List<MediaPhoto> {
+        if (query.isBlank()) return emptyList()
+        val escaped = query.replace("%", "\\%").replace("_", "\\_")
+        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? ESCAPE '\\' AND ($mediaSelection)"
+        val args = arrayOf("%$escaped%", *mediaSelectionArgs)
+        val out = mutableListOf<MediaPhoto>()
+        contentResolver.query(
+            mediaCollection,
+            photoProjection,
+            selection,
+            args,
+            "${MediaStore.MediaColumns.DATE_TAKEN} DESC"
+        )?.use { cursor ->
+            while (cursor.moveToNext() && out.size < limit) out += cursor.toMediaPhoto()
+        }
+        return out
+    }
 
     fun getPhotoById(id: Long): MediaPhoto? {
         contentResolver.query(
@@ -265,7 +320,8 @@ class MediaStoreRepository @Inject constructor(
     private class MediaPhotoPagingSource(
         private val contentResolver:      ContentResolver,
         private val photoIntelligenceDao: PhotoIntelligenceDao,
-        private val sortConfig:           SortConfig
+        private val sortConfig:           SortConfig,
+        private val bucketId:             String? = null
     ) : PagingSource<Int, MediaPhoto>() {
         private var cachedVaultedIds: Set<Long>? = null
 
@@ -281,7 +337,7 @@ class MediaStoreRepository @Inject constructor(
                 val chunkSize  = params.loadSize * 2
 
                 while (pageData.size < params.loadSize && !endReached) {
-                    val chunk = queryPhotos(contentResolver, sortConfig, chunkSize, offset)
+                    val chunk = queryPhotos(contentResolver, sortConfig, chunkSize, offset, bucketId)
                     if (chunk.isEmpty()) {
                         endReached = true
                     } else {
@@ -308,12 +364,13 @@ class MediaStoreRepository @Inject constructor(
     }
 
     private class MediaFolderPagingSource(
-        private val contentResolver: ContentResolver
+        private val contentResolver: ContentResolver,
+        private val sortConfig: FolderSortConfig
     ) : PagingSource<Int, MediaFolder>() {
         override suspend fun load(params: LoadParams<Int>): LoadResult<Int, MediaFolder> {
             return try {
                 val offset  = params.key ?: 0
-                val folders = queryFolders(contentResolver)
+                val folders = queryFolders(contentResolver, sortConfig)
                 val end     = (offset + params.loadSize).coerceAtMost(folders.size)
                 LoadResult.Page(
                     data    = if (offset < folders.size) folders.subList(offset, end)
@@ -357,12 +414,16 @@ class MediaStoreRepository @Inject constructor(
         )
 
         private fun queryPhotos(
-            cr: ContentResolver, sortConfig: SortConfig, limit: Int, offset: Int
+            cr: ContentResolver,
+            sortConfig: SortConfig,
+            limit: Int,
+            offset: Int,
+            bucketId: String? = null
         ): List<MediaPhoto> {
             val results = mutableListOf<MediaPhoto>()
             cr.query(
                 MediaStore.Files.getContentUri("external"),
-                photoProjection, buildQueryArgs(sortConfig, limit, offset), null
+                photoProjection, buildQueryArgs(sortConfig, limit, offset, bucketId), null
             )?.use { cursor ->
                 while (cursor.moveToNext()) results += cursor.toMediaPhoto()
             }
@@ -374,7 +435,12 @@ class MediaStoreRepository @Inject constructor(
         }
 
         @RequiresApi(Build.VERSION_CODES.O)
-        private fun buildQueryArgs(sc: SortConfig, limit: Int?, offset: Int?): Bundle {
+        private fun buildQueryArgs(
+            sc: SortConfig,
+            limit: Int?,
+            offset: Int?,
+            bucketId: String? = null
+        ): Bundle {
             val (col, fallback) = when (sc.sortBy) {
                 SortBy.DATE_TAKEN      -> MediaStore.MediaColumns.DATE_TAKEN    to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.DATE_MODIFIED   -> MediaStore.MediaColumns.DATE_MODIFIED to MediaStore.MediaColumns.DATE_ADDED
@@ -422,12 +488,23 @@ class MediaStoreRepository @Inject constructor(
                 if (limit != null) putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
                 if (offset != null) putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
                 
-                putString(ContentResolver.QUERY_ARG_SQL_SELECTION, mediaSelection)
-                putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, mediaSelectionArgs)
+                if (bucketId.isNullOrBlank()) {
+                    putString(ContentResolver.QUERY_ARG_SQL_SELECTION, mediaSelection)
+                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, mediaSelectionArgs)
+                } else {
+                    putString(
+                        ContentResolver.QUERY_ARG_SQL_SELECTION,
+                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($mediaSelection)"
+                    )
+                    putStringArray(
+                        ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                        arrayOf(bucketId, *mediaSelectionArgs)
+                    )
+                }
             }
         }
 
-        private fun queryFolders(cr: ContentResolver): List<MediaFolder> {
+        private fun queryFolders(cr: ContentResolver, sortConfig: FolderSortConfig): List<MediaFolder> {
             val map  = linkedMapOf<String, FolderAccumulator>()
             val args = Bundle().apply {
                 putStringArray(
@@ -473,7 +550,17 @@ class MediaStoreRepository @Inject constructor(
                 }
             return map.values
                 .map { f -> MediaFolder(f.bucketId, f.name, f.coverUri, f.photoCount, f.latestPhotoDate) }
-                .sortedByDescending { it.latestPhotoDate }
+                .let { folders ->
+                    val sorted = when (sortConfig.sortBy) {
+                        FolderSortBy.DATE_LATEST_PHOTO -> folders.sortedBy { it.latestPhotoDate }
+                        FolderSortBy.NAME -> folders.sortedBy { it.name.lowercase() }
+                        FolderSortBy.PHOTO_COUNT -> folders.sortedBy { it.photoCount }
+                    }
+                    when (sortConfig.sortOrder) {
+                        SortOrder.ASCENDING -> sorted
+                        SortOrder.DESCENDING -> sorted.reversed()
+                    }
+                }
         }
 
         // ── FIX: maps DATE_MODIFIED and DATE_ADDED from cursor ────────────────

@@ -25,4 +25,24 @@ interface PhotoIntelligenceDao {
 
     @Query("SELECT id FROM photo_intelligence WHERE isVaultItem = 1")
     suspend fun getVaultPhotoIds(): List<Long>
+
+    @Query(
+        """
+        SELECT pi.* FROM photo_intelligence pi
+        INNER JOIN photo_intelligence_fts fts ON pi.id = fts.rowid
+        WHERE photo_intelligence_fts MATCH :query
+        ORDER BY rank
+        LIMIT 100
+        """
+    )
+    suspend fun searchByText(query: String): List<PhotoIntelligence>
+
+    @Query("SELECT id FROM photo_intelligence WHERE hasPhoneNumber = 1")
+    suspend fun getIdsWithPhoneNumbers(): List<Long>
+
+    @Query("SELECT id FROM photo_intelligence WHERE hasEmail = 1")
+    suspend fun getIdsWithEmails(): List<Long>
+
+    @Query("SELECT id FROM photo_intelligence WHERE hasFaces = 1")
+    suspend fun getIdsWithFaces(): List<Long>
 }

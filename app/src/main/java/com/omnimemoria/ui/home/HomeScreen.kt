@@ -13,6 +13,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,8 +46,11 @@ import androidx.navigation.compose.rememberNavController
 import coil3.compose.AsyncImage
 import com.omnimemoria.data.repository.MediaStats
 import com.omnimemoria.domain.model.MediaPhoto
+import com.omnimemoria.ui.albums.AlbumsScreen
 import com.omnimemoria.ui.gallery.GalleryScreen
 import com.omnimemoria.ui.gallery.GalleryViewModel
+import com.omnimemoria.ui.search.SearchScreen
+import com.omnimemoria.ui.vault.VaultTabScreen
 import java.util.Calendar
 
 // ── Tab definitions ──────────────────────────────────────────────────────────────
@@ -63,10 +70,15 @@ enum class HomeTab(val route: String, val label: String, val icon: ImageVector) 
 // ── Root Screen ──────────────────────────────────────────────────────────────────
 
 @Composable
-fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
+fun HomeScreen(
+    onPhotoClick: (Long) -> Unit,
+    onFolderClick: (String) -> Unit,
+    onSettingsClick: () -> Unit
+) {
     val galleryViewModel: GalleryViewModel = hiltViewModel()
     val mediaStats    by galleryViewModel.mediaStats.collectAsState()
     val dynamicAccent by galleryViewModel.dynamicAccent.collectAsState()
+    val compactTopBar by galleryViewModel.compactTopBar.collectAsState()
     val context        = LocalContext.current
 
     val totalFormattedSize = remember(mediaStats.totalSizeBytes) {
@@ -96,12 +108,35 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
         NavHost(
             navController    = homeNavController,
             startDestination = HomeTab.GALLERY.route,
-            modifier         = Modifier.fillMaxSize()
+            modifier         = Modifier.fillMaxSize(),
+            enterTransition = { fadeIn(tween(200)) },
+            exitTransition = { fadeOut(tween(200)) },
+            popEnterTransition = { fadeIn(tween(200)) },
+            popExitTransition = { fadeOut(tween(200)) }
         ) {
-            composable(HomeTab.GALLERY.route) { GalleryScreen(onPhotoClick = onPhotoClick) }
-            composable(HomeTab.ALBUMS.route)  { AlbumsPlaceholderScreen() }
-            composable(HomeTab.SEARCH.route)  { SearchPlaceholderScreen() }
-            composable(HomeTab.VAULT.route)   { VaultPlaceholderScreen() }
+            composable(
+                route = HomeTab.GALLERY.route,
+                enterTransition = { slideInHorizontally { -it / 4 } + fadeIn(tween(200)) },
+                exitTransition = { slideOutHorizontally { it / 4 } + fadeOut(tween(200)) }
+            ) { GalleryScreen(onPhotoClick = onPhotoClick) }
+            composable(
+                route = HomeTab.ALBUMS.route,
+                enterTransition = { slideInHorizontally { it / 4 } + fadeIn(tween(200)) },
+                exitTransition = { slideOutHorizontally { -it / 4 } + fadeOut(tween(200)) }
+            ) { AlbumsScreen(onFolderClick = onFolderClick) }
+            composable(
+                route = HomeTab.SEARCH.route,
+                enterTransition = { slideInHorizontally { it / 4 } + fadeIn(tween(200)) },
+                exitTransition = { slideOutHorizontally { -it / 4 } + fadeOut(tween(200)) }
+            ) {
+                SearchScreen(
+                    onPhotoClick = { onPhotoClick(it) },
+                    onOpenSettings = onSettingsClick
+                )
+            }
+            composable(HomeTab.VAULT.route)   {
+                VaultTabScreen(onGoToSettings = onSettingsClick)
+            }
         }
 
         // ── Floating Top Bar (Dynamic accent tints the gradient) ─────────────
@@ -114,6 +149,7 @@ fun HomeScreen(onPhotoClick: (Long) -> Unit, onSettingsClick: () -> Unit) {
             albumCount          = mediaStats.albumCount,
             isLoading           = mediaStats.totalCount == 0 && mediaStats.totalSizeBytes == 0L,
             dynamicAccent       = dynamicAccent,
+            compactMode         = compactTopBar || currentTab != HomeTab.GALLERY,
             onSettingsClick     = onSettingsClick,
             modifier            = Modifier.align(Alignment.TopCenter)
         )
@@ -187,6 +223,7 @@ private fun OmniTopBar(
     albumCount:          Int,
     isLoading:           Boolean,
     dynamicAccent:       Color?,
+    compactMode:         Boolean,
     onSettingsClick:     () -> Unit,
     modifier:            Modifier = Modifier
 ) {
@@ -224,7 +261,7 @@ private fun OmniTopBar(
                     else MaterialTheme.colorScheme.primary
                 } ?: MaterialTheme.colorScheme.primary,
                 fontWeight    = FontWeight.ExtraBold,
-                letterSpacing = 2.sp
+                letterSpacing = 3.sp
             )
             Spacer(modifier = Modifier.height(3.dp))
             // Greeting
@@ -248,7 +285,7 @@ private fun OmniTopBar(
             if (isLoading) StatsShimmerRow()
             else {
                 AnimatedVisibility(
-                    visible = !isLoading,
+                    visible = !isLoading && !compactMode,
                     enter   = fadeIn(tween(400)) + expandVertically()
                 ) {
                     StatsChipsRow(
@@ -259,6 +296,13 @@ private fun OmniTopBar(
                         totalFormattedSize = totalFormattedSize,
                         albumCount = albumCount,
                         accent = dynamicAccent
+                    )
+                }
+                AnimatedVisibility(visible = compactMode) {
+                    Text(
+                        "Your memories, organized",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -299,6 +343,10 @@ private fun StatsChipsRow(
     albumCount:          Int,
     accent:              Color?
 ) {
+    val animatedPhotos by animateIntAsState(targetValue = photoCount, animationSpec = tween(600), label = "count_photos")
+    val animatedVideos by animateIntAsState(targetValue = videoCount, animationSpec = tween(600), label = "count_videos")
+    val animatedAlbums by animateIntAsState(targetValue = albumCount, animationSpec = tween(600), label = "count_albums")
+
     val chipBg = accent?.copy(alpha = 0.15f)
         ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     val iconTint = accent ?: MaterialTheme.colorScheme.primary
@@ -307,12 +355,12 @@ private fun StatsChipsRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.horizontalScroll(rememberScrollState())
     ) {
-        StatChip(Icons.Outlined.Image, "$photoCount Photos", chipBg, iconTint)
-        StatChip(Icons.Outlined.Videocam, "$videoCount Videos", chipBg, iconTint)
+        StatChip(Icons.Outlined.Image, "$animatedPhotos Photos", chipBg, iconTint)
+        StatChip(Icons.Outlined.Videocam, "$animatedVideos Videos", chipBg, iconTint)
         StatChip(Icons.Outlined.Image, "Photos $photosFormattedSize", chipBg, iconTint)
         StatChip(Icons.Outlined.VideoFile, "Videos $videosFormattedSize", chipBg, iconTint)
         StatChip(Icons.Outlined.SdStorage, "Total $totalFormattedSize", chipBg, iconTint)
-        StatChip(Icons.Outlined.GridView, "$albumCount Albums", chipBg, iconTint)
+        StatChip(Icons.Outlined.GridView, "$animatedAlbums Albums", chipBg, iconTint)
     }
 }
 
@@ -522,7 +570,8 @@ private fun OmniBottomNav(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
-            .padding(bottom     = 20.dp)
+            .navigationBarsPadding()
+            .padding(bottom     = 12.dp)
             .clip(RoundedCornerShape(32.dp))
             .background(Color(0xFF141220).copy(alpha = 0.9f))
     ) {
@@ -537,9 +586,21 @@ private fun OmniBottomNav(
                     selected = selected,
                     onClick  = { onTabSelected(tab) },
                     icon     = {
+                        val scale by animateFloatAsState(
+                            targetValue = if (selected) 1.15f else 1f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                            label = "tab_scale_${tab.route}"
+                        )
                         Icon(
-                            tab.icon, tab.label,
-                            modifier = Modifier.size(if (selected) 24.dp else 22.dp)
+                            imageVector = when (tab) {
+                                HomeTab.GALLERY -> if (selected) Icons.Filled.PhotoLibrary else Icons.Outlined.PhotoLibrary
+                                HomeTab.ALBUMS -> if (selected) Icons.Filled.GridView else Icons.Outlined.GridView
+                                HomeTab.SEARCH -> if (selected) Icons.Filled.Search else Icons.Outlined.Search
+                                HomeTab.VAULT -> if (selected) Icons.Filled.Lock else Icons.Outlined.Lock
+                            },
+                            contentDescription = tab.label,
+                            modifier = Modifier.size(if (selected) 24.dp else 22.dp).scale(scale),
+                            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                     },
                     label = {
@@ -551,7 +612,7 @@ private fun OmniBottomNav(
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor   = MaterialTheme.colorScheme.primary,
                         indicatorColor      = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 )
             }
@@ -635,21 +696,6 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
             }
         }
     }
-}
-
-// ── Placeholder Screens ───────────────────────────────────────────────────────────
-
-@Composable fun AlbumsPlaceholderScreen() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Albums Screen", style = MaterialTheme.typography.titleLarge) }
-}
-@Composable fun SearchPlaceholderScreen() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Search Screen", style = MaterialTheme.typography.titleLarge) }
-}
-@Composable fun VaultPlaceholderScreen() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Vault Screen", style = MaterialTheme.typography.titleLarge) }
 }
 
 // ── Greeting ──────────────────────────────────────────────────────────────────────

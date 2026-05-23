@@ -47,6 +47,7 @@ import java.util.Locale
 @Composable
 fun PhotoDetailScreen(
     photoId:   Long,
+    bucketId: String? = null,
     onBack:    () -> Unit,
     onOpenVideo: (mediaId: Long) -> Unit,
     viewModel: PhotoDetailViewModel = hiltViewModel()
@@ -60,8 +61,8 @@ fun PhotoDetailScreen(
     val isFavorite  by viewModel.isFavorite.collectAsState()
 
     // هنحمّل مرة واحدة فقط لما الـ composable يتفتح أول مرة
-    LaunchedEffect(photoId) {
-        viewModel.loadAllPhotos(photoId)
+    LaunchedEffect(photoId, bucketId) {
+        viewModel.loadAllPhotos(photoId, bucketId)
     }
 
     // ── FIX: pagerState صح ───────────────────────────────────────────────────

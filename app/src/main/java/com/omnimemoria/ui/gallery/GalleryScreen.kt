@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +41,7 @@ import coil3.request.ImageRequest
 import coil3.size.Size
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
+import com.omnimemoria.ui.components.ShimmerBox
 import com.omnimemoria.ui.theme.AmberVibe
 import com.omnimemoria.ui.theme.RoseMemory
 import androidx.compose.foundation.gestures.rememberTransformableState
@@ -79,6 +81,11 @@ fun GalleryScreen(
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
 
     val gridState = rememberLazyGridState()
+
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 100 }
+            .collect { compact -> viewModel.setCompactTopBar(compact) }
+    }
 
     var cumulativeZoom by remember { mutableFloatStateOf(1f) }
     val transformableState = rememberTransformableState { zoomChange, _, _ ->
@@ -459,21 +466,10 @@ private fun CachedThumbnail(uri: String, modifier: Modifier) {
 
 @Composable
 private fun SkeletonPhotoCell(size: Dp) {
-    val alpha by rememberInfiniteTransition(label = "skeleton")
-        .animateFloat(
-            initialValue  = 0.2f,
-            targetValue   = 0.5f,
-            animationSpec = infiniteRepeatable(
-                animation  = tween(900, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "skeleton_alpha"
-        )
-    Box(
+    ShimmerBox(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha))
     )
 }
 
