@@ -35,7 +35,6 @@ import coil3.request.ImageRequest
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
-import com.omnimemoria.ui.gallery.photoSharedKey
 import com.omnimemoria.ui.photoSharedKey
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import java.text.SimpleDateFormat
