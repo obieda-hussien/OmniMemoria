@@ -24,6 +24,9 @@ data class PinUiState(
 
 enum class PinStep { ENTER, CONFIRM, UNLOCKING, LOCKED_OUT }
 
+// 1. إضافة الـ Enum المطلوب في الشاشة لتحديد نوع المعرض
+enum class UnlockType { REAL, DECOY }
+
 @HiltViewModel
 class VaultPinViewModel @Inject constructor(
     private val vaultRepository: VaultRepository
@@ -39,6 +42,10 @@ class VaultPinViewModel @Inject constructor(
 
     private val _lockoutRemainingSeconds = MutableStateFlow(0)
     val lockoutRemainingSeconds: StateFlow<Int> = _lockoutRemainingSeconds.asStateFlow()
+
+    // 2. إضافة المتغير unlockedAs لمراقبة حالة فتح الخزنة ونوعها
+    private val _unlockedAs = MutableStateFlow<UnlockType?>(null)
+    val unlockedAs: StateFlow<UnlockType?> = _unlockedAs.asStateFlow()
 
     private var entered = ""
     private var confirm = ""
@@ -71,6 +78,8 @@ class VaultPinViewModel @Inject constructor(
                 viewModelScope.launch {
                     vaultRepository.savePinHash(sha256(confirm))
                     _pinState.value = PinUiState(step = PinStep.UNLOCKING, success = true, message = "Vault unlocked")
+                    // عند نجاح الإعداد لأول مرة، نفتح الخزنة الحقيقية مباشرة
+                    _unlockedAs.value = UnlockType.REAL
                 }
             } else {
                 firstSetupPin = null
@@ -101,6 +110,13 @@ class VaultPinViewModel @Inject constructor(
             if (valid) {
                 _attemptsLeft.value = 5
                 _pinState.value = PinUiState(step = PinStep.UNLOCKING, success = true, message = null)
+                // 3. تحديث لفتح الخزنة الحقيقية عند تطابق الـ PIN
+                _unlockedAs.value = UnlockType.REAL
+            } else if (typed == "0000") { 
+                // 4. رمز افتراضي مؤقت لفتح الخزنة الوهمية (Decoy Vault) للتجربة والـ Testing
+                _attemptsLeft.value = 5
+                _pinState.value = PinUiState(step = PinStep.UNLOCKING, success = true, message = null)
+                _unlockedAs.value = UnlockType.DECOY
             } else {
                 val left = (_attemptsLeft.value - 1).coerceAtLeast(0)
                 _attemptsLeft.value = left
