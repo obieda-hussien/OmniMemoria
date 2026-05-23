@@ -41,6 +41,7 @@ import com.omnimemoria.domain.model.SortConfig
 import com.omnimemoria.domain.model.SortOrder
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
+import com.omnimemoria.ui.photoSharedKey
 import com.omnimemoria.ui.components.ShimmerBox
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
