@@ -167,7 +167,6 @@ private fun AlbumCard(
                 onClick = onClick,
                 onLongClick = { menuExpanded = true }
             )
-            .animateItemPlacement()
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AsyncImage(

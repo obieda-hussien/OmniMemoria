@@ -139,5 +139,4 @@ class VaultPinViewModel @Inject constructor(
     private fun String.toDigitList(): List<Int?> = List(4) { index ->
         getOrNull(index)?.digitToIntOrNull()
     }
-    companion object {
 }

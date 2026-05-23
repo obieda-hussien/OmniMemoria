@@ -31,7 +31,7 @@ interface PhotoIntelligenceDao {
         SELECT pi.* FROM photo_intelligence pi
         INNER JOIN photo_intelligence_fts fts ON pi.id = fts.rowid
         WHERE photo_intelligence_fts MATCH :query
-        ORDER BY rank
+        ORDER BY pi.indexedAt DESC
         LIMIT 100
         """
     )

@@ -283,59 +283,59 @@ private fun FolderSelectionBar(
                 IconButton(onClick = onMore) { Icon(Icons.Outlined.MoreVert, contentDescription = null, tint = Color.White) }
             }
         }
+    }
+}
 
-        @OptIn(ExperimentalMaterial3Api::class)
-        @Composable
-        private fun SimpleFolderSortSheet(
-            onDismiss: () -> Unit,
-            onApply: (SortConfig) -> Unit
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SimpleFolderSortSheet(
+    onDismiss: () -> Unit,
+    onApply: (SortConfig) -> Unit
+) {
+    var sortBy by remember { mutableStateOf(SortBy.DATE_TAKEN) }
+    var sortOrder by remember { mutableStateOf(SortOrder.DESCENDING) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            var sortBy by remember { mutableStateOf(SortBy.DATE_TAKEN) }
-            var sortOrder by remember { mutableStateOf(SortOrder.DESCENDING) }
-
-            ModalBottomSheet(onDismissRequest = onDismiss) {
-                Column(
+            Text("Sort photos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            listOf(
+                SortBy.DATE_TAKEN to "Latest Photo",
+                SortBy.NAME to "Name A-Z",
+                SortBy.SIZE to "Largest"
+            ).forEach { (candidate, label) ->
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .combinedClickable(onClick = { sortBy = candidate }),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Sort photos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    listOf(
-                        SortBy.DATE_TAKEN to "Latest Photo",
-                        SortBy.NAME to "Name A-Z",
-                        SortBy.SIZE to "Largest"
-                    ).forEach { (candidate, label) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .combinedClickable(onClick = { sortBy = candidate }),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(selected = sortBy == candidate, onClick = { sortBy = candidate })
-                            Text(label)
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = sortOrder == SortOrder.DESCENDING,
-                            onClick = { sortOrder = SortOrder.DESCENDING },
-                            label = { Text("Newest ↓") }
-                        )
-                        FilterChip(
-                            selected = sortOrder == SortOrder.ASCENDING,
-                            onClick = { sortOrder = SortOrder.ASCENDING },
-                            label = { Text("Oldest ↑") }
-                        )
-                    }
-                    Button(
-                        onClick = { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder)) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Apply")
-                    }
+                    RadioButton(selected = sortBy == candidate, onClick = { sortBy = candidate })
+                    Text(label)
                 }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = sortOrder == SortOrder.DESCENDING,
+                    onClick = { sortOrder = SortOrder.DESCENDING },
+                    label = { Text("Newest ↓") }
+                )
+                FilterChip(
+                    selected = sortOrder == SortOrder.ASCENDING,
+                    onClick = { sortOrder = SortOrder.ASCENDING },
+                    label = { Text("Oldest ↑") }
+                )
+            }
+            Button(
+                onClick = { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder)) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Apply")
             }
         }
     }
