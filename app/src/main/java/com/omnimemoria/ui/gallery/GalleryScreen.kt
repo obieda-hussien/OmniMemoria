@@ -5,6 +5,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
@@ -362,7 +363,7 @@ private fun SkeletonPhotoCell() {
 // ── Sort / filter bottom sheet ─────────────────────────────────────────────────
 // Unified with FolderDetailScreen's sort sheet — same visual language.
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GallerySortFilterSheet(
     currentFilter: MediaFilter,
@@ -459,7 +460,7 @@ private fun GallerySortFilterSheet(
                                 MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                             else Color.Transparent
                         )
-                        .combinedClickable { sortBy = candidate }
+                        .clickable { sortBy = candidate }
                         .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -514,9 +515,7 @@ private fun GallerySortFilterSheet(
                     .height(52.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.primary)
-                    .combinedClickable(
-                        onClick = { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder), filterBy) }
-                    ),
+                    .clickable { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder), filterBy) },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
