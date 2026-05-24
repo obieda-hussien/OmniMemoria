@@ -1,109 +1,56 @@
 package com.omnimemoria.ui.vault
 
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.omnimemoria.R
-import com.omnimemoria.domain.model.MediaPhoto
-import com.omnimemoria.ui.components.ShimmerBox
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultGalleryScreen(
     viewModel: VaultTabViewModel,
-    onNavigateToDetail: (Long, Boolean) -> Unit,
-    onBack: () -> Unit
+    onBackClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
-    val selectMediaLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
-    ) { uris ->
-        if (uris.isNotEmpty()) {
-            viewModel.importMedia(context, uris)
-        }
-    }
 
     Scaffold(
         topBar = {
-            // تغليف شريط العنوان بـ Surface مع ارتفاع وظل يمنع تداخل الصور معه أثناء التمرير
-            Surface(
-                tonalElevation = 4.dp,
-                shadowElevation = 3.dp,
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                TopAppBar(
-                    title = { 
-                        Text(
-                            text = stringResource(R.string.secure_vault),
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium
-                        ) 
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    actions = {
-                        if (uiState.selectedPhotos.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.exportSelectedPhotos(context) }) {
-                                Icon(Icons.Default.Share, contentDescription = "Export")
-                            }
-                            IconButton(onClick = { viewModel.deleteSelectedPhotos(context) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete")
-                            }
-                        } else {
-                            IconButton(onClick = { selectMediaLauncher.launch("*/*") }) {
-                                Icon(Icons.Default.Add, contentDescription = "Import")
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent // الشفافية هنا تحت الـ Surface تمنح تماسكاً ممتازاً
-                    ),
-                    windowInsets = TopAppBarDefaults.windowInsets
-                )
-            }
-        }
+            TopAppBar(
+                title = { Text(stringResource(R.string.vault_title)) },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                // إجبار شريط التطبيقات هنا أيضاً على النزول لمسافة تحت شريط الحالة لمنع التداخل
+                modifier = Modifier.statusBarsPadding()
+            )
+        },
+        modifier = modifier.fillMaxSize()
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (uiState.isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else if (uiState.photos.isEmpty()) {
+            if (uiState.vaultPhotos.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -112,94 +59,42 @@ fun VaultGalleryScreen(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Empty",
+                        imageVector = Icons.Default.LockOpen,
+                        contentDescription = null,
                         modifier = Modifier.size(64.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = stringResource(R.string.vault_empty),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(R.string.vault_empty_desc),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        alignment = androidx.compose.ui.text.style.TextAlign.Center
+                        textAlign = TextAlign.Center
                     )
                 }
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
+                    columns = GridCells.Adaptive(120.dp),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp, start = 8.dp, end = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    contentPadding = PaddingValues(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(uiState.photos, key = { it.id }) { photo ->
-                        val isSelected = uiState.selectedPhotos.contains(photo)
-                        VaultPhotoItem(
-                            photo = photo,
-                            isSelected = isSelected,
-                            onClick = {
-                                if (uiState.selectedPhotos.isNotEmpty()) {
-                                    viewModel.togglePhotoSelection(photo)
-                                } else {
-                                    onNavigateToDetail(photo.id, true)
-                                }
-                            },
-                            onLongClick = {
-                                viewModel.togglePhotoSelection(photo)
-                            }
-                        )
+                    items(uiState.vaultPhotos) { photo ->
+                        Box(
+                            modifier = Modifier
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                        ) {
+                            AsyncImage(
+                                model = photo.uri,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                     }
                 }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun VaultPhotoItem(
-    photo: MediaPhoto,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .aspectRatio(1f)
-            .clip(MaterialTheme.shapes.medium)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
-    ) {
-        AsyncImage(
-            model = photo.uri,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
-                contentAlignment = Alignment.TopEnd
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = "Selected",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(6.dp)
-                )
             }
         }
     }
