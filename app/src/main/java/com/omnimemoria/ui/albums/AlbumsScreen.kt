@@ -7,6 +7,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -196,7 +197,6 @@ private fun VibesSection() {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun VibeCard(vibe: VibeEntry) {
     Box(
@@ -210,7 +210,7 @@ private fun VibeCard(vibe: VibeEntry) {
                 )
             )
             .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
-            .combinedClickable(onClick = {})
+            .clickable(onClick = {})
             .padding(14.dp),
         contentAlignment = Alignment.BottomStart
     ) {
@@ -341,7 +341,6 @@ private fun AlbumCard(folder: MediaFolder, index: Int, onClick: () -> Unit) {
 
 // ── Sort bottom sheet ──────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AlbumSortSheet(
     initial:   FolderSortConfig,
@@ -390,7 +389,7 @@ private fun AlbumSortSheet(
                             MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                         else Color.Transparent
                     )
-                    .combinedClickable(onClick = { sortBy = candidate })
+                    .clickable(onClick = { sortBy = candidate })
                     .padding(horizontal = 4.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -436,7 +435,7 @@ private fun AlbumSortSheet(
         Spacer(Modifier.height(24.dp))
 
         Row(
-            modifier              = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             TextButton(
@@ -451,7 +450,7 @@ private fun AlbumSortSheet(
                     .height(52.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.primary)
-                    .combinedClickable(onClick = { onApply(FolderSortConfig(sortBy, sortOrder)) }),
+                    .clickable(onClick = { onApply(FolderSortConfig(sortBy, sortOrder)) }),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
