@@ -1,40 +1,16 @@
 package com.omnimemoria.ui.search
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -43,30 +19,15 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Email
-import androidx.compose.material.icons.outlined.Face
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Phone
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -82,12 +43,15 @@ import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.components.ShimmerBox
 import kotlinx.coroutines.delay
 
+// ── Rotating hint strings ──────────────────────────────────────────────────────
+
 private val HintTexts = listOf(
-    "Search photos, text, people...",
+    "Search photos, text, people…",
     "Try: 'phone numbers'",
-    "Try: 'receipts from January'",
-    "Try: 'people at the beach'",
+    "Try: 'receipts from last month'",
+    "Try: 'photos with faces'",
     "Try: 'blue car'",
+    "Try: 'this month'"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,48 +70,52 @@ fun SearchScreen(
 
     val focusRequester = remember { FocusRequester() }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        Column(modifier = Modifier.fillMaxSize()) {
 
-        // ── Custom search bar ──────────────────────────────────────────────
-        OmniSearchBar(
-            query         = query,
-            onQueryChange = viewModel::setQuery,
-            onClear       = viewModel::clearQuery,
-            focusRequester = focusRequester
-        )
+            // ── Search bar ─────────────────────────────────────────────────
+            OmniSearchBar(
+                query          = query,
+                onQueryChange  = viewModel::setQuery,
+                onClear        = viewModel::clearQuery,
+                focusRequester = focusRequester
+            )
 
-        // ── Body ───────────────────────────────────────────────────────────
-        AnimatedContent(
-            targetState = results,
-            transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(150)) },
-            label = "search_content"
-        ) { state ->
-            when (state) {
-                SearchResultState.Idle -> IdleState(
-                    recent              = recent,
-                    counts              = counts,
-                    onRecentClick       = viewModel::setQuery,
-                    onDeleteRecent      = viewModel::deleteRecent,
-                    onQuickFilterClick  = viewModel::applyQuickFilter,
-                    onOpenSettings      = onOpenSettings
-                )
-                SearchResultState.Searching -> SearchingState()
-                is SearchResultState.Results -> ResultsState(
-                    photos = state.photos,
-                    query  = state.query,
-                    onPhotoClick = onPhotoClick
-                )
-                is SearchResultState.Empty -> EmptyState(query = state.query)
+            // ── Body — animated content switch ─────────────────────────────
+            AnimatedContent(
+                targetState  = results,
+                transitionSpec = {
+                    fadeIn(tween(200)) togetherWith fadeOut(tween(150))
+                },
+                label = "search_content"
+            ) { state ->
+                when (state) {
+                    SearchResultState.Idle -> IdleState(
+                        recent             = recent,
+                        counts             = counts,
+                        onRecentClick      = viewModel::setQuery,
+                        onDeleteRecent     = viewModel::deleteRecent,
+                        onQuickFilterClick = viewModel::applyQuickFilter,
+                        onOpenSettings     = onOpenSettings
+                    )
+                    SearchResultState.Searching  -> SearchingState()
+                    is SearchResultState.Results -> ResultsState(
+                        photos       = state.photos,
+                        query        = state.query,
+                        onPhotoClick = onPhotoClick
+                    )
+                    is SearchResultState.Empty   -> EmptyState(query = state.query)
+                }
             }
         }
     }
 }
 
-// ── Custom search bar ──────────────────────────────────────────────────────────
+// ── Search bar ─────────────────────────────────────────────────────────────────
 
 @Composable
 private fun OmniSearchBar(
@@ -161,7 +129,7 @@ private fun OmniSearchBar(
     LaunchedEffect(query) {
         if (query.isNotEmpty()) return@LaunchedEffect
         while (true) {
-            delay(3_000)
+            delay(3_200)
             hintIndex = (hintIndex + 1) % HintTexts.size
         }
     }
@@ -170,62 +138,81 @@ private fun OmniSearchBar(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(top = 76.dp, start = 16.dp, end = 16.dp, bottom = 10.dp)  // below OmniTopBar
+            .padding(top = 76.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .background(Color(0xFF1E1C30))
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(18.dp))
+                .padding(horizontal = 16.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Search icon
             Icon(
                 Icons.Outlined.Search,
                 contentDescription = null,
-                tint               = MaterialTheme.colorScheme.primary,
+                tint               = Color(0xFF8B7FF5),
                 modifier           = Modifier.size(20.dp)
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(12.dp))
 
+            // Input + hint
             Box(modifier = Modifier.weight(1f)) {
                 if (query.isEmpty()) {
                     AnimatedContent(
                         targetState  = hintIndex,
-                        transitionSpec = { fadeIn(tween(500)) togetherWith fadeOut(tween(400)) },
-                        label        = "hint"
+                        transitionSpec = {
+                            (fadeIn(tween(450)) + slideInVertically { -it / 3 }) togetherWith
+                                (fadeOut(tween(350)) + slideOutVertically { it / 3 })
+                        },
+                        label = "hint"
                     ) { idx ->
                         Text(
                             HintTexts[idx],
-                            style  = MaterialTheme.typography.bodyMedium,
-                            color  = Color(0xFF6A6890)
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF5A587A)
                         )
                     }
                 }
                 BasicTextField(
-                    value         = query,
-                    onValueChange = onQueryChange,
-                    singleLine    = true,
-                    textStyle     = TextStyle(
+                    value           = query,
+                    onValueChange   = onQueryChange,
+                    singleLine      = true,
+                    textStyle       = TextStyle(
                         color    = MaterialTheme.colorScheme.onBackground,
-                        fontSize = 15.sp
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Normal
                     ),
-                    cursorBrush  = SolidColor(MaterialTheme.colorScheme.primary),
+                    cursorBrush     = SolidColor(Color(0xFF8B7FF5)),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { onQueryChange(query) }),
-                    modifier      = Modifier
+                    modifier        = Modifier
                         .fillMaxWidth()
                         .focusRequester(focusRequester)
                 )
             }
 
-            AnimatedVisibility(visible = query.isNotEmpty()) {
-                IconButton(onClick = onClear, modifier = Modifier.size(32.dp)) {
+            // Clear button
+            AnimatedVisibility(
+                visible = query.isNotEmpty(),
+                enter   = fadeIn() + scaleIn(initialScale = 0.7f),
+                exit    = fadeOut() + scaleOut(targetScale = 0.7f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF2D2B45))
+                        .clickable(onClick = onClear),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
                         Icons.Outlined.Close,
                         contentDescription = "Clear",
-                        tint               = Color(0xFF6A6890),
-                        modifier           = Modifier.size(16.dp)
+                        tint               = Color(0xFF8B7FF5),
+                        modifier           = Modifier.size(14.dp)
                     )
                 }
             }
@@ -249,18 +236,17 @@ private fun IdleState(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
-
         // Recent searches
         if (recent.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionLabel("Recent")
-                Row(
+                LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                    contentPadding        = PaddingValues(vertical = 2.dp)
                 ) {
-                    recent.forEach { term ->
+                    items(recent) { term ->
                         RecentChip(
                             term     = term,
                             onClick  = { onRecentClick(term) },
@@ -271,53 +257,55 @@ private fun IdleState(
             }
         }
 
-        // Quick filters
+        // Quick filter cards
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SectionLabel("Quick Filters")
+
             Row(
                 modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 QuickFilterCard(
-                    icon    = Icons.Outlined.Phone,
-                    title   = "Phone Numbers",
-                    count   = counts.phoneNumbers,
-                    color   = Color(0xFF1E3A5C),
-                    accent  = Color(0xFF4A9EFF),
+                    icon     = Icons.Outlined.Phone,
+                    title    = "Phone Numbers",
+                    count    = counts.phoneNumbers,
+                    gradient = listOf(Color(0xFF0D2A4A), Color(0xFF1A3A5C)),
+                    accent   = Color(0xFF4A9EFF),
                     modifier = Modifier.weight(1f),
-                    onClick = { onQuickFilterClick(QuickFilterType.PHONE_NUMBERS) }
+                    onClick  = { onQuickFilterClick(QuickFilterType.PHONE_NUMBERS) }
                 )
                 QuickFilterCard(
-                    icon    = Icons.Outlined.Email,
-                    title   = "Emails",
-                    count   = counts.emails,
-                    color   = Color(0xFF1A3A1A),
-                    accent  = Color(0xFF4CAF50),
+                    icon     = Icons.Outlined.Email,
+                    title    = "Emails",
+                    count    = counts.emails,
+                    gradient = listOf(Color(0xFF0D2A14), Color(0xFF1A4020)),
+                    accent   = Color(0xFF50C878),
                     modifier = Modifier.weight(1f),
-                    onClick = { onQuickFilterClick(QuickFilterType.EMAILS) }
+                    onClick  = { onQuickFilterClick(QuickFilterType.EMAILS) }
                 )
             }
+
             Row(
                 modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 QuickFilterCard(
-                    icon    = Icons.Outlined.Face,
-                    title   = "People",
-                    count   = counts.faces,
-                    color   = Color(0xFF2A1A3C),
-                    accent  = Color(0xFFBE4B8A),
+                    icon     = Icons.Outlined.Face,
+                    title    = "People",
+                    count    = counts.faces,
+                    gradient = listOf(Color(0xFF1E0A2E), Color(0xFF2E1040)),
+                    accent   = Color(0xFFBE4B8A),
                     modifier = Modifier.weight(1f),
-                    onClick = { onQuickFilterClick(QuickFilterType.PEOPLE) }
+                    onClick  = { onQuickFilterClick(QuickFilterType.PEOPLE) }
                 )
                 QuickFilterCard(
-                    icon    = Icons.Outlined.History,
-                    title   = "This Month",
-                    count   = null,
-                    color   = Color(0xFF2A2010),
-                    accent  = Color(0xFFD97706),
+                    icon     = Icons.Outlined.CalendarMonth,
+                    title    = "This Month",
+                    count    = null,
+                    gradient = listOf(Color(0xFF2A1A08), Color(0xFF3A2510)),
+                    accent   = Color(0xFFFBC02D),
                     modifier = Modifier.weight(1f),
-                    onClick = { onQuickFilterClick(QuickFilterType.THIS_MONTH) }
+                    onClick  = { onQuickFilterClick(QuickFilterType.THIS_MONTH) }
                 )
             }
         }
@@ -326,42 +314,68 @@ private fun IdleState(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF1E1C30))
+                .clip(RoundedCornerShape(20.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color(0xFF1A1830), Color(0xFF1E1C38))
+                    )
+                )
+                .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.15f), RoundedCornerShape(20.dp))
                 .padding(16.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    "✨ Smarter search with AI",
-                    style      = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color      = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    "Enable AI indexing to search by content, OCR text, and semantics.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(2.dp))
-                Row(
-                    modifier          = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .combinedClickable(onClick = onOpenSettings)
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            Row(verticalAlignment = Alignment.Top) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF8B7FF5).copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Outlined.Settings,
-                        contentDescription = null,
-                        tint     = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(15.dp)
+                        Icons.Outlined.AutoAwesome,
+                        null,
+                        tint     = Color(0xFF8B7FF5),
+                        modifier = Modifier.size(20.dp)
                     )
-                    Spacer(Modifier.width(5.dp))
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Open Settings",
-                        style  = MaterialTheme.typography.labelMedium,
-                        color  = MaterialTheme.colorScheme.primary
+                        "Smarter search with AI",
+                        style      = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color      = MaterialTheme.colorScheme.onBackground
                     )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Enable AI indexing to search by content, OCR text, phone numbers, and more.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF8B7FF5).copy(alpha = 0.14f))
+                            .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                            .clickable(onClick = onOpenSettings)
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Outlined.Settings,
+                            null,
+                            tint     = Color(0xFF8B7FF5),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Enable in Settings",
+                            style      = MaterialTheme.typography.labelMedium,
+                            color      = Color(0xFF8B7FF5),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }
@@ -377,19 +391,27 @@ private fun RecentChip(term: String, onClick: () -> Unit, onDelete: () -> Unit) 
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
             .background(Color(0xFF1E1C30))
+            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(20.dp))
             .combinedClickable(onClick = onClick)
-            .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            .padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Icon(
+            Icons.Outlined.History,
+            null,
+            tint     = Color(0xFF8B7FF5).copy(alpha = 0.6f),
+            modifier = Modifier.size(13.dp)
+        )
+        Spacer(Modifier.width(6.dp))
         Text(
             term,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onBackground
         )
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(6.dp))
         Box(
-            modifier         = Modifier
-                .size(18.dp)
+            modifier = Modifier
+                .size(20.dp)
                 .clip(CircleShape)
                 .background(Color(0xFF2D2B45))
                 .clickable(onClick = onDelete),
@@ -397,7 +419,7 @@ private fun RecentChip(term: String, onClick: () -> Unit, onDelete: () -> Unit) 
         ) {
             Icon(
                 Icons.Outlined.Close,
-                contentDescription = "Remove",
+                "Remove",
                 tint     = Color(0xFF6A6890),
                 modifier = Modifier.size(10.dp)
             )
@@ -413,42 +435,63 @@ private fun QuickFilterCard(
     icon:     ImageVector,
     title:    String,
     count:    Int?,
-    color:    Color,
+    gradient: List<Color>,
     accent:   Color,
     modifier: Modifier = Modifier,
     onClick:  () -> Unit
 ) {
     Box(
         modifier = modifier
-            .aspectRatio(1.5f)
-            .clip(RoundedCornerShape(16.dp))
-            .background(color)
+            .aspectRatio(1.6f)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Brush.linearGradient(gradient))
+            .border(1.dp, accent.copy(alpha = 0.15f), RoundedCornerShape(18.dp))
             .combinedClickable(onClick = onClick)
             .padding(14.dp)
     ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint     = accent,
+        // Icon top-left
+        Box(
             modifier = Modifier
-                .size(22.dp)
-                .align(Alignment.TopStart)
-        )
+                .size(34.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(accent.copy(alpha = 0.14f))
+                .align(Alignment.TopStart),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icon,
+                null,
+                tint     = accent,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        // Text bottom
         Column(modifier = Modifier.align(Alignment.BottomStart)) {
             Text(
                 title,
                 style      = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
                 color      = Color.White
             )
             if (count != null) {
                 Text(
-                    "$count",
+                    text  = "$count found",
                     style = MaterialTheme.typography.labelSmall,
                     color = accent.copy(alpha = 0.8f)
                 )
             }
         }
+
+        // Chevron
+        Icon(
+            Icons.Outlined.ChevronRight,
+            null,
+            tint     = accent.copy(alpha = 0.4f),
+            modifier = Modifier
+                .size(16.dp)
+                .align(Alignment.TopEnd)
+        )
     }
 }
 
@@ -458,10 +501,10 @@ private fun QuickFilterCard(
 private fun SectionLabel(text: String) {
     Text(
         text,
-        style      = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.SemiBold,
-        color      = MaterialTheme.colorScheme.onSurfaceVariant,
-        letterSpacing = 0.5.sp
+        style         = MaterialTheme.typography.labelMedium,
+        fontWeight    = FontWeight.SemiBold,
+        color         = MaterialTheme.colorScheme.onSurfaceVariant,
+        letterSpacing = 0.6.sp
     )
 }
 
@@ -469,49 +512,56 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun SearchingState() {
-    // animated 3-dot ellipsis
     val transition = rememberInfiniteTransition(label = "dots")
     val alpha by transition.animateFloat(
-        initialValue   = 0.3f,
+        initialValue   = 0.25f,
         targetValue    = 1f,
         animationSpec  = infiniteRepeatable(tween(600), RepeatMode.Reverse),
         label          = "dot_alpha"
     )
+
     Column(
-        modifier            = Modifier.fillMaxSize().padding(top = 32.dp),
+        modifier            = Modifier
+            .fillMaxSize()
+            .padding(top = 36.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Searching", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            "Searching",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             repeat(3) { i ->
                 Box(
                     modifier = Modifier
                         .size(7.dp)
                         .clip(CircleShape)
                         .background(
-                            MaterialTheme.colorScheme.primary.copy(
-                                alpha = (alpha - i * 0.2f).coerceIn(0.15f, 1f)
+                            Color(0xFF8B7FF5).copy(
+                                alpha = (alpha - i * 0.22f).coerceIn(0.12f, 1f)
                             )
                         )
                 )
             }
         }
         Spacer(Modifier.height(28.dp))
+        // Skeleton grid
         LazyVerticalGrid(
             columns               = GridCells.Fixed(3),
             contentPadding        = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalArrangement   = Arrangement.spacedBy(3.dp),
             userScrollEnabled     = false,
-            modifier              = Modifier.height(300.dp)
+            modifier              = Modifier.height(280.dp)
         ) {
             items(9) {
                 ShimmerBox(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(8.dp))
                 )
             }
         }
@@ -520,7 +570,6 @@ private fun SearchingState() {
 
 // ── Results state ──────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ResultsState(
     photos:      List<MediaPhoto>,
@@ -529,26 +578,47 @@ private fun ResultsState(
 ) {
     LazyVerticalGrid(
         columns               = GridCells.Fixed(3),
-        contentPadding        = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalArrangement   = Arrangement.spacedBy(2.dp),
+        contentPadding        = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalArrangement   = Arrangement.spacedBy(3.dp),
         modifier              = Modifier.fillMaxSize()
     ) {
+        // Results header
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Text(
-                "${photos.size} results for \"$query\"",
-                style      = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color      = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier   = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF8B7FF5))
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "${photos.size} result${if (photos.size != 1) "s" else ""} for",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "\"$query\"",
+                    style      = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color      = Color(0xFF8B7FF5)
+                )
+            }
         }
+
         items(photos, key = { it.id }) { photo ->
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .clickable { onPhotoClick(photo.id) }
             ) {
                 AsyncImage(
@@ -559,6 +629,7 @@ private fun ResultsState(
                 )
             }
         }
+
         item(span = { GridItemSpan(maxLineSpan) }) {
             Spacer(Modifier.height(120.dp).navigationBarsPadding())
         }
@@ -569,37 +640,47 @@ private fun ResultsState(
 
 @Composable
 private fun EmptyState(query: String) {
+    val floatY by rememberInfiniteTransition(label = "float")
+        .animateFloat(
+            initialValue  = 0f,
+            targetValue   = -8f,
+            animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label         = "float_y"
+        )
+
     Column(
         modifier            = Modifier
             .fillMaxSize()
-            .padding(horizontal = 32.dp),
+            .padding(horizontal = 36.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Box(
             modifier = Modifier
-                .size(80.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(Color(0xFF1E1C30)),
+                .offset(y = floatY.dp)
+                .size(88.dp)
+                .clip(RoundedCornerShape(26.dp))
+                .background(Color(0xFF1E1C30))
+                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(26.dp)),
             contentAlignment = Alignment.Center
         ) {
-            Text("🔍", fontSize = 36.sp)
+            Text("🔍", fontSize = 38.sp)
         }
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(22.dp))
         Text(
             "No results for",
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
             "\"$query\"",
-            style      = MaterialTheme.typography.titleLarge,
+            style      = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color      = MaterialTheme.colorScheme.onBackground
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
         Text(
-            "Try different keywords, or enable AI indexing in Settings for better results.",
+            "Try different keywords, or enable AI indexing in Settings for smarter results.",
             style     = MaterialTheme.typography.bodyMedium,
             color     = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
