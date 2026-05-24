@@ -2,10 +2,10 @@ package com.omnimemoria.ui.settings
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,9 +16,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -26,427 +26,462 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.omnimemoria.data.worker.ModelDownloadWorker
 import com.omnimemoria.domain.flags.FeatureFlag
+import com.omnimemoria.ui.components.OmniDetailTopBar
+import com.omnimemoria.ui.components.OmniSettingsGroup
 
-@OptIn(ExperimentalMaterial3Api::class)
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 fun SettingsScreen(
+    onBack: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    val featureStates by viewModel.featureStates.collectAsState()
+    val featureStates      by viewModel.featureStates.collectAsState()
     val modelDownloadStates by viewModel.modelDownloadStates.collectAsState()
-    val ocrEnabled = featureStates[FeatureFlag.OCR] == true
+    val ocrEnabled          = featureStates[FeatureFlag.OCR] == true
     var activeDownloadModel by remember { mutableStateOf<String?>(null) }
-    
-    // Add scroll behavior for a modern collapsing toolbar effect
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            LargeTopAppBar(
-                title = { 
-                    Text(
-                        text = "Settings", 
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = (-0.5).sp
-                    ) 
-                },
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp)
-                ),
-                scrollBehavior = scrollBehavior
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
-        LazyColumn(
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        // Subtle indigo gradient behind top bar only
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(28.dp)
+                .fillMaxWidth()
+                .height(180.dp)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        0f   to MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.12f),
+                        1f   to Color.Transparent
+                    )
+                )
+        )
+
+        LazyColumn(
+            modifier       = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                top    = 110.dp,   // clearance below floating top bar
+                bottom = 40.dp,
+                start  = 16.dp,
+                end    = 16.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            
+
             item {
-                SettingsGroup(title = "AI Features", icon = Icons.Outlined.AutoAwesome) {
+                OmniSettingsGroup(title = "AI Features", icon = Icons.Outlined.AutoAwesome) {
                     AI_FEATURE_ITEMS.forEachIndexed { index, item ->
-                        FeatureToggleItem(
-                            title = item.title,
-                            subtitle = item.subtitle,
-                            icon = item.icon,
-                            checked = featureStates[item.flag] == true,
-                            enabled = if (item.flag == FeatureFlag.ARABIC_OCR) ocrEnabled else true,
+                        OmniFeatureToggleItem(
+                            title           = item.title,
+                            subtitle        = item.subtitle,
+                            icon            = item.icon,
+                            checked         = featureStates[item.flag] == true,
+                            enabled         = if (item.flag == FeatureFlag.ARABIC_OCR) ocrEnabled else true,
                             onCheckedChange = { viewModel.toggle(item.flag) },
-                            isLast = index == AI_FEATURE_ITEMS.lastIndex
+                            isLast          = index == AI_FEATURE_ITEMS.lastIndex
                         )
                     }
                 }
             }
 
             item {
-                SettingsGroup(title = "Visual Features", icon = Icons.Outlined.Palette) {
+                OmniSettingsGroup(title = "Visual Features", icon = Icons.Outlined.Palette) {
                     VISUAL_FEATURE_ITEMS.forEachIndexed { index, item ->
-                        FeatureToggleItem(
-                            title = item.title,
-                            subtitle = item.subtitle,
-                            icon = item.icon,
-                            checked = featureStates[item.flag] == true,
+                        OmniFeatureToggleItem(
+                            title           = item.title,
+                            subtitle        = item.subtitle,
+                            icon            = item.icon,
+                            checked         = featureStates[item.flag] == true,
                             onCheckedChange = { viewModel.toggle(item.flag) },
-                            isLast = index == VISUAL_FEATURE_ITEMS.lastIndex
+                            isLast          = index == VISUAL_FEATURE_ITEMS.lastIndex
                         )
                     }
                 }
             }
 
             item {
-                SettingsGroup(title = "Storage & Compression", icon = Icons.Outlined.SdStorage) {
+                OmniSettingsGroup(title = "Storage & Compression", icon = Icons.Outlined.SdStorage) {
                     COMPRESSION_ITEMS.forEachIndexed { index, item ->
-                        FeatureToggleItem(
-                            title = item.title,
-                            subtitle = item.subtitle,
-                            icon = item.icon,
-                            checked = featureStates[item.flag] == true,
+                        OmniFeatureToggleItem(
+                            title           = item.title,
+                            subtitle        = item.subtitle,
+                            icon            = item.icon,
+                            checked         = featureStates[item.flag] == true,
                             onCheckedChange = { viewModel.toggle(item.flag) },
-                            isLast = index == COMPRESSION_ITEMS.lastIndex
+                            isLast          = index == COMPRESSION_ITEMS.lastIndex
                         )
                     }
                 }
             }
 
             item {
-                SettingsGroup(title = "Offline AI Models", icon = Icons.Outlined.ModelTraining) {
+                OmniSettingsGroup(title = "Offline AI Models", icon = Icons.Outlined.ModelTraining) {
                     AI_MODEL_ITEMS.forEachIndexed { index, item ->
-                        val isDownloaded = modelDownloadStates[item.modelName] == true
-                        ModelDownloadItem(
-                            title = item.title,
-                            icon = item.icon,
-                            downloaded = isDownloaded,
+                        OmniModelDownloadItem(
+                            title          = item.title,
+                            icon           = item.icon,
+                            downloaded     = modelDownloadStates[item.modelName] == true,
                             onDownloadClick = { activeDownloadModel = item.modelName },
-                            isLast = index == AI_MODEL_ITEMS.lastIndex
+                            isLast         = index == AI_MODEL_ITEMS.lastIndex
                         )
                     }
                 }
             }
 
             item {
-                SettingsGroup(title = "Security & Privacy", icon = Icons.Outlined.Security) {
+                OmniSettingsGroup(title = "Security & Privacy", icon = Icons.Outlined.Security) {
                     SECURITY_FEATURE_ITEMS.forEachIndexed { index, item ->
-                        FeatureToggleItem(
-                            title = item.title,
-                            subtitle = item.subtitle,
-                            icon = item.icon,
-                            checked = featureStates[item.flag] == true,
+                        OmniFeatureToggleItem(
+                            title           = item.title,
+                            subtitle        = item.subtitle,
+                            icon            = item.icon,
+                            checked         = featureStates[item.flag] == true,
                             onCheckedChange = { viewModel.toggle(item.flag) },
-                            isLast = index == SECURITY_FEATURE_ITEMS.lastIndex
+                            isLast          = index == SECURITY_FEATURE_ITEMS.lastIndex
                         )
                     }
                 }
             }
 
             item {
-                SettingsGroup(title = "About", icon = Icons.Outlined.Info) {
-                    AboutItems()
+                OmniSettingsGroup(title = "About", icon = Icons.Outlined.Info) {
+                    OmniAboutItems()
                 }
             }
-            
-            item { Spacer(modifier = Modifier.height(60.dp)) }
+
+            item { Spacer(Modifier.height(20.dp)) }
         }
+
+        // Floating top bar — same language as every other secondary screen
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(110.dp)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to MaterialTheme.colorScheme.background,
+                        0.75f to MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
+                        1.0f to Color.Transparent
+                    )
+                )
+        )
+
+        OmniDetailTopBar(
+            title    = "Settings",
+            subtitle = "Features & preferences",
+            onBack   = onBack,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 
     activeDownloadModel?.let { modelName ->
-        DownloadModelDialog(
-            modelName = modelName,
-            onDismiss = { activeDownloadModel = null }
-        )
+        DownloadModelDialog(modelName = modelName, onDismiss = { activeDownloadModel = null })
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Components
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Feature toggle row ─────────────────────────────────────────────────────────
 
 @Composable
-private fun SettingsGroup(
-    title: String, 
-    icon: ImageVector,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 12.dp, bottom = 12.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(content = content)
-        }
-    }
-}
-
-@Composable
-private fun FeatureToggleItem(
-    title: String,
-    icon: ImageVector,
-    checked: Boolean,
+private fun OmniFeatureToggleItem(
+    title:           String,
+    icon:            ImageVector,
+    checked:         Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    enabled: Boolean = true,
-    subtitle: String? = null,
-    isLast: Boolean = false
+    modifier:        Modifier = Modifier,
+    enabled:         Boolean  = true,
+    subtitle:        String?  = null,
+    isLast:          Boolean  = false
 ) {
-    val contentAlpha = if (enabled) 1f else 0.4f
-    
-    Column {
+    val contentAlpha = if (enabled) 1f else 0.38f
+
+    Column(modifier = modifier) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(enabled = enabled) { onCheckedChange(!checked) }
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Icon pill
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = contentAlpha)),
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (checked)
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f * contentAlpha)
+                        else
+                            Color(0xFF1E1C30).copy(alpha = contentAlpha)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = icon,
+                    imageVector        = icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
-                    modifier = Modifier.size(22.dp)
+                    tint               = if (checked)
+                        MaterialTheme.colorScheme.primary.copy(alpha = contentAlpha)
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+                    modifier           = Modifier.size(20.dp)
                 )
             }
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
-            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+
+            Spacer(Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
+                    text       = title,
+                    style      = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+                    color      = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
                 )
                 if (subtitle != null) {
                     Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+                        text     = subtitle,
+                        style    = MaterialTheme.typography.bodySmall,
+                        color    = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
                         modifier = Modifier.padding(top = 2.dp)
                     )
                 }
             }
-            
+
             Switch(
-                checked = checked,
+                checked         = checked,
                 onCheckedChange = null,
-                enabled = enabled,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                enabled         = enabled,
+                colors          = SwitchDefaults.colors(
+                    checkedThumbColor  = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor  = MaterialTheme.colorScheme.primary,
+                    uncheckedTrackColor = Color(0xFF2A2840)
                 )
             )
         }
+
         if (!isLast) {
             HorizontalDivider(
-                modifier = Modifier.padding(start = 76.dp, end = 20.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                modifier  = Modifier.padding(start = 70.dp, end = 18.dp),
+                thickness = 0.5.dp,
+                color     = Color.White.copy(alpha = 0.05f)
             )
         }
     }
 }
 
+// ── Model download row ────────────────────────────────────────────────────────
+
 @Composable
-private fun ModelDownloadItem(
-    title: String,
-    icon: ImageVector,
-    downloaded: Boolean,
+private fun OmniModelDownloadItem(
+    title:          String,
+    icon:           ImageVector,
+    downloaded:     Boolean,
     onDownloadClick: () -> Unit,
-    isLast: Boolean
+    isLast:         Boolean = false
 ) {
     Column {
         Row(
-            modifier = Modifier
+            modifier          = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface),
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF1E1C30)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = icon,
+                    imageVector        = icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
+                    tint               = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier           = Modifier.size(20.dp)
                 )
             }
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
+
+            Spacer(Modifier.width(14.dp))
+
             Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
+                text       = title,
+                style      = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
+                modifier   = Modifier.weight(1f)
             )
-            
+
             if (downloaded) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .background(Color(0xFF4CAF50).copy(alpha = 0.1f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF1A3A1A))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Ready", style = MaterialTheme.typography.labelMedium, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                    Icon(
+                        Icons.Outlined.CheckCircle,
+                        null,
+                        tint     = Color(0xFF4CAF50),
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "Ready",
+                        style      = MaterialTheme.typography.labelSmall,
+                        color      = Color(0xFF4CAF50),
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             } else {
-                Button(
-                    onClick = onDownloadClick,
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                    modifier = Modifier.height(36.dp),
-                    shape = RoundedCornerShape(12.dp)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable(onClick = onDownloadClick)
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
                 ) {
-                    Icon(Icons.Outlined.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Get", fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Outlined.CloudDownload,
+                            null,
+                            tint     = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            "Get",
+                            style      = MaterialTheme.typography.labelMedium,
+                            color      = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
+
         if (!isLast) {
             HorizontalDivider(
-                modifier = Modifier.padding(start = 76.dp, end = 20.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                modifier  = Modifier.padding(start = 70.dp, end = 18.dp),
+                thickness = 0.5.dp,
+                color     = Color.White.copy(alpha = 0.05f)
             )
         }
     }
 }
 
+// ── About section ──────────────────────────────────────────────────────────────
+
 @Composable
-private fun AboutItems() {
+private fun OmniAboutItems() {
     val context = LocalContext.current
     val versionName = remember(context) {
         runCatching {
-            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            packageInfo.versionName ?: "Unknown"
-        }.getOrDefault("Unknown")
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0"
+        }.getOrDefault("1.0")
     }
     var showLibrariesDialog by remember { mutableStateOf(false) }
 
     Column {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 20.dp),
+            modifier              = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 18.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment     = Alignment.CenterVertically
         ) {
             Text("App Version", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-            Text(versionName, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Text(
+                text       = versionName,
+                color      = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+                style      = MaterialTheme.typography.bodyLarge
+            )
         }
-        
-        HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        
+
+        HorizontalDivider(
+            modifier  = Modifier.padding(horizontal = 18.dp),
+            thickness = 0.5.dp,
+            color     = Color.White.copy(alpha = 0.05f)
+        )
+
         Row(
-            modifier = Modifier
+            modifier              = Modifier
                 .fillMaxWidth()
                 .clickable { showLibrariesDialog = true }
-                .padding(horizontal = 20.dp, vertical = 20.dp),
+                .padding(horizontal = 18.dp, vertical = 18.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment     = Alignment.CenterVertically
         ) {
             Text("Open Source Licenses", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-            Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            Icon(
+                Icons.AutoMirrored.Outlined.OpenInNew,
+                contentDescription = null,
+                tint               = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier           = Modifier.size(18.dp)
+            )
         }
     }
 
     if (showLibrariesDialog) {
         AlertDialog(
             onDismissRequest = { showLibrariesDialog = false },
-            title = { Text(text = "Open Source Libraries") },
-            text = { Text(text = "Licenses screen coming soon.") },
-            confirmButton = {
-                TextButton(onClick = { showLibrariesDialog = false }) {
-                    Text(text = "OK")
-                }
+            title            = { Text("Open Source Libraries") },
+            text             = { Text("License viewer coming soon.") },
+            confirmButton    = {
+                TextButton(onClick = { showLibrariesDialog = false }) { Text("OK") }
             }
         )
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Data Models
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Data models ────────────────────────────────────────────────────────────────
 
 private data class FeatureItem(
-    val title: String,
-    val flag: FeatureFlag,
-    val icon: ImageVector,
+    val title:    String,
+    val flag:     FeatureFlag,
+    val icon:     ImageVector,
     val subtitle: String? = null
 )
 
 private data class AiModelItem(
-    val title: String,
+    val title:     String,
     val modelName: String,
-    val icon: ImageVector
+    val icon:      ImageVector
 )
 
 private val AI_FEATURE_ITEMS = listOf(
-    FeatureItem("Text Extraction (OCR)", FeatureFlag.OCR, Icons.Outlined.DocumentScanner),
-    FeatureItem("Arabic OCR (Tesseract)", FeatureFlag.ARABIC_OCR, Icons.Outlined.Translate),
-    FeatureItem("Image Classification", FeatureFlag.ML_LABELS, Icons.Outlined.Category),
-    FeatureItem("Face Detection", FeatureFlag.FACE_DETECTION, Icons.Outlined.Face),
-    FeatureItem("Embeddings", FeatureFlag.EMBEDDINGS, Icons.Outlined.Polyline),
-    FeatureItem("Semantic Search (RAG)", FeatureFlag.RAG_SEARCH, Icons.Outlined.TravelExplore, "Requires embeddings"),
-    FeatureItem("Smart Filters", FeatureFlag.SMART_FILTERS, Icons.Outlined.FilterList, "Uses AI-generated metadata")
+    FeatureItem("Text Extraction (OCR)",    FeatureFlag.OCR,            Icons.Outlined.DocumentScanner),
+    FeatureItem("Arabic OCR (Tesseract)",   FeatureFlag.ARABIC_OCR,     Icons.Outlined.Translate,      "Requires OCR to be enabled"),
+    FeatureItem("Image Classification",     FeatureFlag.ML_LABELS,      Icons.Outlined.Category),
+    FeatureItem("Face Detection",           FeatureFlag.FACE_DETECTION,  Icons.Outlined.Face),
+    FeatureItem("Embeddings",              FeatureFlag.EMBEDDINGS,      Icons.Outlined.Polyline),
+    FeatureItem("Semantic Search (RAG)",    FeatureFlag.RAG_SEARCH,      Icons.Outlined.TravelExplore,  "Requires Embeddings"),
+    FeatureItem("Smart Content Filters",    FeatureFlag.SMART_FILTERS,   Icons.Outlined.FilterList,     "Uses AI-indexed metadata")
 )
 
 private val VISUAL_FEATURE_ITEMS = listOf(
-    FeatureItem("Color Explorer", FeatureFlag.PIXEL_PALETTE, Icons.Outlined.ColorLens),
-    FeatureItem("Duplicate Photo Detection", FeatureFlag.PHOTO_DNA, Icons.Outlined.Difference),
-    FeatureItem("Vibe Albums", FeatureFlag.VIBE_ALBUMS, Icons.Outlined.AutoAwesomeMosaic),
-    FeatureItem("Temporal Wave", FeatureFlag.TEMPORAL_WAVE, Icons.Outlined.Waves),
-    FeatureItem("Memory Stats", FeatureFlag.MEMORIA_STATS, Icons.Outlined.Analytics),
-    FeatureItem("Ultra HDR", FeatureFlag.ULTRA_HDR, Icons.Outlined.HdrOn)
+    FeatureItem("Color Explorer",           FeatureFlag.PIXEL_PALETTE,   Icons.Outlined.ColorLens),
+    FeatureItem("Duplicate Detection",      FeatureFlag.PHOTO_DNA,       Icons.Outlined.Difference),
+    FeatureItem("Vibe Albums",              FeatureFlag.VIBE_ALBUMS,     Icons.Outlined.AutoAwesomeMosaic),
+    FeatureItem("Temporal Wave",            FeatureFlag.TEMPORAL_WAVE,   Icons.Outlined.Waves),
+    FeatureItem("Memory Stats",             FeatureFlag.MEMORIA_STATS,   Icons.Outlined.Analytics),
+    FeatureItem("Ultra HDR Viewer",         FeatureFlag.ULTRA_HDR,       Icons.Outlined.HdrOn)
 )
 
 private val COMPRESSION_ITEMS = listOf(
-    FeatureItem("Image Compression", FeatureFlag.SMART_COMPRESSION, Icons.Outlined.Image),
-    FeatureItem("Video Compression", FeatureFlag.VIDEO_COMPRESSION, Icons.Outlined.VideoFile)
+    FeatureItem("Smart Image Compression",  FeatureFlag.SMART_COMPRESSION, Icons.Outlined.Image),
+    FeatureItem("Video Compression",        FeatureFlag.VIDEO_COMPRESSION, Icons.Outlined.VideoFile)
 )
 
 private val AI_MODEL_ITEMS = listOf(
-    AiModelItem("Tesseract Arabic (~30MB)", ModelDownloadWorker.MODEL_TESSERACT_ARA, Icons.Outlined.Language),
-    AiModelItem("Embedding Model (~50MB)", ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER, Icons.Outlined.Psychology)
+    AiModelItem("Tesseract Arabic (~30 MB)", ModelDownloadWorker.MODEL_TESSERACT_ARA,    Icons.Outlined.Language),
+    AiModelItem("Embedding Model (~50 MB)",  ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER, Icons.Outlined.Psychology)
 )
 
 private val SECURITY_FEATURE_ITEMS = listOf(
-    FeatureItem("Encrypted Vault", FeatureFlag.VAULT, Icons.Outlined.Lock),
-    FeatureItem("Silent Photos (EXIF)", FeatureFlag.SILENT_STORY, Icons.Outlined.VisibilityOff),
-    FeatureItem("Memory Map", FeatureFlag.MEMORY_MAP, Icons.Outlined.Map)
+    FeatureItem("Encrypted Vault",          FeatureFlag.VAULT,          Icons.Outlined.Lock),
+    FeatureItem("Hidden Photo Notes",       FeatureFlag.SILENT_STORY,   Icons.Outlined.VisibilityOff),
+    FeatureItem("Memory Map",               FeatureFlag.MEMORY_MAP,     Icons.Outlined.Map)
 )
