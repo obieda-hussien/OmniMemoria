@@ -210,7 +210,7 @@ private fun VibeCard(vibe: VibeEntry) {
                 )
             )
             .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
-            .clickable(onClick = {}) // Corrected: Use standard clickable
+            .clickable(onClick = {})
             .padding(14.dp),
         contentAlignment = Alignment.BottomStart
     ) {
@@ -302,7 +302,7 @@ private fun AlbumCard(folder: MediaFolder, index: Int, onClick: () -> Unit) {
                 Text(
                     text       = "${folder.photoCount}",
                     style      = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.9f),
+                    color      = Color.White.copy(alpha = 0.9f),
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -354,7 +354,8 @@ private fun AlbumSortSheet(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 24.dp, top = 8.dp, bottom = 32.dp),
+            // FIXED: Using valid start/end/top/bottom padding bounds instead of mixing horizontal with vertical components.
+            .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         Box(
@@ -389,7 +390,7 @@ private fun AlbumSortSheet(
                             MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                         else Color.Transparent
                     )
-                    .clickable { sortBy = candidate } // Corrected: Standard clickable resolves modifier cleanly
+                    .clickable { sortBy = candidate }
                     .padding(horizontal = 4.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -450,7 +451,7 @@ private fun AlbumSortSheet(
                     .height(52.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.primary)
-                    .clickable { onApply(FolderSortConfig(sortBy, sortOrder)) }, // Corrected: Standard clickable
+                    .clickable { onApply(FolderSortConfig(sortBy, sortOrder)) },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
