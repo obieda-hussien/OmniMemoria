@@ -1,66 +1,22 @@
 package com.omnimemoria.ui.vault
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.keyframes
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.LockClock
-import androidx.compose.material.icons.outlined.LockOpen
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Shield
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,14 +24,12 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil3.compose.AsyncImage
 import com.omnimemoria.ui.components.ShimmerBox
 import kotlinx.coroutines.delay
 
@@ -88,72 +42,116 @@ fun VaultTabScreen(
 ) {
     val enabled by viewModel.vaultEnabled.collectAsState()
 
-    if (!enabled) {
-        VaultDisabledState(onGoToSettings = onGoToSettings)
-    } else {
-        VaultPinScreen()
+    AnimatedContent(
+        targetState  = enabled,
+        transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(200)) },
+        label        = "vault_entry"
+    ) { isEnabled ->
+        if (!isEnabled) VaultDisabledState(onGoToSettings = onGoToSettings)
+        else VaultPinScreen()
     }
 }
 
-// ── Vault disabled state ───────────────────────────────────────────────────────
+// ── Vault disabled ────────────────────────────────────────────────────────────
 
 @Composable
 private fun VaultDisabledState(onGoToSettings: () -> Unit) {
-    Column(
+    val floatY by rememberInfiniteTransition(label = "float")
+        .animateFloat(
+            initialValue  = 0f,
+            targetValue   = -7f,
+            animationSpec = infiniteRepeatable(tween(2400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label         = "float_y"
+        )
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(Color(0xFF1E1C30)),
-            contentAlignment = Alignment.Center
+        Column(
+            modifier            = Modifier.padding(horizontal = 36.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                Icons.Outlined.Shield,
-                contentDescription = null,
-                tint     = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(38.dp)
+            // Animated lock icon
+            Box(
+                modifier = Modifier
+                    .offset(y = floatY.dp)
+                    .size(88.dp)
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color(0xFF1E1C30), Color(0xFF1A1830))
+                        )
+                    )
+                    .border(
+                        1.dp,
+                        Color(0xFF8B7FF5).copy(alpha = 0.2f),
+                        RoundedCornerShape(26.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Outlined.Lock,
+                    null,
+                    tint     = Color(0xFF8B7FF5),
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Text(
+                "Vault is disabled",
+                style      = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color      = MaterialTheme.colorScheme.onBackground,
+                textAlign  = TextAlign.Center
             )
-        }
-        Spacer(Modifier.height(20.dp))
-        Text(
-            "Vault is disabled",
-            style      = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color      = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Enable the Vault feature in Settings to protect your private photos with AES-256 encryption.",
-            style     = MaterialTheme.typography.bodyMedium,
-            color     = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(28.dp))
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(14.dp))
-                .background(MaterialTheme.colorScheme.primary)
-                .clickable(onClick = onGoToSettings)
-                .padding(horizontal = 28.dp, vertical = 14.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Settings, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Go to Settings", color = Color.White, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Enable the Vault in Settings to encrypt and protect your private photos with AES-256.",
+                style     = MaterialTheme.typography.bodyMedium,
+                color     = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(28.dp))
+
+            // CTA button
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF5548D9), Color(0xFF8B7FF5))
+                        )
+                    )
+                    .clickable(onClick = onGoToSettings)
+                    .padding(horizontal = 28.dp, vertical = 14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.Settings,
+                        null,
+                        tint     = Color.White,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Go to Settings",
+                        color      = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        style      = MaterialTheme.typography.bodyLarge
+                    )
+                }
             }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PIN SCREEN
+// VAULT PIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -167,11 +165,11 @@ fun VaultPinScreen(
     val lockout      by viewModel.lockoutRemainingSeconds.collectAsState()
     val unlockedAs   by viewModel.unlockedAs.collectAsState()
 
-    // Routed to correct gallery after unlock
+    // Route to gallery after unlock
     when (unlockedAs) {
         UnlockType.REAL  -> { RealVaultGallery(); return }
         UnlockType.DECOY -> { DecoyVaultGallery(); return }
-        null             -> { /* show PIN screen */ }
+        null             -> { /* show PIN */ }
     }
 
     // Shake on error
@@ -179,149 +177,211 @@ fun VaultPinScreen(
     LaunchedEffect(state.errorTick) {
         if (state.errorTick <= 0) return@LaunchedEffect
         shakeX.animateTo(1f, keyframes {
-            durationMillis = 400
-            0f at 0; -14f at 50; 14f at 100; -12f at 150
-            12f at 200; -8f at 260; 8f at 310; 0f at 400
+            durationMillis = 420
+            0f  at 0
+            -14f at 55
+            14f  at 110
+            -12f at 165
+            12f  at 220
+            -8f  at 280
+            8f   at 330
+            0f   at 420
         })
         shakeX.snapTo(0f)
-        repeat(3) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); delay(80) }
+        repeat(3) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            delay(90)
+        }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(40.dp))
-
-        // Lock icon
+        // Subtle indigo glow in background
         Box(
             modifier = Modifier
-                .size(64.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFF1E1C30)),
-            contentAlignment = Alignment.Center
+                .align(Alignment.Center)
+                .offset(y = (-80).dp)
+                .size(240.dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            Color(0xFF8B7FF5).copy(alpha = 0.06f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                Icons.Outlined.Shield,
-                contentDescription = null,
-                tint     = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(32.dp)
-            )
-        }
-        Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.weight(1f))
 
-        // Title & subtitle
-        Text(
-            text = when {
-                !setup && state.step == PinStep.CONFIRM -> "Confirm Vault PIN"
-                !setup -> "Set Vault PIN"
-                else   -> "Enter Vault PIN"
-            },
-            style      = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color      = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = when {
-                state.step == PinStep.CONFIRM   -> "Re-enter your 4-digit PIN"
-                state.step == PinStep.LOCKED_OUT -> "Too many attempts — try again in:"
-                !setup -> "Choose a PIN to protect your private photos"
-                else   -> "Enter your 4-digit PIN"
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(Modifier.height(32.dp))
-
-        if (state.step == PinStep.LOCKED_OUT) {
-            // Countdown ring
-            val progress = lockout / 30f
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(96.dp)) {
-                CircularProgressIndicator(
-                    progress    = { progress },
-                    modifier    = Modifier.fillMaxSize(),
-                    color       = MaterialTheme.colorScheme.primary,
-                    strokeWidth = 5.dp
-                )
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Outlined.LockClock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                    Text("${lockout}s", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold)
-                }
-            }
-        } else {
-            // PIN dots
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.offset(x = shakeX.value.dp)
+            // ── Vault icon ──────────────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color(0xFF2D26A0), Color(0xFF1E1C30))
+                        )
+                    )
+                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.3f), RoundedCornerShape(22.dp)),
+                contentAlignment = Alignment.Center
             ) {
-                repeat(4) { i ->
-                    val filled = state.digits[i] != null
-                    val dotScale by animateFloatAsState(
-                        targetValue   = if (filled) 1f else 0.85f,
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                        label         = "dot_$i"
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(18.dp)
-                            .scale(dotScale)
-                            .clip(CircleShape)
-                            .background(
-                                if (filled) MaterialTheme.colorScheme.primary
-                                else Color.Transparent
-                            )
-                            .border(
-                                width = 2.dp,
-                                color = if (filled) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                shape = CircleShape
-                            )
-                    )
-                }
+                Icon(
+                    Icons.Outlined.Shield,
+                    null,
+                    tint     = Color(0xFF8B7FF5),
+                    modifier = Modifier.size(34.dp)
+                )
             }
 
-            // Error / info message
-            AnimatedVisibility(visible = state.message != null) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    state.message ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (state.message?.contains("Incorrect") == true ||
-                                state.message?.contains("match") == true)
-                               MaterialTheme.colorScheme.error
-                           else
-                               MaterialTheme.colorScheme.primary,
-                    textAlign = TextAlign.Center
-                )
-            }
-            if (setup && state.step != PinStep.LOCKED_OUT && attemptsLeft < 5) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "$attemptsLeft attempts remaining",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (attemptsLeft <= 2) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Spacer(Modifier.height(22.dp))
+
+            // ── Title ────────────────────────────────────────────────────
+            Text(
+                text = when {
+                    !setup && state.step == PinStep.CONFIRM -> "Confirm PIN"
+                    !setup -> "Set Vault PIN"
+                    else   -> "Enter Vault PIN"
+                },
+                style      = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color      = MaterialTheme.colorScheme.onBackground,
+                textAlign  = TextAlign.Center
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = when {
+                    state.step == PinStep.CONFIRM    -> "Re-enter your 4-digit PIN"
+                    state.step == PinStep.LOCKED_OUT -> "Too many attempts — wait:"
+                    !setup -> "Choose a PIN to protect your private photos"
+                    else   -> "Enter your 4-digit PIN"
+                },
+                style     = MaterialTheme.typography.bodyMedium,
+                color     = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
 
             Spacer(Modifier.height(36.dp))
 
-            // PIN pad
-            PinPad(
-                onDigit  = viewModel::enterDigit,
-                onDelete = viewModel::deleteDigit
-            )
+            if (state.step == PinStep.LOCKED_OUT) {
+                // ── Lockout ring ──────────────────────────────────────────
+                val progress = lockout / 30f
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(100.dp)) {
+                    CircularProgressIndicator(
+                        progress    = { progress },
+                        modifier    = Modifier.fillMaxSize(),
+                        color       = Color(0xFF8B7FF5),
+                        trackColor  = Color(0xFF1E1C30),
+                        strokeWidth = 5.dp
+                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Outlined.LockClock,
+                            null,
+                            tint     = Color(0xFF8B7FF5),
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            "${lockout}s",
+                            style      = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color      = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
+            } else {
+                // ── PIN dots ───────────────────────────────────────────────
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    modifier              = Modifier.offset(x = shakeX.value.dp)
+                ) {
+                    repeat(4) { i ->
+                        val filled = state.digits[i] != null
+                        val dotScale by animateFloatAsState(
+                            targetValue   = if (filled) 1f else 0.8f,
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                            label         = "dot_$i"
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .scale(dotScale)
+                                .clip(CircleShape)
+                                .background(
+                                    if (filled)
+                                        Brush.radialGradient(
+                                            listOf(Color(0xFFA89CF7), Color(0xFF8B7FF5))
+                                        )
+                                    else Brush.radialGradient(listOf(Color.Transparent, Color.Transparent))
+                                )
+                                .border(
+                                    2.dp,
+                                    if (filled) Color(0xFF8B7FF5)
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                    CircleShape
+                                )
+                        )
+                    }
+                }
+
+                // ── Status message ────────────────────────────────────────
+                AnimatedVisibility(
+                    visible = state.message != null,
+                    enter   = fadeIn() + expandVertically(),
+                    exit    = fadeOut() + shrinkVertically()
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Spacer(Modifier.height(14.dp))
+                        val isError = state.message?.contains("Incorrect") == true ||
+                            state.message?.contains("match") == true
+                        Text(
+                            state.message ?: "",
+                            style     = MaterialTheme.typography.bodySmall,
+                            color     = if (isError) Color(0xFFFF6B6B) else Color(0xFF8B7FF5),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                // ── Attempts remaining ────────────────────────────────────
+                if (setup && state.step != PinStep.LOCKED_OUT && attemptsLeft < 5) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "$attemptsLeft attempt${if (attemptsLeft != 1) "s" else ""} remaining",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (attemptsLeft <= 2) Color(0xFFFF6B6B)
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(Modifier.height(40.dp))
+
+                // ── PIN pad ───────────────────────────────────────────────
+                PinPad(
+                    onDigit  = viewModel::enterDigit,
+                    onDelete = viewModel::deleteDigit
+                )
+            }
+
+            Spacer(Modifier.weight(1.2f))
         }
     }
 }
+
+// ── PIN pad ────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun PinPad(onDigit: (Int) -> Unit, onDelete: () -> Unit) {
@@ -331,39 +391,67 @@ private fun PinPad(onDigit: (Int) -> Unit, onDelete: () -> Unit) {
         listOf("7","8","9"),
         listOf("","0","⌫")
     )
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         rows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                 row.forEach { key ->
                     if (key.isEmpty()) {
                         Spacer(Modifier.size(72.dp))
                     } else {
                         val isDelete = key == "⌫"
-                        Surface(
-                            shape = CircleShape,
-                            color = if (isDelete) Color.Transparent
-                                    else Color(0xFF1E1C30),
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clickable {
-                                    if (isDelete) onDelete() else onDigit(key.toInt())
-                                }
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                Text(
-                                    text  = key,
-                                    style = if (isDelete) MaterialTheme.typography.titleMedium
-                                            else MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Medium,
-                                    color = if (isDelete) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.onBackground
-                                )
-                            }
-                        }
+                        PinKey(
+                            label    = key,
+                            isDelete = isDelete,
+                            onClick  = { if (isDelete) onDelete() else onDigit(key.toInt()) }
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PinKey(label: String, isDelete: Boolean, onClick: () -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    var pressed by remember { mutableStateOf(false) }
+
+    val scale by animateFloatAsState(
+        targetValue   = if (pressed) 0.88f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label         = "key_scale"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(72.dp)
+            .scale(scale)
+            .clip(CircleShape)
+            .background(
+                if (isDelete) Color.Transparent
+                else Color(0xFF1E1C30)
+            )
+            .border(
+                1.dp,
+                if (isDelete) Color.Transparent
+                else Color.White.copy(alpha = 0.06f),
+                CircleShape
+            )
+            .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text       = label,
+            style      = if (isDelete) MaterialTheme.typography.titleLarge
+                         else MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Medium,
+            color      = if (isDelete) Color(0xFF8B7FF5)
+                         else MaterialTheme.colorScheme.onBackground
+        )
     }
 }
 
@@ -374,51 +462,43 @@ private fun PinPad(onDigit: (Int) -> Unit, onDelete: () -> Unit) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RealVaultGallery() {
-    // Placeholder grid — Phase 5 wires real encrypted photos
     val placeholderCount = 7
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF060610))    // extra dark for vault
+            .background(Color(0xFF060610))
     ) {
         LazyVerticalGrid(
             columns               = GridCells.Fixed(3),
             contentPadding        = PaddingValues(
                 top    = 0.dp,
                 bottom = 100.dp,
-                start  = 2.dp,
-                end    = 2.dp
+                start  = 3.dp,
+                end    = 3.dp
             ),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalArrangement   = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement   = Arrangement.spacedBy(3.dp),
             modifier              = Modifier.fillMaxSize()
         ) {
-            // Header
             item(span = { GridItemSpan(maxLineSpan) }) {
-                VaultHeader(isDecoy = false, count = placeholderCount)
+                VaultGalleryHeader(isDecoy = false, count = placeholderCount)
             }
-
-            // Encrypted photo cells (placeholder)
             items(placeholderCount) { idx ->
                 EncryptedPhotoCell(index = idx)
             }
-
-            // Add photos cell
             item {
                 AddToVaultCell()
             }
         }
 
-        // AES badge bottom
-        Box(
+        VaultSecurityBanner(
+            isDecoy  = false,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 88.dp)   // above bottom nav pill
-        ) {
-            VaultSecurityBanner(isDecoy = false)
-        }
+                .padding(bottom = 90.dp)
+        )
     }
 }
 
@@ -429,77 +509,73 @@ fun RealVaultGallery() {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DecoyVaultGallery() {
-    // Shows normal photos tagged as decoy items
     val placeholderCount = 3
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)   // same as rest of app — no suspicious darkness
+            .background(MaterialTheme.colorScheme.background)
     ) {
         LazyVerticalGrid(
             columns               = GridCells.Fixed(3),
             contentPadding        = PaddingValues(
                 top    = 0.dp,
                 bottom = 100.dp,
-                start  = 2.dp,
-                end    = 2.dp
+                start  = 3.dp,
+                end    = 3.dp
             ),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalArrangement   = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement   = Arrangement.spacedBy(3.dp),
             modifier              = Modifier.fillMaxSize()
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                VaultHeader(isDecoy = true, count = placeholderCount)
+                VaultGalleryHeader(isDecoy = true, count = placeholderCount)
             }
-
-            // Normal-looking photo stubs
             items(placeholderCount) { idx ->
-                NormalDecoyPhotoCell(index = idx)
+                NormalDecoyCell(index = idx)
             }
-
-            item {
-                AddToVaultCell()
-            }
+            item { AddToVaultCell() }
         }
 
-        Box(
+        VaultSecurityBanner(
+            isDecoy  = true,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 88.dp)
-        ) {
-            VaultSecurityBanner(isDecoy = true)
-        }
+                .padding(bottom = 90.dp)
+        )
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared sub-components
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Shared sub-composables ─────────────────────────────────────────────────────
 
 @Composable
-private fun VaultHeader(isDecoy: Boolean, count: Int) {
-    val lockIcon  = if (isDecoy) Icons.Outlined.LockOpen else Icons.Outlined.Shield
-    val lockTint  = if (isDecoy) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
-    val badgeBg   = if (isDecoy)
-        Color(0xFF1A3A1A)
-    else
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-    val badgeText = if (isDecoy) "Unlocked" else "Secured · AES-256"
-    val badgeFg   = if (isDecoy) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+private fun VaultGalleryHeader(isDecoy: Boolean, count: Int) {
+    val shieldIcon = if (isDecoy) Icons.Outlined.LockOpen else Icons.Outlined.Shield
+    val tint       = if (isDecoy) Color(0xFF50C878) else Color(0xFF8B7FF5)
+    val badgeText  = if (isDecoy) "Unlocked" else "AES-256 Encrypted"
+    val badgeBg    = if (isDecoy) Color(0xFF0D2A14) else Color(0xFF2D26A0).copy(alpha = 0.3f)
+    val badgeFg    = if (isDecoy) Color(0xFF50C878) else Color(0xFF8B7FF5)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment     = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(lockIcon, null, tint = lockTint, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(tint.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(shieldIcon, null, tint = tint, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(10.dp))
             Column {
                 Text(
                     "Vault",
@@ -519,87 +595,95 @@ private fun VaultHeader(isDecoy: Boolean, count: Int) {
             modifier = Modifier
                 .clip(RoundedCornerShape(20.dp))
                 .background(badgeBg)
-                .padding(horizontal = 10.dp, vertical = 5.dp)
+                .border(1.dp, badgeFg.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
+                .padding(horizontal = 12.dp, vertical = 5.dp)
         ) {
-            Text(badgeText, style = MaterialTheme.typography.labelSmall, color = badgeFg, fontWeight = FontWeight.Medium)
+            Text(
+                badgeText,
+                style      = MaterialTheme.typography.labelSmall,
+                color      = badgeFg,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
 
 @Composable
-private fun VaultSecurityBanner(isDecoy: Boolean) {
-    val bg   = if (isDecoy) Color(0xFF1A3A1A) else Color(0xFF1E1C30)
+private fun VaultSecurityBanner(isDecoy: Boolean, modifier: Modifier = Modifier) {
+    val bg   = if (isDecoy) Color(0xFF0D2A14) else Color(0xFF1E1C30)
     val icon = if (isDecoy) Icons.Outlined.LockOpen else Icons.Outlined.Shield
-    val tint = if (isDecoy) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
-    val text = if (isDecoy)
-        "Showing hand-picked photos"
-    else
-        "AES-256 encrypted · Screenshots blocked"
+    val tint = if (isDecoy) Color(0xFF50C878) else Color(0xFF8B7FF5)
+    val text = if (isDecoy) "Showing decoy photos"
+               else "AES-256 · Screenshots blocked"
 
-    Row(
+    Box(modifier = modifier.padding(horizontal = 16.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(bg)
+                .border(1.dp, tint.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))
+            Text(
+                text,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun EncryptedPhotoCell(index: Int) {
+    val tones = listOf(
+        Color(0xFF12213A), Color(0xFF20123A), Color(0xFF12221A),
+        Color(0xFF22180A), Color(0xFF0A2018), Color(0xFF181820), Color(0xFF220F18)
+    )
+    Box(
         modifier = Modifier
-            .padding(horizontal = 16.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(bg)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(6.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(tones[index % tones.size], tones[index % tones.size].copy(alpha = 0.7f))
+                )
+            )
     ) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))
-        Text(
-            text,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        Icon(
+            Icons.Outlined.Shield,
+            null,
+            tint     = Color(0xFF8B7FF5).copy(alpha = 0.35f),
+            modifier = Modifier
+                .size(16.dp)
+                .align(Alignment.TopEnd)
+                .padding(top = 5.dp, end = 5.dp)
         )
     }
 }
 
-// Encrypted photo cell (shows lock badge)
 @Composable
-private fun EncryptedPhotoCell(index: Int) {
+private fun NormalDecoyCell(index: Int) {
     val tones = listOf(
-        Color(0xFF1a3050), Color(0xFF301a50), Color(0xFF1a3020),
-        Color(0xFF302010), Color(0xFF103020), Color(0xFF202030), Color(0xFF301520)
+        Color(0xFF0D3020), Color(0xFF1A0D3A), Color(0xFF3A1A0D)
     )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(4.dp))
-            .background(tones[index % tones.size])
-    ) {
-        // Tiny lock badge
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(18.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.75f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Outlined.Shield, null, tint = Color.White, modifier = Modifier.size(10.dp))
-        }
-    }
-}
-
-// Normal-looking cell for decoy vault
-@Composable
-private fun NormalDecoyPhotoCell(index: Int) {
-    val tones = listOf(Color(0xFF1a5c3a), Color(0xFF3a1a5c), Color(0xFF5c3a1a))
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(6.dp))
             .background(
-                Brush.linearGradient(listOf(tones[index % tones.size], tones[index % tones.size].copy(alpha = 0.6f)))
+                Brush.linearGradient(
+                    listOf(tones[index % tones.size], tones[index % tones.size].copy(alpha = 0.6f))
+                )
             )
     )
 }
 
-// + Add photos cell
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AddToVaultCell() {
@@ -607,24 +691,33 @@ private fun AddToVaultCell() {
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(4.dp))
-            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
-            .combinedClickable(onClick = {})
-            .background(Color(0xFF1E1C30)),
+            .clip(RoundedCornerShape(6.dp))
+            .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.25f), RoundedCornerShape(6.dp))
+            .background(Color(0xFF1E1C30))
+            .combinedClickable(onClick = {}),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                Icons.Filled.Add,
-                contentDescription = "Add photos",
-                tint     = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp)
-            )
-            Spacer(Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF8B7FF5).copy(alpha = 0.16f))
+                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.25f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Add,
+                    null,
+                    tint     = Color(0xFF8B7FF5),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.height(5.dp))
             Text(
                 "Add",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary
+                style  = MaterialTheme.typography.labelSmall,
+                color  = Color(0xFF8B7FF5)
             )
         }
     }
