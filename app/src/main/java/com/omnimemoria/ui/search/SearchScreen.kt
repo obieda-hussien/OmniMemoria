@@ -77,13 +77,19 @@ fun SearchScreen(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
 
-            // ── Search bar ─────────────────────────────────────────────────
-            OmniSearchBar(
-                query          = query,
-                onQueryChange  = viewModel::setQuery,
-                onClear        = viewModel::clearQuery,
-                focusRequester = focusRequester
-            )
+            // ── Search bar (تغليف احترافي يمنع تداخل العناصر أثناء التمرير) ──
+            Surface(
+                color = MaterialTheme.colorScheme.background,
+                tonalElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OmniSearchBar(
+                    query          = query,
+                    onQueryChange  = viewModel::setQuery,
+                    onClear        = viewModel::clearQuery,
+                    focusRequester = focusRequester
+                )
+            }
 
             // ── Body — animated content switch ─────────────────────────────
             AnimatedContent(
@@ -91,17 +97,24 @@ fun SearchScreen(
                 transitionSpec = {
                     fadeIn(tween(200)) togetherWith fadeOut(tween(150))
                 },
-                label = "search_content"
+                label = "search_content",
+                modifier = Modifier.weight(1f)
             ) { state ->
                 when (state) {
-                    SearchResultState.Idle -> IdleState(
-                        recent             = recent,
-                        counts             = counts,
-                        onRecentClick      = viewModel::setQuery,
-                        onDeleteRecent     = viewModel::deleteRecent,
-                        onQuickFilterClick = viewModel::applyQuickFilter,
-                        onOpenSettings     = onOpenSettings
-                    )
+                    SearchResultState.Idle -> Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background)
+                    ) {
+                        IdleState(
+                            recent             = recent,
+                            counts             = counts,
+                            onRecentClick      = viewModel::setQuery,
+                            onDeleteRecent     = viewModel::deleteRecent,
+                            onQuickFilterClick = viewModel::applyQuickFilter,
+                            onOpenSettings     = onOpenSettings
+                        )
+                    }
                     SearchResultState.Searching  -> SearchingState()
                     is SearchResultState.Results -> ResultsState(
                         photos       = state.photos,
@@ -137,8 +150,8 @@ private fun OmniSearchBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(top = 76.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
+            .statusBarsPadding() // يعطي الطول المناسب التلقائي بناءً على حجم شريط حالة نظام أندرويد لحمايته بالكامل
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp) // تقليل الـ padding الفوق ليتناسق بدقة وبدون تباعد عشوائي
     ) {
         Row(
             modifier = Modifier
@@ -235,7 +248,7 @@ private fun IdleState(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
         // Recent searches
