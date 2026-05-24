@@ -210,7 +210,7 @@ private fun VibeCard(vibe: VibeEntry) {
                 )
             )
             .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
-            .clickable(onClick = {})
+            .clickable(onClick = {}) // Corrected: Use standard clickable
             .padding(14.dp),
         contentAlignment = Alignment.BottomStart
     ) {
@@ -302,7 +302,7 @@ private fun AlbumCard(folder: MediaFolder, index: Int, onClick: () -> Unit) {
                 Text(
                     text       = "${folder.photoCount}",
                     style      = MaterialTheme.typography.labelSmall,
-                    color      = Color.White.copy(alpha = 0.9f),
+                    color = Color.White.copy(alpha = 0.9f),
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -389,7 +389,7 @@ private fun AlbumSortSheet(
                             MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                         else Color.Transparent
                     )
-                    .clickable(onClick = { sortBy = candidate })
+                    .clickable { sortBy = candidate } // Corrected: Standard clickable resolves modifier cleanly
                     .padding(horizontal = 4.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -435,7 +435,7 @@ private fun AlbumSortSheet(
         Spacer(Modifier.height(24.dp))
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier              = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             TextButton(
@@ -450,7 +450,7 @@ private fun AlbumSortSheet(
                     .height(52.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.primary)
-                    .clickable(onClick = { onApply(FolderSortConfig(sortBy, sortOrder)) }),
+                    .clickable { onApply(FolderSortConfig(sortBy, sortOrder)) }, // Corrected: Standard clickable
                 contentAlignment = Alignment.Center
             ) {
                 Text(
