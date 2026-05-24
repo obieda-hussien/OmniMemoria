@@ -385,7 +385,8 @@ private fun GallerySortFilterSheet(
             modifier            = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp, top = 8.dp, bottom = 32.dp),
+                // FIXED: Using valid start/end/top/bottom padding bounds instead of mixing horizontal with vertical components.
+                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             // Handle
@@ -460,7 +461,7 @@ private fun GallerySortFilterSheet(
                                 MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                             else Color.Transparent
                         )
-                        .clickable { sortBy = candidate } // Corrected: Use clickable here instead of combinedClickable
+                        .clickable { sortBy = candidate }
                         .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -515,7 +516,7 @@ private fun GallerySortFilterSheet(
                     .height(52.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.primary)
-                    .clickable { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder), filterBy) }, // Corrected: Use clickable here
+                    .clickable { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder), filterBy) },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
