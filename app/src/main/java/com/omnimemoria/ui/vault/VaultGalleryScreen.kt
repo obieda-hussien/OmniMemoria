@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -39,8 +40,13 @@ fun VaultGalleryScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
-                // إجبار شريط التطبيقات هنا أيضاً على النزول لمسافة تحت شريط الحالة لمنع التداخل
-                modifier = Modifier.statusBarsPadding()
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF0C0B14),
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                ),
+                // FIX: يجعل شريط التطبيقات العلوي يستجيب وينزل بنعومة تحت شريط الحالة للهاتف
+                windowInsets = WindowInsets.statusBars
             )
         },
         modifier = modifier.fillMaxSize()
