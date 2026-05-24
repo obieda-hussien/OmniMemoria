@@ -1,542 +1,619 @@
-package com.omnimemoria.ui.detail
+package com.omnimemoria.ui.albums
 
-import android.text.format.Formatter
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
 import com.omnimemoria.domain.model.MediaPhoto
+import com.omnimemoria.domain.model.SortBy
+import com.omnimemoria.domain.model.SortConfig
+import com.omnimemoria.domain.model.SortOrder
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
+import com.omnimemoria.ui.components.OmniActionChip
+import com.omnimemoria.ui.components.OmniSelectionBar
+import com.omnimemoria.ui.components.ShimmerBox
+import com.omnimemoria.ui.detail.photosBoundsTransform
 import com.omnimemoria.ui.photoSharedKey
-import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
-// ─────────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class,
+    ExperimentalSharedTransitionApi::class)
 @Composable
-fun PhotoDetailScreen(
-    photoId:   Long,
-    bucketId: String? = null,
-    onBack:    () -> Unit,
-    onOpenVideo: (mediaId: Long) -> Unit,
-    viewModel: PhotoDetailViewModel = hiltViewModel()
+fun FolderDetailScreen(
+    onPhotoClick: (Long) -> Unit,
+    onBack: () -> Unit,
+    viewModel: FolderDetailViewModel = hiltViewModel()
 ) {
-    BackHandler(onBack = onBack)
+    val haptic           = LocalHapticFeedback.current
+    val photos           = viewModel.photos.collectAsLazyPagingItems()
+    val folder           by viewModel.folder.collectAsState()
+    val selectedIds      by viewModel.selectedIds.collectAsState()
+    val isSelecting       = selectedIds.isNotEmpty()
+    val sortConfig       by viewModel.sortConfig.collectAsState()
+    var showSortSheet    by remember { mutableStateOf(false) }
 
-    val haptic      = LocalHapticFeedback.current
-    val context     = LocalContext.current
-    val photoList   by viewModel.photoList.collectAsState()
-    val initialPage by viewModel.initialPage.collectAsState()
-    val isFavorite  by viewModel.isFavorite.collectAsState()
-
-    // هنحمّل مرة واحدة فقط لما الـ composable يتفتح أول مرة
-    LaunchedEffect(photoId, bucketId) {
-        viewModel.loadAllPhotos(photoId, bucketId)
-    }
-
-    // ── FIX: pagerState صح ───────────────────────────────────────────────────
-    if (photoList.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f))
-        }
-        return
-    }
-
-    key(initialPage, photoList.size) {
-        PhotoPager(
-            photoList  = photoList,
-            startPage  = initialPage,
-            isFavorite = isFavorite,
-            onBack     = onBack,
-            onOpenVideo = onOpenVideo,
-            onFavorite = { id ->
-                viewModel.toggleFavorite(id)
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            }
-        )
-    }
-}
-
-// ── الـ Pager الفعلي ─────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalSharedTransitionApi::class)
-@Composable
-private fun PhotoPager(
-    photoList:  List<MediaPhoto>,
-    startPage:  Int,
-    isFavorite: Boolean,
-    onBack:     () -> Unit,
-    onOpenVideo: (mediaId: Long) -> Unit,
-    onFavorite: (Long) -> Unit
-) {
-    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val sharedTransitionScope   = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
-    val context = LocalContext.current
 
-    val safeStartPage = startPage.coerceIn(0, photoList.lastIndex.coerceAtLeast(0))
-
-    val pagerState = rememberPagerState(
-        initialPage = safeStartPage,
-        pageCount   = { photoList.size }
-    )
-
-    LaunchedEffect(photoList.size) {
-        val lastIndex = photoList.lastIndex
-        if (lastIndex >= 0 &&
-            pagerState.currentPage > lastIndex &&
-            !pagerState.isScrollInProgress
-        ) {
-            pagerState.scrollToPage(lastIndex)
-        }
-    }
-
-    val currentPhoto = photoList.getOrNull(pagerState.currentPage)
-
-    var showChrome   by remember { mutableStateOf(true) }
-    var showMetadata by remember { mutableStateOf(false) }
+    val gridState = rememberLazyGridState()
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        // ══ HorizontalPager ═══════════════════════════════════════════════════
-        HorizontalPager(
-            state    = pagerState,
-            modifier = Modifier.fillMaxSize(),
-            beyondViewportPageCount = 1
-        ) { page ->
-            val photo = photoList.getOrNull(page)
-            if (photo != null) {
-                val imageRequest = remember(photo.id, photo.uri) {
-                    ImageRequest.Builder(context)
-                        .data(photo.uri)
-                        .build()
-                }
 
-                // ── Shared Element — detail side ─────────────────────────────
-                val imageModifier = if (
-                    sharedTransitionScope != null &&
-                    animatedVisibilityScope != null &&
-                    page == pagerState.currentPage
-                ) {
-                    with(sharedTransitionScope) {
-                        Modifier.sharedElement(
-                            sharedContentState = rememberSharedContentState(key = photoSharedKey(photo.id)),
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            boundsTransform   = photosBoundsTransform
-                        )
-                    }
-                } else {
-                    Modifier
-                }
-
-                key(photo.id) {
-                    val mediaModifier = Modifier
-                        .fillMaxSize()
-                        .then(imageModifier)
-
-                    if (photo.isVideoMedia()) {
-                        Box(modifier = mediaModifier.clickable { showChrome = !showChrome }) {
-                            AsyncImage(
-                                model              = imageRequest,
-                                contentDescription = photo.name,
-                                contentScale       = ContentScale.Fit,
-                                modifier           = Modifier.fillMaxSize()
-                            )
-                            IconButton(
-                                onClick = { onOpenVideo(photo.id) },
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .size(86.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.45f))
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.PlayCircleFilled,
-                                    contentDescription = "Play video",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(56.dp)
-                                )
-                            }
-                        }
-                    } else {
-                        ZoomableAsyncImage(
-                            model              = imageRequest,
-                            contentDescription = photo.name,
-                            modifier           = mediaModifier,
-                            onClick            = { showChrome = !showChrome }
-                        )
-                    }
-                }
-            }
-        }
-
-        // ══ Gradient overlays ═════════════════════════════════════════════════
-        AnimatedVisibility(
-            visible  = showChrome,
-            enter    = fadeIn(tween(200)),
-            exit     = fadeOut(tween(200)),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp)
-                        .align(Alignment.TopCenter)
-                        .background(Brush.verticalGradient(
-                            listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
-                        ))
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(220.dp)
-                        .align(Alignment.BottomCenter)
-                        .background(Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
-                        ))
-                )
-            }
-        }
-
-        // ══ Top Bar ═══════════════════════════════════════════════════════════
-        AnimatedVisibility(
-            visible  = showChrome,
-            enter    = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-            exit     = slideOutVertically(targetOffsetY  = { -it }) + fadeOut(),
-            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
-        ) {
-            DetailTopBar(
-                photo       = currentPhoto,
-                onBack      = onBack,
-                onInfo      = { showMetadata = !showMetadata },
-                showingInfo = showMetadata
+        // ── Atmospheric blurred banner ───────────────────────────────────────
+        folder?.let { f ->
+            AsyncImage(
+                model              = f.coverUri,
+                contentDescription = null,
+                contentScale       = ContentScale.Crop,
+                modifier           = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp)
+                    .blur(40.dp)
+                    .scale(1.2f)
+                    .alpha(0.28f)
             )
         }
 
-        // ══ Page Counter ══════════════════════════════════════════════════════
-        AnimatedVisibility(
-            visible  = showChrome && photoList.size > 1,
-            enter    = fadeIn(),
-            exit     = fadeOut(),
+        // Gradient: banner → background
+        Box(
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 56.dp)
+                .fillMaxWidth()
+                .height(320.dp)
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to Color.Transparent,
+                        0.6f to MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
+                        1.0f to MaterialTheme.colorScheme.background
+                    )
+                )
+        )
+
+        // ── Main scrollable grid ─────────────────────────────────────────────
+        LazyVerticalGrid(
+            state                 = gridState,
+            columns               = GridCells.Fixed(3),
+            contentPadding        = PaddingValues(
+                top    = 130.dp,
+                bottom = 140.dp,
+                start  = 6.dp,
+                end    = 6.dp
+            ),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement   = Arrangement.spacedBy(3.dp),
+            modifier              = Modifier.fillMaxSize()
         ) {
-            Text(
-                text     = "${pagerState.currentPage + 1} / ${photoList.size}",
-                color    = Color.White.copy(alpha = 0.7f),
-                style    = MaterialTheme.typography.labelSmall,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.Black.copy(alpha = 0.3f))
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-            )
+
+            // Folder info hero card
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                FolderHeroCard(
+                    folder     = folder,
+                    photoCount = photos.itemCount
+                )
+            }
+
+            // Loading skeletons
+            if (photos.loadState.refresh is LoadState.Loading) {
+                items(24) {
+                    ShimmerBox(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                }
+            } else {
+                items(
+                    count = photos.itemCount,
+                    key   = { i -> photos[i]?.id ?: "p_$i" }
+                ) { index ->
+                    photos[index]?.let { photo ->
+                        FolderPhotoCell(
+                            photo                   = photo,
+                            selected                = photo.id in selectedIds,
+                            selecting               = isSelecting,
+                            sharedTransitionScope   = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            onClick = {
+                                if (isSelecting) viewModel.toggleSelection(photo.id)
+                                else onPhotoClick(photo.id)
+                            },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.toggleSelection(photo.id)
+                            }
+                        )
+                    } ?: ShimmerBox(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                }
+            }
         }
 
-        // ══ Metadata Card ══════════════════════════════════════════════════════
+        // ── Top bar scrim ────────────────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(130.dp)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
+                        0.7f to MaterialTheme.colorScheme.background.copy(alpha = 0.6f),
+                        1.0f to Color.Transparent
+                    )
+                )
+        )
+
+        // ── Floating top bar ─────────────────────────────────────────────────
+        FolderTopBar(
+            folderName = folder?.name ?: "",
+            photoCount = photos.itemCount,
+            onBack     = onBack,
+            onSort     = { showSortSheet = true },
+            modifier   = Modifier.align(Alignment.TopCenter)
+        )
+
+        // ── Multi-select bar ─────────────────────────────────────────────────
         AnimatedVisibility(
-            visible  = showMetadata,
-            enter    = slideInVertically { it / 2 } + fadeIn(tween(250)),
-            exit     = slideOutVertically { it / 2 } + fadeOut(tween(200)),
+            visible  = isSelecting,
+            enter    = slideInVertically { it } + fadeIn(),
+            exit     = slideOutVertically { it } + fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 110.dp, start = 16.dp, end = 16.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 92.dp)
         ) {
-            PhotoMetadataCard(photo = currentPhoto)
+            OmniSelectionBar(
+                count    = selectedIds.size,
+                onClose  = viewModel::clearSelection,
+                onShare  = { },
+                onDelete = { },
+                onMore   = { }
+            )
+        }
+    }
+
+    // ── Sort sheet ───────────────────────────────────────────────────────────
+    if (showSortSheet) {
+        FolderSortBottomSheet(
+            current   = sortConfig,
+            onDismiss = { showSortSheet = false },
+            onApply   = { viewModel.updateSort(it); showSortSheet = false }
+        )
+    }
+}
+
+// ── Folder hero card ───────────────────────────────────────────────────────────
+
+@Composable
+private fun FolderHeroCard(
+    folder:     com.omnimemoria.domain.model.MediaFolder?,
+    photoCount: Int
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 14.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF141220))
+            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(20.dp))
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Cover thumbnail with gradient overlay
+        Box(
+            modifier = Modifier
+                .size(80.dp)
+                .clip(RoundedCornerShape(16.dp))
+        ) {
+            if (folder != null) {
+                AsyncImage(
+                    model              = folder.coverUri,
+                    contentDescription = folder.name,
+                    contentScale       = ContentScale.Crop,
+                    modifier           = Modifier.fillMaxSize()
+                )
+                // Bottom scrim on thumbnail
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0.5f to Color.Transparent,
+                                1.0f to Color.Black.copy(alpha = 0.4f)
+                            )
+                        )
+                )
+            } else {
+                ShimmerBox(modifier = Modifier.fillMaxSize())
+            }
         }
 
-        // ══ Bottom Action Bar ═════════════════════════════════════════════════
-        AnimatedVisibility(
-            visible  = showChrome,
-            enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit     = slideOutVertically(targetOffsetY  = { it }) + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-        ) {
-            DetailBottomBar(
-                isFavorite = isFavorite,
-                onFavorite = { onFavorite(currentPhoto?.id ?: return@DetailBottomBar) },
-                onShare    = { /* TODO */ },
-                onDelete   = { /* TODO */ },
-                onEdit     = { /* TODO */ }
+        Spacer(Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            if (folder == null) {
+                ShimmerBox(
+                    modifier = Modifier
+                        .width(120.dp)
+                        .height(18.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                )
+            } else {
+                Text(
+                    text       = folder.name,
+                    style      = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color      = MaterialTheme.colorScheme.onBackground,
+                    maxLines   = 1
+                )
+            }
+            Spacer(Modifier.height(5.dp))
+            Text(
+                text  = if (photoCount > 0) "$photoCount items" else "Local storage folder",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(Modifier.height(8.dp))
+            // Badge
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text       = "Local Storage",
+                    style      = MaterialTheme.typography.labelSmall,
+                    color      = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
 }
 
-// ── Top Bar ───────────────────────────────────────────────────────────────────────
+// ── Photo cell with shared element ────────────────────────────────────────────
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
+@Composable
+private fun FolderPhotoCell(
+    photo:                   MediaPhoto,
+    selected:                Boolean,
+    selecting:               Boolean,
+    sharedTransitionScope:   SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    onClick:                 () -> Unit,
+    onLongClick:             () -> Unit
+) {
+    val scale by animateFloatAsState(
+        targetValue   = if (selected) 0.88f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label         = "cell_scale"
+    )
+    val isVideo = photo.mimeType.startsWith("video/", ignoreCase = true)
+
+    val sharedModifier: Modifier = if (
+        sharedTransitionScope != null &&
+        animatedVisibilityScope != null &&
+        !selecting
+    ) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState      = rememberSharedContentState(key = photoSharedKey(photo.id)),
+                animatedVisibilityScope = animatedVisibilityScope,
+                boundsTransform         = photosBoundsTransform
+            )
+        }
+    } else Modifier
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .scale(scale)
+            .clip(RoundedCornerShape(if (selected) 14.dp else 8.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    ) {
+        // Image with shared element modifier
+        AsyncImage(
+            model              = photo.uri,
+            contentDescription = photo.name,
+            contentScale       = ContentScale.Crop,
+            modifier           = Modifier
+                .fillMaxSize()
+                .then(sharedModifier)
+        )
+
+        // Video badge
+        if (isVideo) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(5.dp)
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.PlayArrow,
+                    contentDescription = "Video",
+                    tint               = Color.White,
+                    modifier           = Modifier.size(13.dp)
+                )
+            }
+        }
+
+        // Selection overlay
+        AnimatedVisibility(visible = selecting, enter = fadeIn(), exit = fadeOut()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                        else Color.Black.copy(alpha = 0.18f)
+                    )
+            ) {
+                if (selected) {
+                    Icon(
+                        imageVector        = Icons.Filled.CheckCircle,
+                        contentDescription = "Selected",
+                        tint               = MaterialTheme.colorScheme.primary,
+                        modifier           = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(5.dp)
+                            .size(22.dp)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(5.dp)
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .border(2.dp, Color.White.copy(alpha = 0.85f), CircleShape)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Floating top bar ────────────────────────────────────────────────────────────
 
 @Composable
-private fun DetailTopBar(
-    photo:       MediaPhoto?,
-    onBack:      () -> Unit,
-    onInfo:      () -> Unit,
-    showingInfo: Boolean
+private fun FolderTopBar(
+    folderName: String,
+    photoCount: Int,
+    onBack:     () -> Unit,
+    onSort:     () -> Unit,
+    modifier:   Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment     = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(
-            onClick  = onBack,
+        // Back pill
+        Box(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.45f))
+                .background(Color(0xFF1E1C30))
+                .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
+                .combinedClickable(onClick = onBack),
+            contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector        = Icons.Default.ArrowBack,
+                imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
-                tint               = Color.White,
-                modifier           = Modifier.size(22.dp)
+                tint               = MaterialTheme.colorScheme.onBackground,
+                modifier           = Modifier.size(20.dp)
             )
         }
 
-        photo?.name?.let { name ->
+        Spacer(Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text       = name.substringBeforeLast('.'),
-                color      = Color.White.copy(alpha = 0.9f),
-                style      = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                maxLines   = 1,
-                modifier   = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 8.dp),
-                textAlign  = TextAlign.Center
+                text       = folderName.ifBlank { "Album" },
+                style      = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color      = MaterialTheme.colorScheme.onBackground,
+                maxLines   = 1
             )
-        }
-
-        IconButton(
-            onClick  = onInfo,
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(
-                    if (showingInfo) Color.White.copy(alpha = 0.25f)
-                    else Color.Black.copy(alpha = 0.45f)
+            if (photoCount > 0) {
+                Text(
+                    text  = "$photoCount items",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+
+        OmniActionChip(
+            label   = "Sort",
+            icon    = Icons.Outlined.Sort,
+            onClick = onSort
+        )
+    }
+}
+
+// ── Sort bottom sheet ──────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun FolderSortBottomSheet(
+    current:   SortConfig,
+    onDismiss: () -> Unit,
+    onApply:   (SortConfig) -> Unit
+) {
+    var sortBy    by remember(current) { mutableStateOf(current.sortBy) }
+    var sortOrder by remember(current) { mutableStateOf(current.sortOrder) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor   = Color(0xFF141220),
+        shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            Icon(
-                imageVector        = Icons.Outlined.Info,
-                contentDescription = "Info",
-                tint               = Color.White.copy(alpha = if (showingInfo) 1f else 0.8f),
-                modifier           = Modifier.size(22.dp)
+            // Handle
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(36.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFF3A3860))
             )
-        }
-    }
-}
-
-// ── Metadata Card ─────────────────────────────────────────────────────────────────
-
-@Composable
-private fun PhotoMetadataCard(photo: MediaPhoto?) {
-    val context = LocalContext.current
-
-    val dateText = photo?.effectiveDateMs?.takeIf { it > 0 }?.let {
-        SimpleDateFormat("EEE, MMM d yyyy  •  h:mm a", Locale.getDefault()).format(Date(it))
-    } ?: "Unknown date"
-
-    val sizeText = photo?.size?.let {
-        Formatter.formatFileSize(context, it)
-    } ?: "—"
-
-    val resText = photo?.let {
-        if (it.width > 0 && it.height > 0) "${it.width} × ${it.height}" else "—"
-    } ?: "—"
-
-    val locationText = if (photo?.latitude != null && photo.longitude != null)
-        "%.4f, %.4f".format(photo.latitude, photo.longitude)
-    else null
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF1A1A2E).copy(alpha = 0.92f))
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector        = Icons.Outlined.Info,
-                contentDescription = null,
-                tint               = Color.White.copy(alpha = 0.5f),
-                modifier           = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(Modifier.height(20.dp))
             Text(
-                text          = "Photo Details",
-                color         = Color.White.copy(alpha = 0.6f),
-                style         = MaterialTheme.typography.labelMedium,
-                fontWeight    = FontWeight.SemiBold,
-                letterSpacing = 0.5.sp
+                "Sort photos",
+                style      = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color      = MaterialTheme.colorScheme.onBackground
             )
-        }
+            Spacer(Modifier.height(16.dp))
 
-        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+            listOf(
+                SortBy.DATE_TAKEN to "Date Taken",
+                SortBy.NAME       to "File Name A–Z",
+                SortBy.SIZE       to "Largest First"
+            ).forEach { (candidate, label) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (sortBy == candidate)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                            else Color.Transparent
+                        )
+                        .combinedClickable(onClick = { sortBy = candidate })
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = sortBy == candidate,
+                        onClick  = { sortBy = candidate },
+                        colors   = RadioButtonDefaults.colors(
+                            selectedColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text  = label,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
 
-        MetadataRow(Icons.Outlined.CalendarMonth, "Date",       dateText)
-        MetadataRow(Icons.Outlined.SdStorage,     "Size",       sizeText)
-        MetadataRow(Icons.Outlined.AspectRatio,   "Resolution", resText)
-        if (locationText != null) {
-            MetadataRow(Icons.Outlined.LocationOn, "Location", locationText)
-        }
-        photo?.mimeType?.takeIf { it.isNotBlank() }?.let { mime ->
-            MetadataRow(
-                if (photo?.isVideoMedia() == true) Icons.Outlined.VideoFile else Icons.Outlined.Image,
-                "Format",
-                mime.uppercase().replace("IMAGE/", "").replace("VIDEO/", "")
-            )
-        }
-    }
-}
-
-@Composable
-private fun MetadataRow(
-    icon:  androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    value: String
-) {
-    Row(verticalAlignment = Alignment.Top) {
-        Icon(
-            imageVector        = icon,
-            contentDescription = null,
-            tint               = Color.White.copy(alpha = 0.55f),
-            modifier           = Modifier.size(18.dp).padding(top = 2.dp)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
+            Spacer(Modifier.height(16.dp))
             Text(
-                text  = label,
-                color = Color.White.copy(alpha = 0.4f),
-                style = MaterialTheme.typography.labelSmall
+                "Direction",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(
-                text       = value,
-                color      = Color.White.copy(alpha = 0.9f),
-                style      = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium
-            )
+            Spacer(Modifier.height(8.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(
+                    SortOrder.DESCENDING to "Newest ↓",
+                    SortOrder.ASCENDING  to "Oldest ↑"
+                ).forEach { (ord, lbl) ->
+                    FilterChip(
+                        selected = sortOrder == ord,
+                        onClick  = { sortOrder = ord },
+                        label    = { Text(lbl) },
+                        colors   = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                            selectedLabelColor     = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF5548D9), Color(0xFF8B7FF5))
+                        )
+                    )
+                    .combinedClickable(onClick = {
+                        onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder))
+                    }),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Apply",
+                    color      = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    style      = MaterialTheme.typography.titleSmall
+                )
+            }
         }
     }
 }
 
-// ── Bottom Action Bar ─────────────────────────────────────────────────────────────
+// ── Helper extension ───────────────────────────────────────────────────────────
 
-@Composable
-private fun DetailBottomBar(
-    isFavorite: Boolean,
-    onFavorite: () -> Unit,
-    onShare:    () -> Unit,
-    onDelete:   () -> Unit,
-    onEdit:     () -> Unit
-) {
-    val heartScale by animateFloatAsState(
-        targetValue   = if (isFavorite) 1.25f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness    = Spring.StiffnessMedium
-        ),
-        label = "heart_scale"
-    )
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 28.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment     = Alignment.CenterVertically
-    ) {
-        BottomActionBtn(icon = Icons.Outlined.Share,  label = "Share",  tint = Color.White, onClick = onShare)
-        BottomActionBtn(
-            icon    = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-            label   = if (isFavorite) "Saved" else "Favorite",
-            tint    = if (isFavorite) Color(0xFFFF4B6E) else Color.White,
-            scale   = heartScale,
-            onClick = onFavorite
-        )
-        BottomActionBtn(icon = Icons.Outlined.Edit,   label = "Edit",   tint = Color.White,       onClick = onEdit)
-        BottomActionBtn(icon = Icons.Outlined.Delete, label = "Delete", tint = Color(0xFFFF6B6B), onClick = onDelete)
-    }
-}
-
-@Composable
-private fun BottomActionBtn(
-    icon:    androidx.compose.ui.graphics.vector.ImageVector,
-    label:   String,
-    tint:    Color,
-    scale:   Float = 1f,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier            = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp)
-    ) {
-        Icon(
-            imageVector        = icon,
-            contentDescription = label,
-            tint               = tint,
-            modifier           = Modifier.size(26.dp * scale)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text  = label,
-            color = tint.copy(alpha = 0.8f),
-            style = MaterialTheme.typography.labelSmall
-        )
-    }
-}
-
-// ── Shared Element Helpers ───────────────────────────────────────────────────────
-
-@OptIn(ExperimentalSharedTransitionApi::class)
-internal val photosBoundsTransform = BoundsTransform { _, _ ->
-    spring(
-        dampingRatio = Spring.DampingRatioLowBouncy,
-        stiffness    = Spring.StiffnessMediumLow
-    )
-}
-
-private fun MediaPhoto.isVideoMedia(): Boolean =
-    mimeType.startsWith("video/", ignoreCase = true)
+@OptIn(ExperimentalFoundationApi::class)
+private fun Modifier.combinedClickable(onClick: () -> Unit) =
+    this.combinedClickable(onClick = onClick)
