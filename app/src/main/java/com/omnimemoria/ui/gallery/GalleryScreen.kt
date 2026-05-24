@@ -460,7 +460,7 @@ private fun GallerySortFilterSheet(
                                 MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                             else Color.Transparent
                         )
-                        .clickable { sortBy = candidate }
+                        .clickable { sortBy = candidate } // Corrected: Use clickable here instead of combinedClickable
                         .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -515,7 +515,7 @@ private fun GallerySortFilterSheet(
                     .height(52.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.primary)
-                    .clickable { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder), filterBy) },
+                    .clickable { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder), filterBy) }, // Corrected: Use clickable here
                 contentAlignment = Alignment.Center
             ) {
                 Text(
