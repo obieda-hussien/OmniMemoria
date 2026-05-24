@@ -42,11 +42,15 @@ import com.omnimemoria.domain.model.SortOrder
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
 import com.omnimemoria.ui.photoSharedKey
+import com.omnimemoria.ui.components.OmniSectionHeader
+import com.omnimemoria.ui.components.OmniSelectionBar
 import com.omnimemoria.ui.components.ShimmerBox
+import com.omnimemoria.ui.detail.photosBoundsTransform
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 
-private val SelectionBarBottomPadding = 148.dp
+// Selection bar sits above bottom nav pill (80dp) + safe gap (12dp)
+private val SelectionBarBottomPadding = 92.dp
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -69,11 +73,14 @@ fun GalleryScreen(
     val gridState = rememberLazyGridState()
     var showSortFilterSheet by remember { mutableStateOf(false) }
 
+    // Track scroll to compact the top bar
     LaunchedEffect(gridState) {
-        snapshotFlow { gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 100 }
-            .collect { compact -> viewModel.setCompactTopBar(compact) }
+        snapshotFlow {
+            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 100
+        }.collect { compact -> viewModel.setCompactTopBar(compact) }
     }
 
+    // Pinch-to-zoom column switching
     var cumulativeZoom by remember { mutableFloatStateOf(1f) }
     val transformableState = rememberTransformableState { zoomChange, _, _ ->
         cumulativeZoom *= zoomChange
@@ -85,6 +92,7 @@ fun GalleryScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+
         LazyVerticalGrid(
             state             = gridState,
             columns           = GridCells.Fixed(columnCount),
@@ -100,24 +108,27 @@ fun GalleryScreen(
                 .fillMaxSize()
                 .transformable(state = transformableState, lockRotationOnZoomPan = true)
         ) {
-            // تَمّت إزالة سطر الـ VibeAlbumsRow من هنا بنجاح بناءً على طلبك
+
+            // ── Media count + sort/filter chip ───────────────────────────
             item(span = { GridItemSpan(maxLineSpan) }) {
-                SectionSubHeader(
-                    title     = when(currentFilter) {
-                        MediaFilter.ALL -> "All Media"
-                        MediaFilter.PHOTOS_ONLY -> "Photos Only"
-                        MediaFilter.VIDEOS_ONLY -> "Videos Only"
+                OmniSectionHeader(
+                    title = when (currentFilter) {
+                        MediaFilter.ALL         -> "All Media"
+                        MediaFilter.PHOTOS_ONLY -> "Photos"
+                        MediaFilter.VIDEOS_ONLY -> "Videos"
                     },
-                    count     = mediaStats.totalCount,
-                    isLoading = groupedPhotos.loadState.refresh is LoadState.Loading,
-                    onSort    = { showSortFilterSheet = true },
-                    modifier  = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    subtitle    = "${mediaStats.totalCount} items",
+                    actionLabel = "Filter & Sort",
+                    actionIcon  = Icons.Outlined.Tune,
+                    onAction    = { showSortFilterSheet = true },
+                    modifier    = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
 
+            // ── Loading skeletons ────────────────────────────────────────
             if (groupedPhotos.loadState.refresh is LoadState.Loading) {
                 items(count = 30, span = { GridItemSpan(1) }) {
-                    SkeletonPhotoCell(size = (360 / columnCount).dp)
+                    SkeletonPhotoCell()
                 }
             } else {
                 items(
@@ -145,11 +156,11 @@ fun GalleryScreen(
                             val isSelected = photo.id in selectedIds
 
                             PhotoCell(
-                                uri                 = photo.uri.toString(),
-                                photoId             = photo.id,
-                                isVideo             = photo.mimeType.startsWith("video/", ignoreCase = true),
-                                isSelected          = isSelected,
-                                isSelecting         = isSelecting,
+                                uri                     = photo.uri.toString(),
+                                photoId                 = photo.id,
+                                isVideo                 = photo.mimeType.startsWith("video/", ignoreCase = true),
+                                isSelected              = isSelected,
+                                isSelecting             = isSelecting,
                                 sharedTransitionScope   = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,
                                 onClick     = {
@@ -162,12 +173,13 @@ fun GalleryScreen(
                                 }
                             )
                         }
-                        null -> SkeletonPhotoCell(size = (360 / columnCount).dp)
+                        null -> SkeletonPhotoCell()
                     }
                 }
             }
         }
 
+        // ── Multi-select bar — now uses shared OmniSelectionBar ──────────
         AnimatedVisibility(
             visible  = isSelecting,
             enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -177,224 +189,342 @@ fun GalleryScreen(
                 .navigationBarsPadding()
                 .padding(bottom = SelectionBarBottomPadding)
         ) {
-            SelectionActionBar(
+            OmniSelectionBar(
                 count    = selectedIds.size,
-                onClose  = { viewModel.clearSelection() },
-                onShare  = { /* TODO */ },
-                onDelete = { /* TODO */ },
-                onMore   = { /* TODO */ }
+                onClose  = viewModel::clearSelection,
+                onShare  = { /* TODO Phase 4 */ },
+                onDelete = { /* TODO Phase 4 */ },
+                onMore   = { /* TODO Phase 4 */ }
             )
         }
     }
 
+    // ── Sort / filter bottom sheet ───────────────────────────────────────────
     if (showSortFilterSheet) {
         GallerySortFilterSheet(
             currentFilter = currentFilter,
             currentSort   = sortConfig,
             onDismiss     = { showSortFilterSheet = false },
-            onApply       = { selectedSort, selectedFilter ->
-                viewModel.updateSortAndFilter(selectedSort, selectedFilter)
+            onApply       = { sort, filter ->
+                viewModel.updateSortAndFilter(sort, filter)
                 showSortFilterSheet = false
             }
         )
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SectionSubHeader(
-    title:     String,
-    count:     Int,
-    isLoading: Boolean,
-    onSort:    () -> Unit,
-    modifier:  Modifier = Modifier
-) {
-    Row(
-        modifier              = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment     = Alignment.CenterVertically
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text       = title,
-                style      = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color      = MaterialTheme.colorScheme.onBackground
-            )
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier          = Modifier
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
-                .combinedClickable(onClick = onSort)
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-        ) {
-            Icon(Icons.Outlined.Tune, "Filter/Sort", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Filter & Sort", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-        }
-    }
-}
+// ── Date header row ────────────────────────────────────────────────────────────
 
 @Composable
 private fun DateHeaderRow(label: String) {
-    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp)) {
-        Text(text = label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 10.dp)
+    ) {
+        Text(
+            text       = label,
+            style      = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color      = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f)
+        )
     }
 }
+
+// ── Photo cell ─────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 private fun PhotoCell(
-    uri: String, photoId: Long, isVideo: Boolean, isSelected: Boolean, isSelecting: Boolean,
-    sharedTransitionScope: SharedTransitionScope?, animatedVisibilityScope: AnimatedVisibilityScope?,
-    onClick: () -> Unit, onLongClick: () -> Unit
+    uri:                    String,
+    photoId:                Long,
+    isVideo:                Boolean,
+    isSelected:             Boolean,
+    isSelecting:            Boolean,
+    sharedTransitionScope:  SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    onClick:                () -> Unit,
+    onLongClick:            () -> Unit
 ) {
-    val scale by animateFloatAsState(targetValue = if (isSelected) 0.88f else 1f, animationSpec = spring(stiffness = Spring.StiffnessMediumLow), label = "photo_scale")
-    val sharedModifier: Modifier = if (sharedTransitionScope != null && animatedVisibilityScope != null && !isSelecting) {
+    val scale by animateFloatAsState(
+        targetValue   = if (isSelected) 0.88f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label         = "photo_scale"
+    )
+
+    val sharedModifier: Modifier = if (
+        sharedTransitionScope != null &&
+        animatedVisibilityScope != null &&
+        !isSelecting
+    ) {
         with(sharedTransitionScope) {
-            Modifier.sharedElement(rememberSharedContentState(key = photoSharedKey(photoId)), animatedVisibilityScope = animatedVisibilityScope, boundsTransform = com.omnimemoria.ui.detail.photosBoundsTransform)
+            Modifier.sharedElement(
+                sharedContentState      = rememberSharedContentState(key = photoSharedKey(photoId)),
+                animatedVisibilityScope = animatedVisibilityScope,
+                boundsTransform         = photosBoundsTransform
+            )
         }
     } else Modifier
 
-    Box(modifier = Modifier.aspectRatio(1f).scale(scale).clip(RoundedCornerShape(if (isSelected) 14.dp else 10.dp)).combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
-        CachedThumbnail(uri = uri, modifier = Modifier.fillMaxSize().then(sharedModifier))
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .scale(scale)
+            .clip(RoundedCornerShape(if (isSelected) 14.dp else 10.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    ) {
+        CachedThumbnail(
+            uri      = uri,
+            modifier = Modifier
+                .fillMaxSize()
+                .then(sharedModifier)
+        )
+
+        // Video badge
         if (isVideo) {
-            Box(modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).clip(RoundedCornerShape(99.dp)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 6.dp, vertical = 3.dp), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.PlayArrow, "Video", tint = Color.White, modifier = Modifier.size(14.dp))
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.PlayArrow,
+                    "Video",
+                    tint     = Color.White,
+                    modifier = Modifier.size(14.dp)
+                )
             }
         }
+
+        // Selection overlay
         AnimatedVisibility(visible = isSelecting, enter = fadeIn(), exit = fadeOut()) {
-            Box(modifier = Modifier.fillMaxSize().background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.15f))) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                        else Color.Black.copy(alpha = 0.15f)
+                    )
+            ) {
                 if (isSelected) {
-                    Icon(Icons.Filled.CheckCircle, "Selected", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp))
+                    Icon(
+                        Icons.Filled.CheckCircle,
+                        "Selected",
+                        tint     = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .size(22.dp)
+                    )
                 } else {
-                    Box(modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp).clip(CircleShape).border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape))
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape)
+                    )
                 }
             }
         }
     }
 }
 
+// ── Cached thumbnail ───────────────────────────────────────────────────────────
+
 @Composable
 private fun CachedThumbnail(uri: String, modifier: Modifier) {
     val context = LocalContext.current
-    AsyncImage(model = ImageRequest.Builder(context).data(uri).size(Size(512, 512)).build(), contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier)
+    AsyncImage(
+        model              = ImageRequest.Builder(context).data(uri).size(Size(512, 512)).build(),
+        contentDescription = null,
+        contentScale       = ContentScale.Crop,
+        modifier           = modifier
+    )
 }
+
+// ── Skeleton cell ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun SkeletonPhotoCell(size: Dp) {
-    ShimmerBox(modifier = Modifier.aspectRatio(1f).clip(RoundedCornerShape(10.dp)))
+private fun SkeletonPhotoCell() {
+    ShimmerBox(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(10.dp))
+    )
 }
 
-@Composable
-private fun SelectionActionBar(count: Int, onClose: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit, onMore: () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).clip(RoundedCornerShape(24.dp)).background(Brush.horizontalGradient(listOf(Color(0xFF1E1C30).copy(alpha = 0.95f), Color(0xFF2D26A0).copy(alpha = 0.9f))))) {
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, null, tint = Color.White) }
-                Text(text = "$count selected", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color.White)
-            }
-            Row {
-                IconButton(onClick = onShare)  { Icon(Icons.Outlined.Share, null, tint = Color.White, modifier = Modifier.size(22.dp)) }
-                IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(22.dp)) }
-                IconButton(onClick = onMore)   { Icon(Icons.Outlined.MoreVert, null, tint = Color.White, modifier = Modifier.size(22.dp)) }
-            }
-        }
-    }
-}
+// ── Sort / filter bottom sheet ─────────────────────────────────────────────────
+// Unified with FolderDetailScreen's sort sheet — same visual language.
 
-// ورقة الفلترة والترتيب المدمجة الحديثة ذات التصميم الفاخر
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun GallerySortFilterSheet(
     currentFilter: MediaFilter,
-    currentSort: SortConfig,
-    onDismiss: () -> Unit,
-    onApply: (SortConfig, MediaFilter) -> Unit
+    currentSort:   SortConfig,
+    onDismiss:     () -> Unit,
+    onApply:       (SortConfig, MediaFilter) -> Unit
 ) {
-    var sortBy by remember { mutableStateOf(currentSort.sortBy) }
+    var sortBy    by remember { mutableStateOf(currentSort.sortBy) }
     var sortOrder by remember { mutableStateOf(currentSort.sortOrder) }
-    var filterBy by remember { mutableStateOf(currentFilter) }
+    var filterBy  by remember { mutableStateOf(currentFilter) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF141220),
-        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+        sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor   = Color(0xFF141220),
+        shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            Text("Filter & Sort Media", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
-            
-            HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+        Column(
+            modifier            = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, top = 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            // Handle
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(36.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFF3A3860))
+            )
+            Spacer(Modifier.height(20.dp))
 
-            // قسم الفلترة
-            Text("Show Content Type", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "Filter & Sort",
+                style      = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color      = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(Modifier.height(18.dp))
+
+            // ── Content type ───────────────────────────────────────────
+            Text(
+                "Show",
+                style  = MaterialTheme.typography.labelMedium,
+                color  = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MediaFilter.entries.forEach { target ->
-                    val isSelected = filterBy == target
                     FilterChip(
-                        selected = isSelected,
-                        onClick = { filterBy = target },
-                        label = { Text(when(target){
-                            MediaFilter.ALL -> "All Media"
-                            MediaFilter.PHOTOS_ONLY -> "Photos Only"
-                            MediaFilter.VIDEOS_ONLY -> "Videos Only"
-                        }) },
+                        selected = filterBy == target,
+                        onClick  = { filterBy = target },
+                        label    = {
+                            Text(
+                                when (target) {
+                                    MediaFilter.ALL         -> "All"
+                                    MediaFilter.PHOTOS_ONLY -> "Photos"
+                                    MediaFilter.VIDEOS_ONLY -> "Videos"
+                                }
+                            )
+                        },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                            selectedLabelColor = MaterialTheme.colorScheme.primary
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                            selectedLabelColor     = MaterialTheme.colorScheme.primary
                         )
                     )
                 }
             }
 
-            // قسم الترتيب
-            Text("Sort By", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(20.dp))
+
+            // ── Sort by ────────────────────────────────────────────────
+            Text(
+                "Sort by",
+                style  = MaterialTheme.typography.labelMedium,
+                color  = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+
             listOf(
                 SortBy.DATE_TAKEN to "Date Taken",
-                SortBy.NAME to "File Name",
-                SortBy.SIZE to "Storage Size"
+                SortBy.NAME       to "File Name",
+                SortBy.SIZE       to "Storage Size"
             ).forEach { (candidate, label) ->
                 Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(if(sortBy == candidate) Color.White.copy(alpha = 0.05f) else Color.Transparent)
-                        .combinedClickable { sortBy = candidate }.padding(horizontal = 8.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (sortBy == candidate)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                            else Color.Transparent
+                        )
+                        .combinedClickable { sortBy = candidate }
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     RadioButton(
-                        selected = sortBy == candidate, 
-                        onClick = { sortBy = candidate },
-                        colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
+                        selected = sortBy == candidate,
+                        onClick  = { sortBy = candidate },
+                        colors   = RadioButtonDefaults.colors(
+                            selectedColor = MaterialTheme.colorScheme.primary
+                        )
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(label, color = Color.White)
+                    Text(
+                        text  = label,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
             }
 
-            // اتجاه الترتيب
+            Spacer(Modifier.height(16.dp))
+
+            // ── Direction ──────────────────────────────────────────────
+            Text(
+                "Direction",
+                style  = MaterialTheme.typography.labelMedium,
+                color  = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = sortOrder == SortOrder.DESCENDING,
-                    onClick = { sortOrder = SortOrder.DESCENDING },
-                    label = { Text("Newest / Largest First ↓") }
-                )
-                FilterChip(
-                    selected = sortOrder == SortOrder.ASCENDING,
-                    onClick = { sortOrder = SortOrder.ASCENDING },
-                    label = { Text("Oldest / Smallest First ↑") }
-                )
+                listOf(
+                    SortOrder.DESCENDING to "Newest / Largest ↓",
+                    SortOrder.ASCENDING  to "Oldest / Smallest ↑"
+                ).forEach { (ord, lbl) ->
+                    FilterChip(
+                        selected = sortOrder == ord,
+                        onClick  = { sortOrder = ord },
+                        label    = { Text(lbl) },
+                        colors   = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                            selectedLabelColor     = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(28.dp))
 
-            Button(
-                onClick = { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder), filterBy) },
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            // ── Apply button ───────────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.primary)
+                    .combinedClickable(
+                        onClick = { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder), filterBy) }
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Text("Apply Configurations", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(
+                    "Apply",
+                    color      = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    style      = MaterialTheme.typography.titleSmall
+                )
             }
         }
     }
