@@ -41,6 +41,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.components.ShimmerBox
+import com.omnimemoria.ui.home.HomeTopOverlaySpacing
 import kotlinx.coroutines.delay
 
 // ── Rotating hint strings ──────────────────────────────────────────────────────
@@ -53,8 +54,6 @@ private val HintTexts = listOf(
     "Try: 'blue car'",
     "Try: 'this month'"
 )
-
-private val HomeTopOverlaySpacing = 96.dp
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -80,6 +79,7 @@ fun SearchScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .padding(top = HomeTopOverlaySpacing)
         ) {
 

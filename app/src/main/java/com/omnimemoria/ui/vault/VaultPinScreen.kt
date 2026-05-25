@@ -31,11 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.omnimemoria.ui.components.ShimmerBox
+import com.omnimemoria.ui.home.HomeTopOverlaySpacing
 import kotlinx.coroutines.delay
 
 // ── Entry point ───────────────────────────────────────────────────────────────
-
-private val HomeTopOverlaySpacing = 96.dp
 
 @Composable
 fun VaultTabScreen(
