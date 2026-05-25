@@ -208,7 +208,7 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(showControls, isPlaying, isPrepared, isSeeking, showOptionsMenu) {
-        if (!showControls || !isPlaying || !isPrepared || showOptionsMenu) return@LaunchedEffect
+        if (!showControls || !isPlaying || !isPrepared || showOptionsMenu || isSeeking) return@LaunchedEffect
         delay(CONTROLS_AUTO_HIDE_MS)
         if (showControls && isPlaying && !isSeeking && !showOptionsMenu) showControls = false
     }
