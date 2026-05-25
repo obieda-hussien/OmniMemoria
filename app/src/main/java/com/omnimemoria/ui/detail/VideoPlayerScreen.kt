@@ -66,6 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
@@ -73,7 +74,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.omnimemoria.ui.navigation.NavigationSurfaceColor
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import java.util.Locale
 
 private const val SKIP_INTERVAL_MS = 10_000
 private const val LONG_PRESS_BOOST_SPEED = 2f
@@ -175,6 +179,7 @@ fun VideoPlayerScreen(
     }
 
     fun retryPlayback() {
+        resetPlaybackAttemptState()
         mediaPlayerRef = null
         isBoostingByLongPress = false
         isPrepared = false
@@ -182,8 +187,6 @@ fun VideoPlayerScreen(
         durationMs = 0
         positionMs = 0
         seekPositionMs = 0
-        playbackIssueMessage = null
-        loadedVideoId = null
     }
     LaunchedEffect(mediaId) {
         resetPlaybackAttemptState()
@@ -204,10 +207,10 @@ fun VideoPlayerScreen(
         seekFeedback = null
     }
 
-    LaunchedEffect(showControls, isPlaying, isPrepared) {
-        if (!showControls || !isPlaying || !isPrepared) return@LaunchedEffect
+    LaunchedEffect(showControls, isPlaying, isPrepared, isSeeking, showOptionsMenu) {
+        if (!showControls || !isPlaying || !isPrepared || showOptionsMenu) return@LaunchedEffect
         delay(CONTROLS_AUTO_HIDE_MS)
-        if (isPlaying && !isSeeking && !showOptionsMenu) showControls = false
+        if (showControls && isPlaying && !isSeeking && !showOptionsMenu) showControls = false
     }
 
     LaunchedEffect(videoViewRef, isPrepared, isPlaying) {
@@ -288,11 +291,11 @@ fun VideoPlayerScreen(
                                 if (nextMode != null) {
                                     playbackUriMode = nextMode
                                     loadedVideoId = null
-                                    playbackIssueMessage = "Trying a more compatible source…"
+                                    playbackIssueMessage = context.getString(com.omnimemoria.R.string.video_trying_compatible_source)
                                     Log.w(VIDEO_PLAYER_TAG, "Retrying video playback with URI mode: $nextMode")
                                     return@setOnErrorListener true
                                 }
-                                playbackIssueMessage = "Playback failed on this device. Retry or open externally."
+                                playbackIssueMessage = context.getString(com.omnimemoria.R.string.video_playback_failed_fallback)
                                 true
                             }
                         }
@@ -431,7 +434,7 @@ fun VideoPlayerScreen(
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 TextButton(onClick = { retryPlayback() }) {
-                                    Text("Retry")
+                                    Text(stringResource(com.omnimemoria.R.string.video_retry))
                                 }
                                 TextButton(
                                     onClick = {
@@ -442,7 +445,7 @@ fun VideoPlayerScreen(
                                         )
                                     }
                                 ) {
-                                    Text("Open externally")
+                                    Text(stringResource(com.omnimemoria.R.string.video_open_externally))
                                 }
                             }
                         }
@@ -533,21 +536,29 @@ fun VideoPlayerScreen(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text(if (showMetadataCard) "Hide details" else "Show details") },
+                            text = {
+                                Text(
+                                    if (showMetadataCard) {
+                                        context.getString(com.omnimemoria.R.string.video_hide_details)
+                                    } else {
+                                        context.getString(com.omnimemoria.R.string.video_show_details)
+                                    }
+                                )
+                            },
                             onClick = {
                                 showMetadataCard = !showMetadataCard
                                 showOptionsMenu = false
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Retry playback") },
+                            text = { Text(context.getString(com.omnimemoria.R.string.video_retry_playback)) },
                             onClick = {
                                 retryPlayback()
                                 showOptionsMenu = false
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Open in another app") },
+                            text = { Text(context.getString(com.omnimemoria.R.string.video_open_in_another_app)) },
                             onClick = {
                                 val target = item ?: return@DropdownMenuItem
                                 openInExternalPlayer(
@@ -698,23 +709,25 @@ private fun formatVideoTime(ms: Int): String {
     else "%02d:%02d".format(minutes, seconds)
 }
 
-private fun extractVideoMetadata(context: Context, uri: Uri): VideoTechnicalMetadata? {
-    return runCatching {
-        val retriever = MediaMetadataRetriever()
-        try {
-            retriever.setDataSource(context, uri)
-            VideoTechnicalMetadata(
-                durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toIntOrNull(),
-                width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull(),
-                height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull(),
-                bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull(),
-                frameRate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)?.toFloatOrNull(),
-                mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
-            )
-        } finally {
-            retriever.release()
-        }
-    }.getOrNull()
+private suspend fun extractVideoMetadata(context: Context, uri: Uri): VideoTechnicalMetadata? {
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, uri)
+                VideoTechnicalMetadata(
+                    durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toIntOrNull(),
+                    width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull(),
+                    height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull(),
+                    bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull(),
+                    frameRate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)?.toFloatOrNull(),
+                    mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
+                )
+            } finally {
+                retriever.release()
+            }
+        }.getOrNull()
+    }
 }
 
 private fun openInExternalPlayer(context: Context, uri: Uri) {
@@ -723,12 +736,24 @@ private fun openInExternalPlayer(context: Context, uri: Uri) {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     try {
-        context.startActivity(Intent.createChooser(intent, "Open video with"))
+        val chooserIntent = Intent.createChooser(
+            intent,
+            context.getString(com.omnimemoria.R.string.open_video_with)
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooserIntent)
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, "No compatible app found.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            context,
+            context.getString(com.omnimemoria.R.string.video_no_compatible_app),
+            Toast.LENGTH_SHORT
+        ).show()
     } catch (exception: Exception) {
         Log.w(VIDEO_PLAYER_TAG, "Failed to open external player", exception)
-        Toast.makeText(context, "Could not open external player.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            context,
+            context.getString(com.omnimemoria.R.string.video_could_not_open_external_player),
+            Toast.LENGTH_SHORT
+        ).show()
     }
 }
 
@@ -743,15 +768,17 @@ private fun VideoMetadataCard(
     val resolutionText = buildString {
         val width = metadata?.width ?: media?.width
         val height = metadata?.height ?: media?.height
-        if ((width ?: 0) > 0 && (height ?: 0) > 0) append("${width} × ${height}") else append("—")
+        if ((width ?: 0) > 0 && (height ?: 0) > 0) append("${width} x ${height}") else append("—")
     }
     val bitrateText = metadata?.bitrate?.takeIf { it > 0 }?.let { "${it / 1000} kbps" } ?: "—"
-    val frameRateText = metadata?.frameRate?.takeIf { it > 0f }?.let { "${"%.2f".format(it)} fps" } ?: "—"
+    val frameRateText = metadata?.frameRate?.takeIf { it > 0f }?.let {
+        String.format(Locale.US, "%.1f fps", it)
+    } ?: "—"
     val formatText = (metadata?.mimeType ?: media?.mimeType).orEmpty().ifBlank { "—" }
     val sourceText = when (playbackUriMode) {
-        PlaybackUriMode.ORIGINAL -> "Original"
-        PlaybackUriMode.VIDEO_COLLECTION -> "Video collection fallback"
-        PlaybackUriMode.FILES_COLLECTION -> "Files collection fallback"
+        PlaybackUriMode.ORIGINAL -> context.getString(com.omnimemoria.R.string.video_source_original)
+        PlaybackUriMode.VIDEO_COLLECTION -> context.getString(com.omnimemoria.R.string.video_source_video_collection_fallback)
+        PlaybackUriMode.FILES_COLLECTION -> context.getString(com.omnimemoria.R.string.video_source_files_collection_fallback)
     }
     Column(
         modifier = Modifier
@@ -762,12 +789,12 @@ private fun VideoMetadataCard(
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        VideoMetaRow("Format", formatText)
-        VideoMetaRow("Size", sizeText)
-        VideoMetaRow("Resolution", resolutionText)
-        VideoMetaRow("Bitrate", bitrateText)
-        VideoMetaRow("Frame rate", frameRateText)
-        VideoMetaRow("Source", sourceText)
+        VideoMetaRow(stringResource(com.omnimemoria.R.string.video_meta_format), formatText)
+        VideoMetaRow(stringResource(com.omnimemoria.R.string.video_meta_size), sizeText)
+        VideoMetaRow(stringResource(com.omnimemoria.R.string.video_meta_resolution), resolutionText)
+        VideoMetaRow(stringResource(com.omnimemoria.R.string.video_meta_bitrate), bitrateText)
+        VideoMetaRow(stringResource(com.omnimemoria.R.string.video_meta_frame_rate), frameRateText)
+        VideoMetaRow(stringResource(com.omnimemoria.R.string.video_meta_source), sourceText)
     }
 }
 
