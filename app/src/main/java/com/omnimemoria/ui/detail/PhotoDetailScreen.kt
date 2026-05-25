@@ -38,6 +38,7 @@ import coil3.request.ImageRequest
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
+import com.omnimemoria.ui.navigation.NavigationSurfaceColor
 import com.omnimemoria.ui.photoSharedKey
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import java.text.SimpleDateFormat
@@ -45,8 +46,6 @@ import java.util.Date
 import java.util.Locale
 
 // ─────────────────────────────────────────────────────────────────────────────
-
-private val HomeNavSurface = Color(0xFF141220).copy(alpha = 0.9f)
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -326,7 +325,7 @@ private fun DetailTopBar(
             .statusBarsPadding()
             .padding(horizontal = 20.dp, vertical = 10.dp)
             .clip(RoundedCornerShape(32.dp))
-            .background(HomeNavSurface)
+            .background(NavigationSurfaceColor)
             .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
     ) {
         Row(
@@ -530,7 +529,7 @@ private fun DetailBottomBar(
             .navigationBarsPadding()
             .padding(bottom = 12.dp)
             .clip(RoundedCornerShape(32.dp))
-            .background(HomeNavSurface)
+            .background(NavigationSurfaceColor)
             .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
     ) {
         Row(

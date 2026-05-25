@@ -50,6 +50,7 @@ import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.albums.AlbumsScreen
 import com.omnimemoria.ui.gallery.GalleryScreen
 import com.omnimemoria.ui.gallery.GalleryViewModel
+import com.omnimemoria.ui.navigation.NavigationSurfaceColor
 import com.omnimemoria.ui.search.SearchScreen
 import com.omnimemoria.ui.vault.VaultTabScreen
 import java.util.Calendar
@@ -574,7 +575,7 @@ private fun OmniBottomNav(
             .navigationBarsPadding()
             .padding(bottom     = 12.dp)
             .clip(RoundedCornerShape(32.dp))
-            .background(Color(0xFF141220).copy(alpha = 0.9f))
+            .background(NavigationSurfaceColor)
     ) {
         NavigationBar(
             containerColor = Color.Transparent,
