@@ -1,7 +1,10 @@
 package com.omnimemoria.ui.detail
 
+import android.content.ContentUris
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
 import android.widget.VideoView
@@ -72,6 +75,8 @@ private const val LONG_PRESS_BOOST_SPEED = 2f
 private const val VIDEO_PLAYER_TAG = "VideoPlayerScreen"
 private val SPEED_OPTIONS = listOf(1f, 1.25f, 1.5f, 2f)
 
+private enum class PlaybackUriMode { ORIGINAL, VIDEO_COLLECTION, FILES_COLLECTION }
+
 private data class SeekFeedback(
     val forward: Boolean,
     val label: String
@@ -97,7 +102,25 @@ fun VideoPlayerScreen(
     var playbackSpeed by remember { mutableStateOf(1f) }
     var isBoostingByLongPress by remember { mutableStateOf(false) }
     var seekFeedback by remember { mutableStateOf<SeekFeedback?>(null) }
+    var playbackUriMode by remember(mediaId) { mutableStateOf(PlaybackUriMode.ORIGINAL) }
     val canControlSpeed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+
+    fun resetPlaybackAttemptState() {
+        playbackUriMode = PlaybackUriMode.ORIGINAL
+        loadedVideoId = null
+    }
+
+    fun resolvePlaybackUri(item: com.omnimemoria.domain.model.MediaPhoto, mode: PlaybackUriMode): Uri {
+        return when (mode) {
+            PlaybackUriMode.ORIGINAL -> item.uri
+            PlaybackUriMode.VIDEO_COLLECTION -> {
+                ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, item.id)
+            }
+            PlaybackUriMode.FILES_COLLECTION -> {
+                ContentUris.withAppendedId(MediaStore.Files.getContentUri("external"), item.id)
+            }
+        }
+    }
 
     fun applyPlaybackSpeed(speed: Float) {
         val player = mediaPlayerRef ?: return
@@ -126,8 +149,8 @@ fun VideoPlayerScreen(
             )
         }
     }
-
     LaunchedEffect(mediaId) {
+        resetPlaybackAttemptState()
         mediaItem = viewModel.getPhoto(mediaId)
     }
 
@@ -207,6 +230,17 @@ fun VideoPlayerScreen(
                                 isBoostingByLongPress = false
                                 isPrepared = false
                                 isPlaying = false
+                                val nextMode = when (playbackUriMode) {
+                                    PlaybackUriMode.ORIGINAL -> PlaybackUriMode.VIDEO_COLLECTION
+                                    PlaybackUriMode.VIDEO_COLLECTION -> PlaybackUriMode.FILES_COLLECTION
+                                    PlaybackUriMode.FILES_COLLECTION -> null
+                                }
+                                if (nextMode != null) {
+                                    playbackUriMode = nextMode
+                                    loadedVideoId = null
+                                    Log.w(VIDEO_PLAYER_TAG, "Retrying video playback with URI mode: $nextMode")
+                                    return@setOnErrorListener true
+                                }
                                 Toast.makeText(
                                     ctx,
                                     "Couldn't play this video. It may be missing or unsupported.",
@@ -217,6 +251,7 @@ fun VideoPlayerScreen(
                         }
                     },
                     update = { videoView ->
+                        val targetUri = resolvePlaybackUri(item, playbackUriMode)
                         if (loadedVideoId != item.id) {
                             mediaPlayerRef = null
                             isBoostingByLongPress = false
@@ -225,7 +260,7 @@ fun VideoPlayerScreen(
                             durationMs = 0
                             positionMs = 0
                             seekPositionMs = 0
-                            videoView.setVideoURI(item.uri)
+                            videoView.setVideoURI(targetUri)
                             videoView.requestFocus()
                             videoView.start()
                             loadedVideoId = item.id
