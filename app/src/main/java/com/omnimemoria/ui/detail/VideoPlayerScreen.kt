@@ -54,6 +54,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.omnimemoria.ui.navigation.NavigationSurfaceColor
 import kotlinx.coroutines.delay
 
+// 45 minutes is treated as long-form content to surface the cinema hint.
 private const val LONG_VIDEO_THRESHOLD_MS = 45 * 60 * 1000
 private const val LONG_VIDEO_HINT = "Cinema mode ready for long playback"
 private const val LIGHT_VIDEO_HINT = "Optimized for smooth lightweight playback"
@@ -260,7 +261,10 @@ fun VideoPlayerScreen(
                         seekPositionMs = value.toInt()
                     },
                     onValueChangeFinished = {
-                        val player = videoViewRef ?: return@Slider
+                        val player = videoViewRef ?: run {
+                            isSeeking = false
+                            return@Slider
+                        }
                         if (!isPrepared || durationMs <= 0) {
                             isSeeking = false
                             return@Slider
@@ -300,6 +304,7 @@ fun VideoPlayerScreen(
                         icon = Icons.Filled.FastRewind,
                         onClick = {
                             val player = videoViewRef ?: return@VideoControlButton
+                            if (!isPrepared) return@VideoControlButton
                             val newPos = (player.currentPosition - SKIP_INTERVAL_MS).coerceAtLeast(0)
                             player.seekTo(newPos)
                             seekPositionMs = newPos
@@ -312,6 +317,7 @@ fun VideoPlayerScreen(
                         icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         onClick = {
                             val player = videoViewRef ?: return@VideoControlButton
+                            if (!isPrepared) return@VideoControlButton
                             if (player.isPlaying) player.pause() else player.start()
                             isPlaying = player.isPlaying
                         }
@@ -322,6 +328,7 @@ fun VideoPlayerScreen(
                         icon = Icons.Filled.FastForward,
                         onClick = {
                             val player = videoViewRef ?: return@VideoControlButton
+                            if (!isPrepared) return@VideoControlButton
                             val max = player.duration.coerceAtLeast(0)
                             val newPos = (player.currentPosition + SKIP_INTERVAL_MS).coerceAtMost(max)
                             player.seekTo(newPos)
