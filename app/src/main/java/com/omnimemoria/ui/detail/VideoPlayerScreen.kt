@@ -1,13 +1,19 @@
 package com.omnimemoria.ui.detail
 
+import android.content.ActivityNotFoundException
 import android.content.ContentUris
+import android.content.Context
+import android.content.Intent
 import android.media.MediaPlayer
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import android.text.format.Formatter
 import android.util.Log
 import android.widget.Toast
 import android.widget.VideoView
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -44,6 +50,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,6 +77,7 @@ import kotlin.math.abs
 
 private const val SKIP_INTERVAL_MS = 10_000
 private const val LONG_PRESS_BOOST_SPEED = 2f
+private const val CONTROLS_AUTO_HIDE_MS = 2_800L
 private const val VIDEO_PLAYER_TAG = "VideoPlayerScreen"
 private val SPEED_OPTIONS = listOf(1f, 1.25f, 1.5f, 2f)
 
@@ -80,12 +88,24 @@ private data class SeekFeedback(
     val label: String
 )
 
+private data class VideoTechnicalMetadata(
+    val durationMs: Int?,
+    val width: Int?,
+    val height: Int?,
+    val bitrate: Int?,
+    val frameRate: Float?,
+    val mimeType: String?
+)
+
 @Composable
 fun VideoPlayerScreen(
     mediaId: Long,
     onBack: () -> Unit,
     viewModel: PhotoDetailViewModel = hiltViewModel()
 ) {
+    BackHandler(onBack = onBack)
+
+    val context = androidx.compose.ui.platform.LocalContext.current
     var mediaItem by remember(mediaId) { mutableStateOf<com.omnimemoria.domain.model.MediaPhoto?>(null) }
     var loadedVideoId by remember { mutableStateOf<Long?>(null) }
     var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
@@ -101,12 +121,16 @@ fun VideoPlayerScreen(
     var isBoostingByLongPress by remember { mutableStateOf(false) }
     var seekFeedback by remember { mutableStateOf<SeekFeedback?>(null) }
     var playbackUriMode by remember(mediaId) { mutableStateOf(PlaybackUriMode.ORIGINAL) }
+    var showMetadataCard by remember { mutableStateOf(false) }
+    var playbackIssueMessage by remember { mutableStateOf<String?>(null) }
+    var videoMetadata by remember(mediaId) { mutableStateOf<VideoTechnicalMetadata?>(null) }
     var showOptionsMenu by remember { mutableStateOf(false) }
     var isRepeatMode by remember { mutableStateOf(false) }
     val canControlSpeed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
 
     fun resetPlaybackAttemptState() {
         playbackUriMode = PlaybackUriMode.ORIGINAL
+        playbackIssueMessage = null
         loadedVideoId = null
     }
 
@@ -149,15 +173,41 @@ fun VideoPlayerScreen(
             )
         }
     }
+
+    fun retryPlayback() {
+        mediaPlayerRef = null
+        isBoostingByLongPress = false
+        isPrepared = false
+        isPlaying = false
+        durationMs = 0
+        positionMs = 0
+        seekPositionMs = 0
+        playbackIssueMessage = null
+        loadedVideoId = null
+    }
     LaunchedEffect(mediaId) {
         resetPlaybackAttemptState()
         mediaItem = viewModel.getPhoto(mediaId)
+    }
+
+    LaunchedEffect(mediaItem?.id, playbackUriMode) {
+        val item = mediaItem ?: run {
+            videoMetadata = null
+            return@LaunchedEffect
+        }
+        videoMetadata = extractVideoMetadata(context, resolvePlaybackUri(item, playbackUriMode))
     }
 
     LaunchedEffect(seekFeedback) {
         if (seekFeedback == null) return@LaunchedEffect
         delay(700)
         seekFeedback = null
+    }
+
+    LaunchedEffect(showControls, isPlaying, isPrepared) {
+        if (!showControls || !isPlaying || !isPrepared) return@LaunchedEffect
+        delay(CONTROLS_AUTO_HIDE_MS)
+        if (isPlaying && !isSeeking && !showOptionsMenu) showControls = false
     }
 
     LaunchedEffect(videoViewRef, isPrepared, isPlaying) {
@@ -238,14 +288,11 @@ fun VideoPlayerScreen(
                                 if (nextMode != null) {
                                     playbackUriMode = nextMode
                                     loadedVideoId = null
+                                    playbackIssueMessage = "Trying a more compatible source…"
                                     Log.w(VIDEO_PLAYER_TAG, "Retrying video playback with URI mode: $nextMode")
                                     return@setOnErrorListener true
                                 }
-                                Toast.makeText(
-                                    ctx,
-                                    "Couldn't play this video. It may be missing or unsupported.",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                playbackIssueMessage = "Playback failed on this device. Retry or open externally."
                                 true
                             }
                         }
@@ -260,6 +307,7 @@ fun VideoPlayerScreen(
                             durationMs = 0
                             positionMs = 0
                             seekPositionMs = 0
+                            playbackIssueMessage = null
                             videoView.setVideoURI(targetUri)
                             videoView.requestFocus()
                             videoView.start()
@@ -360,6 +408,45 @@ fun VideoPlayerScreen(
                             onClick = { seekBy(SKIP_INTERVAL_MS, showFeedback = true) }
                         )
                     }
+
+                    AnimatedVisibility(
+                        visible = playbackIssueMessage != null,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 20.dp, vertical = 18.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(Color.Black.copy(alpha = 0.72f))
+                                .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(18.dp))
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Text(
+                                text = playbackIssueMessage.orEmpty(),
+                                color = Color.White.copy(alpha = 0.94f),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                TextButton(onClick = { retryPlayback() }) {
+                                    Text("Retry")
+                                }
+                                TextButton(
+                                    onClick = {
+                                        val target = mediaItem ?: return@TextButton
+                                        openInExternalPlayer(
+                                            context = context,
+                                            uri = resolvePlaybackUri(target, playbackUriMode)
+                                        )
+                                    }
+                                ) {
+                                    Text("Open externally")
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -445,6 +532,31 @@ fun VideoPlayerScreen(
                                 showOptionsMenu = false
                             }
                         )
+                        DropdownMenuItem(
+                            text = { Text(if (showMetadataCard) "Hide details" else "Show details") },
+                            onClick = {
+                                showMetadataCard = !showMetadataCard
+                                showOptionsMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Retry playback") },
+                            onClick = {
+                                retryPlayback()
+                                showOptionsMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Open in another app") },
+                            onClick = {
+                                val target = item ?: return@DropdownMenuItem
+                                openInExternalPlayer(
+                                    context = context,
+                                    uri = resolvePlaybackUri(target, playbackUriMode)
+                                )
+                                showOptionsMenu = false
+                            }
+                        )
                         SPEED_OPTIONS.forEach { speed ->
                             val isSelected = playbackSpeed == speed
                             DropdownMenuItem(
@@ -470,6 +582,23 @@ fun VideoPlayerScreen(
                     }
                 }
             }
+        }
+
+        AnimatedVisibility(
+            visible = showControls && showMetadataCard,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 116.dp)
+        ) {
+            VideoMetadataCard(
+                media = item,
+                metadata = videoMetadata,
+                playbackUriMode = playbackUriMode
+            )
         }
 
         AnimatedVisibility(
@@ -567,4 +696,95 @@ private fun formatVideoTime(ms: Int): String {
     val hours = totalSeconds / 3600
     return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
     else "%02d:%02d".format(minutes, seconds)
+}
+
+private fun extractVideoMetadata(context: Context, uri: Uri): VideoTechnicalMetadata? {
+    return runCatching {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, uri)
+            VideoTechnicalMetadata(
+                durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toIntOrNull(),
+                width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull(),
+                height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull(),
+                bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull(),
+                frameRate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)?.toFloatOrNull(),
+                mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
+            )
+        } finally {
+            retriever.release()
+        }
+    }.getOrNull()
+}
+
+private fun openInExternalPlayer(context: Context, uri: Uri) {
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "video/*")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    try {
+        context.startActivity(Intent.createChooser(intent, "Open video with"))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, "No compatible app found.", Toast.LENGTH_SHORT).show()
+    } catch (exception: Exception) {
+        Log.w(VIDEO_PLAYER_TAG, "Failed to open external player", exception)
+        Toast.makeText(context, "Could not open external player.", Toast.LENGTH_SHORT).show()
+    }
+}
+
+@Composable
+private fun VideoMetadataCard(
+    media: com.omnimemoria.domain.model.MediaPhoto?,
+    metadata: VideoTechnicalMetadata?,
+    playbackUriMode: PlaybackUriMode
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val sizeText = media?.size?.let { Formatter.formatFileSize(context, it) } ?: "—"
+    val resolutionText = buildString {
+        val width = metadata?.width ?: media?.width
+        val height = metadata?.height ?: media?.height
+        if ((width ?: 0) > 0 && (height ?: 0) > 0) append("${width} × ${height}") else append("—")
+    }
+    val bitrateText = metadata?.bitrate?.takeIf { it > 0 }?.let { "${it / 1000} kbps" } ?: "—"
+    val frameRateText = metadata?.frameRate?.takeIf { it > 0f }?.let { "${"%.2f".format(it)} fps" } ?: "—"
+    val formatText = (metadata?.mimeType ?: media?.mimeType).orEmpty().ifBlank { "—" }
+    val sourceText = when (playbackUriMode) {
+        PlaybackUriMode.ORIGINAL -> "Original"
+        PlaybackUriMode.VIDEO_COLLECTION -> "Video collection fallback"
+        PlaybackUriMode.FILES_COLLECTION -> "Files collection fallback"
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(NavigationSurfaceColor)
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        VideoMetaRow("Format", formatText)
+        VideoMetaRow("Size", sizeText)
+        VideoMetaRow("Resolution", resolutionText)
+        VideoMetaRow("Bitrate", bitrateText)
+        VideoMetaRow("Frame rate", frameRateText)
+        VideoMetaRow("Source", sourceText)
+    }
+}
+
+@Composable
+private fun VideoMetaRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.54f),
+            style = MaterialTheme.typography.labelSmall
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = value,
+            color = Color.White.copy(alpha = 0.92f),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium
+        )
+    }
 }
