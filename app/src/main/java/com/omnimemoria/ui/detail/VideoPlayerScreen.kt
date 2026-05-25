@@ -35,9 +35,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -55,8 +59,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
@@ -66,10 +68,6 @@ import com.omnimemoria.ui.navigation.NavigationSurfaceColor
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
-// 45 minutes is treated as long-form content to surface the cinema hint.
-private const val LONG_VIDEO_THRESHOLD_MS = 45 * 60 * 1000
-private const val LONG_VIDEO_HINT = "Cinema mode ready for long playback"
-private const val LIGHT_VIDEO_HINT = "Optimized for smooth lightweight playback"
 private const val SKIP_INTERVAL_MS = 10_000
 private const val LONG_PRESS_BOOST_SPEED = 2f
 private const val VIDEO_PLAYER_TAG = "VideoPlayerScreen"
@@ -103,6 +101,8 @@ fun VideoPlayerScreen(
     var isBoostingByLongPress by remember { mutableStateOf(false) }
     var seekFeedback by remember { mutableStateOf<SeekFeedback?>(null) }
     var playbackUriMode by remember(mediaId) { mutableStateOf(PlaybackUriMode.ORIGINAL) }
+    var showOptionsMenu by remember { mutableStateOf(false) }
+    var isRepeatMode by remember { mutableStateOf(false) }
     val canControlSpeed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
 
     fun resetPlaybackAttemptState() {
@@ -183,7 +183,6 @@ fun VideoPlayerScreen(
             videoViewRef?.stopPlayback()
         }
     }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -209,6 +208,7 @@ fun VideoPlayerScreen(
                             videoViewRef = this
                             setOnPreparedListener { mp ->
                                 mediaPlayerRef = mp
+                                mp.isLooping = isRepeatMode
                                 isPrepared = true
                                 durationMs = mp.duration.coerceAtLeast(0)
                                 positionMs = 0
@@ -329,6 +329,38 @@ fun VideoPlayerScreen(
                         )
                     }
                 }
+                AnimatedVisibility(
+                    visible = showControls,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.Center)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CenterVideoControlButton(
+                            icon = Icons.Filled.FastRewind,
+                            contentDescription = "Rewind",
+                            onClick = { seekBy(-SKIP_INTERVAL_MS, showFeedback = true) }
+                        )
+                        CenterVideoControlButton(
+                            icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            onClick = {
+                                val player = videoViewRef ?: return@CenterVideoControlButton
+                                if (!isPrepared) return@CenterVideoControlButton
+                                if (player.isPlaying) player.pause() else player.start()
+                                isPlaying = player.isPlaying
+                            }
+                        )
+                        CenterVideoControlButton(
+                            icon = Icons.Filled.FastForward,
+                            contentDescription = "Forward",
+                            onClick = { seekBy(SKIP_INTERVAL_MS, showFeedback = true) }
+                        )
+                    }
+                }
             }
         }
 
@@ -390,15 +422,52 @@ fun VideoPlayerScreen(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White.copy(alpha = 0.08f)),
+                        .background(Color.White.copy(alpha = 0.08f))
+                        .clickable { showOptionsMenu = true },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "HD",
-                        color = Color(0xFF8B7FF5),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "More options",
+                        tint = Color.White.copy(alpha = 0.92f)
                     )
+                    DropdownMenu(
+                        expanded = showOptionsMenu,
+                        onDismissRequest = { showOptionsMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text("Turn repeat mode ${if (isRepeatMode) "off" else "on"}")
+                            },
+                            onClick = {
+                                isRepeatMode = !isRepeatMode
+                                mediaPlayerRef?.isLooping = isRepeatMode
+                                showOptionsMenu = false
+                            }
+                        )
+                        SPEED_OPTIONS.forEach { speed ->
+                            val isSelected = playbackSpeed == speed
+                            DropdownMenuItem(
+                                text = {
+                                    Text(text = "Speed: ${speed}x")
+                                },
+                                leadingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Filled.Check,
+                                            contentDescription = "Selected"
+                                        )
+                                    }
+                                } else null,
+                                onClick = {
+                                    playbackSpeed = speed
+                                    applyPlaybackSpeed(if (isBoostingByLongPress) LONG_PRESS_BOOST_SPEED else speed)
+                                    showOptionsMenu = false
+                                },
+                                enabled = canControlSpeed
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -462,152 +531,31 @@ fun VideoPlayerScreen(
                         style = MaterialTheme.typography.labelMedium
                     )
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    VideoControlButton(
-                        label = "Rewind",
-                        icon = Icons.Filled.FastRewind,
-                        onClick = {
-                            seekBy(-SKIP_INTERVAL_MS, showFeedback = true)
-                        }
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    VideoControlButton(
-                        label = if (isPlaying) "Pause" else "Play",
-                        icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        onClick = {
-                            val player = videoViewRef ?: return@VideoControlButton
-                            if (!isPrepared) return@VideoControlButton
-                            if (player.isPlaying) player.pause() else player.start()
-                            isPlaying = player.isPlaying
-                        }
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    VideoControlButton(
-                        label = "Forward",
-                        icon = Icons.Filled.FastForward,
-                        onClick = {
-                            seekBy(SKIP_INTERVAL_MS, showFeedback = true)
-                        }
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SPEED_OPTIONS.forEach { speed ->
-                        SpeedChip(
-                            speed = speed,
-                            selected = playbackSpeed == speed,
-                            enabled = isPrepared && canControlSpeed,
-                            onClick = {
-                                playbackSpeed = speed
-                                applyPlaybackSpeed(speed)
-                            }
-                        )
-                    }
-                }
-                Text(
-                    text = if (canControlSpeed) {
-                        if (isBoostingByLongPress) "Boost active: 2x (release to restore normal speed)"
-                        else "Long press video area for temporary 2x boost"
-                    } else "Speed controls unavailable on this Android version",
-                    color = Color.White.copy(alpha = 0.62f),
-                    style = MaterialTheme.typography.labelSmall,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics {
-                            contentDescription = if (canControlSpeed) {
-                                if (isBoostingByLongPress) {
-                                    "Instruction: release to restore normal playback speed."
-                                } else {
-                                    "Instruction: long press the video area for temporary two times speed boost."
-                                }
-                            } else {
-                                "Instruction: speed controls are unavailable on this Android version."
-                            }
-                        }
-                        .padding(top = 8.dp)
-                )
-                Text(
-                    text = if (durationMs >= LONG_VIDEO_THRESHOLD_MS) LONG_VIDEO_HINT else LIGHT_VIDEO_HINT,
-                    color = Color.White.copy(alpha = 0.62f),
-                    style = MaterialTheme.typography.labelSmall,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                )
             }
         }
     }
 }
 
 @Composable
-private fun SpeedChip(
-    speed: Float,
-    selected: Boolean,
-    enabled: Boolean,
+private fun CenterVideoControlButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
     onClick: () -> Unit
 ) {
-    val bgColor = when {
-        !enabled -> Color.White.copy(alpha = 0.05f)
-        selected -> Color(0xFF8B7FF5).copy(alpha = 0.28f)
-        else -> Color.White.copy(alpha = 0.08f)
-    }
-    val textColor = when {
-        !enabled -> Color.White.copy(alpha = 0.45f)
-        selected -> Color(0xFFC8C0FF)
-        else -> Color.White.copy(alpha = 0.82f)
-    }
-
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(bgColor)
-            .border(1.dp, Color.White.copy(alpha = if (selected) 0.25f else 0.1f), RoundedCornerShape(12.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .size(56.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(Color.Black.copy(alpha = 0.42f))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(28.dp))
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "${speed}x",
-            color = textColor,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-}
-
-@Composable
-private fun VideoControlButton(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = label,
-            tint = Color.White.copy(alpha = 0.92f),
-            modifier = Modifier.size(24.dp)
-        )
-        Text(
-            text = label,
-            color = Color.White.copy(alpha = 0.68f),
-            style = MaterialTheme.typography.labelSmall
+            contentDescription = contentDescription,
+            tint = Color.White.copy(alpha = 0.94f),
+            modifier = Modifier.size(30.dp)
         )
     }
 }
