@@ -54,6 +54,8 @@ private val HintTexts = listOf(
     "Try: 'this month'"
 )
 
+private val HomeTopOverlaySpacing = 96.dp
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -75,7 +77,11 @@ fun SearchScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = HomeTopOverlaySpacing)
+        ) {
 
             // ── Search bar (تغليف احترافي يمنع تداخل العناصر أثناء التمرير) ──
             Surface(

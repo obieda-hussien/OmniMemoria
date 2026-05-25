@@ -35,6 +35,8 @@ import kotlinx.coroutines.delay
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
+private val HomeTopOverlaySpacing = 96.dp
+
 @Composable
 fun VaultTabScreen(
     onGoToSettings: () -> Unit,
@@ -220,6 +222,7 @@ fun VaultPinScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
+                .padding(top = HomeTopOverlaySpacing)
                 .padding(horizontal = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -561,6 +564,7 @@ private fun VaultGalleryHeader(isDecoy: Boolean, count: Int) {
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
+            .padding(top = HomeTopOverlaySpacing)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment     = Alignment.CenterVertically
