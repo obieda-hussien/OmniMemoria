@@ -46,6 +46,8 @@ import java.util.Locale
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+private val HomeNavSurface = Color(0xFF141220).copy(alpha = 0.9f)
+
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun PhotoDetailScreen(
@@ -259,7 +261,7 @@ private fun PhotoPager(
             exit     = fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 60.dp)
+                .padding(top = 92.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -318,71 +320,74 @@ private fun DetailTopBar(
     onInfo:      () -> Unit,
     showingInfo: Boolean
 ) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment     = Alignment.CenterVertically
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .clip(RoundedCornerShape(32.dp))
+            .background(HomeNavSurface)
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
     ) {
-        // Back button
-        Box(
+        Row(
             modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.4f))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
-                .clickable(onClick = onBack),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .height(68.dp)
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment     = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint               = Color.White,
-                modifier           = Modifier.size(20.dp)
-            )
-        }
-
-        // File name
-        photo?.name?.let { name ->
-            Text(
-                text       = name.substringBeforeLast('.'),
-                color      = Color.White.copy(alpha = 0.88f),
-                style      = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                maxLines   = 1,
-                textAlign  = TextAlign.Center,
-                modifier   = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 10.dp)
-            )
-        }
-
-        // Info button
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(
-                    if (showingInfo) Color(0xFF8B7FF5).copy(alpha = 0.35f)
-                    else Color.Black.copy(alpha = 0.4f)
+            // Back button
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint               = Color.White,
+                    modifier           = Modifier.size(20.dp)
                 )
-                .border(
-                    1.dp,
-                    if (showingInfo) Color(0xFF8B7FF5).copy(alpha = 0.4f)
-                    else Color.White.copy(alpha = 0.12f),
-                    CircleShape
+            }
+
+            // File name
+            photo?.name?.let { name ->
+                Text(
+                    text       = name.substringBeforeLast('.'),
+                    color      = Color.White.copy(alpha = 0.9f),
+                    style      = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines   = 1,
+                    textAlign  = TextAlign.Center,
+                    modifier   = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 10.dp)
                 )
-                .clickable(onClick = onInfo),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector        = if (showingInfo) Icons.Filled.Info else Icons.Outlined.Info,
-                contentDescription = "Info",
-                tint               = if (showingInfo) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.85f),
-                modifier           = Modifier.size(20.dp)
-            )
+            }
+
+            // Info button
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        if (showingInfo) Color(0xFF8B7FF5).copy(alpha = 0.2f)
+                        else Color.White.copy(alpha = 0.08f)
+                    )
+                    .clickable(onClick = onInfo),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector        = if (showingInfo) Icons.Filled.Info else Icons.Outlined.Info,
+                    contentDescription = "Info",
+                    tint               = if (showingInfo) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.9f),
+                    modifier           = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
@@ -521,16 +526,18 @@ private fun DetailBottomBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 20.dp)
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFF1E1C30).copy(alpha = 0.92f))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+            .padding(bottom = 12.dp)
+            .clip(RoundedCornerShape(32.dp))
+            .background(HomeNavSurface)
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
     ) {
         Row(
             modifier              = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .height(68.dp)
+                .padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment     = Alignment.CenterVertically
         ) {
