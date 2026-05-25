@@ -2,6 +2,7 @@ package com.omnimemoria.ui.detail
 
 import android.media.MediaPlayer
 import android.os.Build
+import android.util.Log
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.animation.AnimatedVisibility
@@ -51,7 +52,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
@@ -59,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.omnimemoria.ui.navigation.NavigationSurfaceColor
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 
 // 45 minutes is treated as long-form content to surface the cinema hint.
 private const val LONG_VIDEO_THRESHOLD_MS = 45 * 60 * 1000
@@ -66,6 +69,7 @@ private const val LONG_VIDEO_HINT = "Cinema mode ready for long playback"
 private const val LIGHT_VIDEO_HINT = "Optimized for smooth lightweight playback"
 private const val SKIP_INTERVAL_MS = 10_000
 private const val LONG_PRESS_BOOST_SPEED = 2f
+private const val VIDEO_PLAYER_TAG = "VideoPlayerScreen"
 private val SPEED_OPTIONS = listOf(1f, 1.25f, 1.5f, 2f)
 
 private data class SeekFeedback(
@@ -93,15 +97,16 @@ fun VideoPlayerScreen(
     var playbackSpeed by remember { mutableStateOf(1f) }
     var isBoostingByLongPress by remember { mutableStateOf(false) }
     var seekFeedback by remember { mutableStateOf<SeekFeedback?>(null) }
-    var videoSurfaceWidthPx by remember { mutableStateOf(0f) }
     val canControlSpeed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
 
     fun applyPlaybackSpeed(speed: Float) {
         val player = mediaPlayerRef ?: return
         if (!isPrepared || !canControlSpeed) return
-        runCatching {
-            val currentParams = player.playbackParams ?: android.media.PlaybackParams()
+        try {
+            val currentParams = player.playbackParams
             player.playbackParams = currentParams.setSpeed(speed)
+        } catch (exception: Exception) {
+            Log.w(VIDEO_PLAYER_TAG, "Failed to apply playback speed: $speed", exception)
         }
     }
 
@@ -114,10 +119,10 @@ fun VideoPlayerScreen(
         seekPositionMs = newPos
         positionMs = newPos
         if (showFeedback) {
-            val seconds = kotlin.math.abs(deltaMs) / 1000
+            val displaySeconds = abs(deltaMs) / 1000
             seekFeedback = SeekFeedback(
                 forward = deltaMs >= 0,
-                label = "${if (deltaMs >= 0) "+" else "-"}${seconds}s"
+                label = "${if (deltaMs >= 0) "+" else "-"}${displaySeconds}s"
             )
         }
     }
@@ -173,7 +178,6 @@ fun VideoPlayerScreen(
                     .fillMaxWidth()
                     .fillMaxHeight(0.68f)
                     .align(Alignment.TopCenter)
-                    .onSizeChanged { size -> videoSurfaceWidthPx = size.width.toFloat() }
             ) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
@@ -192,6 +196,7 @@ fun VideoPlayerScreen(
                                 start()
                             }
                             setOnCompletionListener {
+                                isBoostingByLongPress = false
                                 isPlaying = false
                                 positionMs = durationMs
                                 seekPositionMs = durationMs
@@ -199,9 +204,14 @@ fun VideoPlayerScreen(
                             }
                             setOnErrorListener { _, _, _ ->
                                 mediaPlayerRef = null
+                                isBoostingByLongPress = false
                                 isPrepared = false
                                 isPlaying = false
-                                Toast.makeText(ctx, "Couldn't play this video.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(
+                                    ctx,
+                                    "Couldn't play this video. It may be missing or unsupported.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
                                 true
                             }
                         }
@@ -209,6 +219,7 @@ fun VideoPlayerScreen(
                     update = { videoView ->
                         if (loadedVideoId != item.id) {
                             mediaPlayerRef = null
+                            isBoostingByLongPress = false
                             isPrepared = false
                             isPlaying = false
                             durationMs = 0
@@ -227,19 +238,24 @@ fun VideoPlayerScreen(
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .pointerInput(videoViewRef, isPrepared, playbackSpeed, isBoostingByLongPress, videoSurfaceWidthPx) {
+                        .pointerInput(Unit) {
                             detectTapGestures(
                                 onTap = { showControls = !showControls },
                                 onDoubleTap = { offset ->
                                     if (!isPrepared) return@detectTapGestures
-                                    val seekForward = offset.x >= (videoSurfaceWidthPx / 2f)
+                                    // Guard transient invalid size before first stable layout is available.
+                                    if (size.width <= 0) return@detectTapGestures
+                                    val splitX = size.width / 2f
+                                    val seekForward = offset.x >= splitX
                                     seekBy(
                                         deltaMs = if (seekForward) SKIP_INTERVAL_MS else -SKIP_INTERVAL_MS,
                                         showFeedback = true
                                     )
                                 },
                                 onLongPress = {
-                                    if (!isPrepared || !canControlSpeed || isBoostingByLongPress) return@detectTapGestures
+                                    if (!isPrepared || !isPlaying || !canControlSpeed || isBoostingByLongPress) {
+                                        return@detectTapGestures
+                                    }
                                     isBoostingByLongPress = true
                                     applyPlaybackSpeed(LONG_PRESS_BOOST_SPEED)
                                 },
@@ -463,14 +479,25 @@ fun VideoPlayerScreen(
                 }
                 Text(
                     text = if (canControlSpeed) {
-                        if (isBoostingByLongPress) "Boost active: 2x (release to return)"
-                        else "Long press on video for temporary 2x boost"
+                        if (isBoostingByLongPress) "Boost active: 2x (release to restore normal speed)"
+                        else "Long press video area for temporary 2x boost"
                     } else "Speed controls unavailable on this Android version",
                     color = Color.White.copy(alpha = 0.62f),
                     style = MaterialTheme.typography.labelSmall,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .semantics {
+                            contentDescription = if (canControlSpeed) {
+                                if (isBoostingByLongPress) {
+                                    "Instruction: release to restore normal playback speed."
+                                } else {
+                                    "Instruction: long press the video area for temporary two times speed boost."
+                                }
+                            } else {
+                                "Instruction: speed controls are unavailable on this Android version."
+                            }
+                        }
                         .padding(top = 8.dp)
                 )
                 Text(
