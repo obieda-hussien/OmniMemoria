@@ -164,7 +164,7 @@ private fun PhotoPager(
 
                 if (photo.mimeType.startsWith("video/", ignoreCase = true)) {
                     // Video thumbnail + play overlay
-                    Box(modifier = mediaMod.clickable { showChrome = !showChrome }) {
+                    Box(modifier = mediaMod.clickable { onOpenVideo(photo.id) }) {
                         AsyncImage(
                             model              = imageRequest,
                             contentDescription = photo.name,

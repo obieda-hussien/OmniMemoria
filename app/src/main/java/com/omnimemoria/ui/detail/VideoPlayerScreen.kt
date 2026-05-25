@@ -1,14 +1,19 @@
 package com.omnimemoria.ui.detail
 
+import android.media.MediaPlayer
+import android.os.Build
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -45,7 +50,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
@@ -59,6 +65,13 @@ private const val LONG_VIDEO_THRESHOLD_MS = 45 * 60 * 1000
 private const val LONG_VIDEO_HINT = "Cinema mode ready for long playback"
 private const val LIGHT_VIDEO_HINT = "Optimized for smooth lightweight playback"
 private const val SKIP_INTERVAL_MS = 10_000
+private const val LONG_PRESS_BOOST_SPEED = 2f
+private val SPEED_OPTIONS = listOf(1f, 1.25f, 1.5f, 2f)
+
+private data class SeekFeedback(
+    val forward: Boolean,
+    val label: String
+)
 
 @Composable
 fun VideoPlayerScreen(
@@ -66,10 +79,10 @@ fun VideoPlayerScreen(
     onBack: () -> Unit,
     viewModel: PhotoDetailViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
     var mediaItem by remember(mediaId) { mutableStateOf<com.omnimemoria.domain.model.MediaPhoto?>(null) }
     var loadedVideoId by remember { mutableStateOf<Long?>(null) }
     var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
+    var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
     var isPrepared by remember { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(false) }
     var durationMs by remember { mutableIntStateOf(0) }
@@ -77,9 +90,46 @@ fun VideoPlayerScreen(
     var seekPositionMs by remember { mutableIntStateOf(0) }
     var isSeeking by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(true) }
+    var playbackSpeed by remember { mutableStateOf(1f) }
+    var isBoostingByLongPress by remember { mutableStateOf(false) }
+    var seekFeedback by remember { mutableStateOf<SeekFeedback?>(null) }
+    var videoSurfaceWidthPx by remember { mutableStateOf(0f) }
+    val canControlSpeed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+
+    fun applyPlaybackSpeed(speed: Float) {
+        val player = mediaPlayerRef ?: return
+        if (!isPrepared || !canControlSpeed) return
+        runCatching {
+            val currentParams = player.playbackParams ?: android.media.PlaybackParams()
+            player.playbackParams = currentParams.setSpeed(speed)
+        }
+    }
+
+    fun seekBy(deltaMs: Int, showFeedback: Boolean = false) {
+        val player = videoViewRef ?: return
+        if (!isPrepared) return
+        val max = player.duration.coerceAtLeast(0)
+        val newPos = (player.currentPosition + deltaMs).coerceIn(0, max)
+        player.seekTo(newPos)
+        seekPositionMs = newPos
+        positionMs = newPos
+        if (showFeedback) {
+            val seconds = kotlin.math.abs(deltaMs) / 1000
+            seekFeedback = SeekFeedback(
+                forward = deltaMs >= 0,
+                label = "${if (deltaMs >= 0) "+" else "-"}${seconds}s"
+            )
+        }
+    }
 
     LaunchedEffect(mediaId) {
         mediaItem = viewModel.getPhoto(mediaId)
+    }
+
+    LaunchedEffect(seekFeedback) {
+        if (seekFeedback == null) return@LaunchedEffect
+        delay(700)
+        seekFeedback = null
     }
 
     LaunchedEffect(videoViewRef, isPrepared, isPlaying) {
@@ -101,6 +151,7 @@ fun VideoPlayerScreen(
 
     DisposableEffect(videoViewRef) {
         onDispose {
+            mediaPlayerRef = null
             videoViewRef?.stopPlayback()
         }
     }
@@ -109,10 +160,6 @@ fun VideoPlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF090810))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { showControls = !showControls }
     ) {
         val item = mediaItem
         if (item == null) {
@@ -121,47 +168,117 @@ fun VideoPlayerScreen(
                 modifier = Modifier.align(Alignment.Center)
             )
         } else {
-            AndroidView(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(0.68f)
-                    .align(Alignment.TopCenter),
-                factory = { ctx ->
-                    VideoView(ctx).apply {
-                        videoViewRef = this
-                        setOnPreparedListener { mp ->
-                            isPrepared = true
-                            durationMs = mp.duration.coerceAtLeast(0)
+                    .align(Alignment.TopCenter)
+                    .onSizeChanged { size -> videoSurfaceWidthPx = size.width.toFloat() }
+            ) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        VideoView(ctx).apply {
+                            videoViewRef = this
+                            setOnPreparedListener { mp ->
+                                mediaPlayerRef = mp
+                                isPrepared = true
+                                durationMs = mp.duration.coerceAtLeast(0)
+                                positionMs = 0
+                                seekPositionMs = 0
+                                isPlaying = true
+                                val targetSpeed = if (isBoostingByLongPress) LONG_PRESS_BOOST_SPEED else playbackSpeed
+                                applyPlaybackSpeed(targetSpeed)
+                                start()
+                            }
+                            setOnCompletionListener {
+                                isPlaying = false
+                                positionMs = durationMs
+                                seekPositionMs = durationMs
+                                showControls = true
+                            }
+                            setOnErrorListener { _, _, _ ->
+                                mediaPlayerRef = null
+                                isPrepared = false
+                                isPlaying = false
+                                Toast.makeText(ctx, "Couldn't play this video.", Toast.LENGTH_SHORT).show()
+                                true
+                            }
+                        }
+                    },
+                    update = { videoView ->
+                        if (loadedVideoId != item.id) {
+                            mediaPlayerRef = null
+                            isPrepared = false
+                            isPlaying = false
+                            durationMs = 0
                             positionMs = 0
                             seekPositionMs = 0
-                            isPlaying = true
-                            start()
-                        }
-                        setOnCompletionListener {
-                            isPlaying = false
-                            positionMs = durationMs
-                            seekPositionMs = durationMs
-                            showControls = true
-                        }
-                        setOnErrorListener { _, _, _ ->
-                            Toast.makeText(ctx, "Couldn't play this video.", Toast.LENGTH_SHORT).show()
-                            true
+                            videoView.setVideoURI(item.uri)
+                            videoView.requestFocus()
+                            videoView.start()
+                            loadedVideoId = item.id
+                        } else if (isPrepared) {
+                            val targetSpeed = if (isBoostingByLongPress) LONG_PRESS_BOOST_SPEED else playbackSpeed
+                            applyPlaybackSpeed(targetSpeed)
                         }
                     }
-                },
-                update = { videoView ->
-                    if (loadedVideoId != item.id) {
-                        isPrepared = false
-                        isPlaying = false
-                        durationMs = 0
-                        positionMs = 0
-                        seekPositionMs = 0
-                        videoView.setVideoURI(item.uri)
-                        videoView.requestFocus()
-                        loadedVideoId = item.id
+                )
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .pointerInput(videoViewRef, isPrepared, playbackSpeed, isBoostingByLongPress, videoSurfaceWidthPx) {
+                            detectTapGestures(
+                                onTap = { showControls = !showControls },
+                                onDoubleTap = { offset ->
+                                    if (!isPrepared) return@detectTapGestures
+                                    val seekForward = offset.x >= (videoSurfaceWidthPx / 2f)
+                                    seekBy(
+                                        deltaMs = if (seekForward) SKIP_INTERVAL_MS else -SKIP_INTERVAL_MS,
+                                        showFeedback = true
+                                    )
+                                },
+                                onLongPress = {
+                                    if (!isPrepared || !canControlSpeed || isBoostingByLongPress) return@detectTapGestures
+                                    isBoostingByLongPress = true
+                                    applyPlaybackSpeed(LONG_PRESS_BOOST_SPEED)
+                                },
+                                onPress = {
+                                    tryAwaitRelease()
+                                    if (isBoostingByLongPress) {
+                                        isBoostingByLongPress = false
+                                        applyPlaybackSpeed(playbackSpeed)
+                                    }
+                                }
+                            )
+                        }
+                )
+                val feedback = seekFeedback
+                AnimatedVisibility(
+                    visible = feedback != null,
+                    enter = fadeIn() + scaleIn(),
+                    exit = fadeOut() + scaleOut(),
+                    modifier = Modifier
+                        .align(if (feedback?.forward == true) Alignment.CenterEnd else Alignment.CenterStart)
+                        .padding(horizontal = 24.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = feedback?.label.orEmpty(),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
-            )
+            }
         }
 
         AnimatedVisibility(
@@ -303,12 +420,7 @@ fun VideoPlayerScreen(
                         label = "Rewind",
                         icon = Icons.Filled.FastRewind,
                         onClick = {
-                            val player = videoViewRef ?: return@VideoControlButton
-                            if (!isPrepared) return@VideoControlButton
-                            val newPos = (player.currentPosition - SKIP_INTERVAL_MS).coerceAtLeast(0)
-                            player.seekTo(newPos)
-                            seekPositionMs = newPos
-                            positionMs = newPos
+                            seekBy(-SKIP_INTERVAL_MS, showFeedback = true)
                         }
                     )
                     Spacer(modifier = Modifier.weight(1f))
@@ -327,16 +439,40 @@ fun VideoPlayerScreen(
                         label = "Forward",
                         icon = Icons.Filled.FastForward,
                         onClick = {
-                            val player = videoViewRef ?: return@VideoControlButton
-                            if (!isPrepared) return@VideoControlButton
-                            val max = player.duration.coerceAtLeast(0)
-                            val newPos = (player.currentPosition + SKIP_INTERVAL_MS).coerceAtMost(max)
-                            player.seekTo(newPos)
-                            seekPositionMs = newPos
-                            positionMs = newPos
+                            seekBy(SKIP_INTERVAL_MS, showFeedback = true)
                         }
                     )
                 }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SPEED_OPTIONS.forEach { speed ->
+                        SpeedChip(
+                            speed = speed,
+                            selected = playbackSpeed == speed,
+                            enabled = isPrepared && canControlSpeed,
+                            onClick = {
+                                playbackSpeed = speed
+                                applyPlaybackSpeed(speed)
+                            }
+                        )
+                    }
+                }
+                Text(
+                    text = if (canControlSpeed) {
+                        if (isBoostingByLongPress) "Boost active: 2x (release to return)"
+                        else "Long press on video for temporary 2x boost"
+                    } else "Speed controls unavailable on this Android version",
+                    color = Color.White.copy(alpha = 0.62f),
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                )
                 Text(
                     text = if (durationMs >= LONG_VIDEO_THRESHOLD_MS) LONG_VIDEO_HINT else LIGHT_VIDEO_HINT,
                     color = Color.White.copy(alpha = 0.62f),
@@ -348,6 +484,42 @@ fun VideoPlayerScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SpeedChip(
+    speed: Float,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val bgColor = when {
+        !enabled -> Color.White.copy(alpha = 0.05f)
+        selected -> Color(0xFF8B7FF5).copy(alpha = 0.28f)
+        else -> Color.White.copy(alpha = 0.08f)
+    }
+    val textColor = when {
+        !enabled -> Color.White.copy(alpha = 0.45f)
+        selected -> Color(0xFFC8C0FF)
+        else -> Color.White.copy(alpha = 0.82f)
+    }
+
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(bgColor)
+            .border(1.dp, Color.White.copy(alpha = if (selected) 0.25f else 0.1f), RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "${speed}x",
+            color = textColor,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 
