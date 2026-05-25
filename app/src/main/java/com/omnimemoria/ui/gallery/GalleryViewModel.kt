@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import androidx.paging.filter
 import androidx.paging.insertSeparators
 import androidx.paging.map
 import com.omnimemoria.data.repository.MediaStats
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -34,16 +36,13 @@ import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
 
-// ── sealed class للـ Grid items ──────────────────────────────────────────────────
 sealed class GalleryItem {
     data class DateHeader(val label: String, val anchorPhotoId: Long) : GalleryItem()
     data class Photo(val photo: MediaPhoto)  : GalleryItem()
 }
 
-// ── FIX: يستخدم effectiveDateMs بدلاً من dateTaken مباشرة ───────────────────────
-// Snapchat وتطبيقات كتير بتحفظ الصور بـ dateTaken = 0،
-// فكانت بتتجمع كلها تحت "Unknown" بدل ما تتجمع بالتاريخ الصح.
-// effectiveDateMs بيجرب dateTaken أولاً، لو 0 يجرب dateModified، لو 0 يجرب dateAdded.
+enum class MediaFilter { ALL, PHOTOS_ONLY, VIDEOS_ONLY }
+
 private fun MediaPhoto.toDateGroupLabel(): String {
     val ms = this.effectiveDateMs
     if (ms <= 0L) return "Unknown Date"
@@ -66,8 +65,6 @@ private fun Calendar.isSameDay(other: Calendar) =
     get(Calendar.YEAR)       == other.get(Calendar.YEAR) &&
     get(Calendar.DAY_OF_YEAR) == other.get(Calendar.DAY_OF_YEAR)
 
-// ─────────────────────────────────────────────────────────────────────────────────
-
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
@@ -76,19 +73,15 @@ class GalleryViewModel @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    // ── Stats ────────────────────────────────────────────────────────────────────
     private val _mediaStats = MutableStateFlow(MediaStats())
     val mediaStats: StateFlow<MediaStats> = _mediaStats.asStateFlow()
 
-    // ── On This Day ──────────────────────────────────────────────────────────────
     private val _onThisDayPhotos = MutableStateFlow<List<MediaPhoto>>(emptyList())
     val onThisDayPhotos: StateFlow<List<MediaPhoto>> = _onThisDayPhotos.asStateFlow()
 
-    // ── Dynamic Accent ───────────────────────────────────────────────────────────
     private val _dynamicAccent = MutableStateFlow<Color?>(null)
     val dynamicAccent: StateFlow<Color?> = _dynamicAccent.asStateFlow()
 
-    // ── Multi-select ─────────────────────────────────────────────────────────────
     private val _selectedIds = MutableStateFlow<Set<Long>>(emptySet())
     val selectedIds: StateFlow<Set<Long>> = _selectedIds.asStateFlow()
 
@@ -96,24 +89,40 @@ class GalleryViewModel @Inject constructor(
         .map { it.isNotEmpty() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    // ── Adaptive Grid columns ────────────────────────────────────────────────────
     private val _columnCount = MutableStateFlow(3)
     val columnCount: StateFlow<Int> = _columnCount.asStateFlow()
 
-    // ── Sort config ──────────────────────────────────────────────────────────────
+    private val _compactTopBar = MutableStateFlow(false)
+    val compactTopBar: StateFlow<Boolean> = _compactTopBar.asStateFlow()
+
+    // منطق الفلترة والترتيب المحدث
+    private val _currentFilter = MutableStateFlow(MediaFilter.ALL)
+    val currentFilter: StateFlow<MediaFilter> = _currentFilter.asStateFlow()
+
+    private val _localSortConfig = MutableStateFlow<SortConfig?>(null)
+    
     val activeSortConfig: StateFlow<SortConfig> = sortPresetRepository.getCurrentSort()
         .stateIn(viewModelScope, SharingStarted.Eagerly, SortConfig())
 
-    // ── Grouped photos with Date Headers ─────────────────────────────────────────
-    // FIX: يستخدم toDateGroupLabel() على الـ MediaPhoto مباشرة (وبالتالي effectiveDateMs)
-    val groupedPhotos: Flow<PagingData<GalleryItem>> = activeSortConfig
-        .flatMapLatest { config -> mediaStoreRepository.getPhotosPaged(config) }
-        .map { pagingData ->
-            pagingData
-                .map { photo -> GalleryItem.Photo(photo) as GalleryItem }
-                .insertSeparators { before, after ->
-                    val bLabel = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
-                    val aLabel = (after  as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
+    // دمج الترتيب المختار مع الفلتر الحالي لتحديث البيانات تلقائياً
+    val groupedPhotos: Flow<PagingData<GalleryItem>> = combine(
+        _localSortConfig.combine(activeSortConfig) { local, repo -> local ?: repo },
+        _currentFilter
+    ) { config, filter -> Pair(config, filter) }
+        .flatMapLatest { (config, filter) ->
+            mediaStoreRepository.getPhotosPaged(config).map { pagingData ->
+                // تطبيق الفلتر على مستوى الـ Paging
+                val filteredData = when (filter) {
+                    MediaFilter.ALL -> pagingData
+                    MediaFilter.PHOTOS_ONLY -> pagingData.filter { !it.mimeType.startsWith("video/", ignoreCase = true) }
+                    MediaFilter.VIDEOS_ONLY -> pagingData.filter { it.mimeType.startsWith("video/", ignoreCase = true) }
+                }
+                
+                filteredData
+                    .map { photo -> GalleryItem.Photo(photo) as GalleryItem }
+                    .insertSeparators { before, after ->
+                        val bLabel = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
+                        val aLabel = (after  as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
                         when {
                             after == null || after !is GalleryItem.Photo -> null
                             before == null || bLabel != aLabel ->
@@ -124,10 +133,10 @@ class GalleryViewModel @Inject constructor(
                             else -> null
                         }
                     }
+            }
         }
         .cachedIn(viewModelScope)
 
-    // ── Init ─────────────────────────────────────────────────────────────────────
     init {
         viewModelScope.launch(Dispatchers.IO) {
             _mediaStats.value = mediaStoreRepository.getMediaStats()
@@ -146,14 +155,17 @@ class GalleryViewModel @Inject constructor(
         }
     }
 
-    // ── Multi-select Actions ──────────────────────────────────────────────────────
+    fun updateSortAndFilter(config: SortConfig, filter: MediaFilter) {
+        _localSortConfig.value = config
+        _currentFilter.value = filter
+    }
+
     fun toggleSelection(photoId: Long) {
         _selectedIds.update { if (photoId in it) it - photoId else it + photoId }
     }
     fun clearSelection() { _selectedIds.value = emptySet() }
     fun selectAll(ids: List<Long>) { _selectedIds.value = ids.toSet() }
 
-    // ── Adaptive Grid ─────────────────────────────────────────────────────────────
     fun onPinchZoom(zoomDelta: Float) {
         val c = _columnCount.value
         when {
@@ -162,4 +174,5 @@ class GalleryViewModel @Inject constructor(
         }
     }
     fun setColumnCount(count: Int) { _columnCount.value = count.coerceIn(2, 5) }
+    fun setCompactTopBar(enabled: Boolean) { _compactTopBar.value = enabled }
 }

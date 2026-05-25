@@ -21,3 +21,9 @@ val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope?
  * navigating between destinations.
  */
 val LocalNavAnimatedVisibilityScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
+
+/**
+ * دالة موحدة لتوليد الـ Key الخاص بالأنيميشن الانتقالي للصور
+ * لضمان تطابق المعرفات بين شاشة العرض الرئيسية، تفاصيل الألبوم، والتفاصيل المكبرة.
+ */
+fun photoSharedKey(photoId: Long): String = "photo_$photoId"

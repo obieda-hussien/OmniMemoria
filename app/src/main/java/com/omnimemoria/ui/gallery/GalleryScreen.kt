@@ -5,11 +5,10 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,29 +37,21 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Size
+import com.omnimemoria.domain.model.SortBy
+import com.omnimemoria.domain.model.SortConfig
+import com.omnimemoria.domain.model.SortOrder
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
-import com.omnimemoria.ui.theme.AmberVibe
-import com.omnimemoria.ui.theme.RoseMemory
+import com.omnimemoria.ui.photoSharedKey
+import com.omnimemoria.ui.components.OmniSectionHeader
+import com.omnimemoria.ui.components.OmniSelectionBar
+import com.omnimemoria.ui.components.ShimmerBox
+import com.omnimemoria.ui.detail.photosBoundsTransform
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
-import androidx.compose.ui.platform.LocalDensity
 
-// ── Shared Element key helper ────────────────────────────────────────────────────
-fun photoSharedKey(photoId: Long) = "photo_$photoId"
-
-// ── Vibe chips placeholder data ──────────────────────────────────────────────────
-private data class VibeChip(val emoji: String, val label: String, val color: Color)
-private val SelectionBarBottomPadding = 148.dp
-private val placeholderVibes = listOf(
-    VibeChip("🌅", "Golden\nHour",   AmberVibe),
-    VibeChip("🌊", "Quiet\nMoments", Color(0xFF2D26A0)),
-    VibeChip("❤️", "Favorites",      RoseMemory),
-    VibeChip("🌿", "Nature",         Color(0xFF1B6B3A)),
-    VibeChip("🏙️", "City Life",     Color(0xFF333355))
-)
-
-// ─────────────────────────────────────────────────────────────────────────────────
+// Selection bar sits above bottom nav pill (80dp) + safe gap (12dp)
+private val SelectionBarBottomPadding = 92.dp
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -74,12 +65,23 @@ fun GalleryScreen(
     val isSelecting   by viewModel.isInSelectionMode.collectAsState()
     val columnCount   by viewModel.columnCount.collectAsState()
     val mediaStats    by viewModel.mediaStats.collectAsState()
+    val currentFilter by viewModel.currentFilter.collectAsState()
+    val sortConfig    by viewModel.activeSortConfig.collectAsState()
 
     val sharedTransitionScope   = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
 
     val gridState = rememberLazyGridState()
+    var showSortFilterSheet by remember { mutableStateOf(false) }
 
+    // Track scroll to compact the top bar
+    LaunchedEffect(gridState) {
+        snapshotFlow {
+            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 100
+        }.collect { compact -> viewModel.setCompactTopBar(compact) }
+    }
+
+    // Pinch-to-zoom column switching
     var cumulativeZoom by remember { mutableFloatStateOf(1f) }
     val transformableState = rememberTransformableState { zoomChange, _, _ ->
         cumulativeZoom *= zoomChange
@@ -105,28 +107,29 @@ fun GalleryScreen(
             verticalArrangement   = Arrangement.spacedBy(3.dp),
             modifier = Modifier
                 .fillMaxSize()
-                .transformable(
-                    state               = transformableState,
-                    lockRotationOnZoomPan = true
-                )
+                .transformable(state = transformableState, lockRotationOnZoomPan = true)
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                VibeAlbumsRow(modifier = Modifier.padding(bottom = 20.dp))
-            }
 
+            // ── Media count + sort/filter chip ───────────────────────────
             item(span = { GridItemSpan(maxLineSpan) }) {
-                SectionSubHeader(
-                    title     = "All Media",
-                    count     = mediaStats.totalCount,
-                    isLoading = groupedPhotos.loadState.refresh is LoadState.Loading,
-                    onSort    = { /* TODO: open sort sheet */ },
-                    modifier  = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                OmniSectionHeader(
+                    title = when (currentFilter) {
+                        MediaFilter.ALL         -> "All Media"
+                        MediaFilter.PHOTOS_ONLY -> "Photos"
+                        MediaFilter.VIDEOS_ONLY -> "Videos"
+                    },
+                    subtitle    = "${mediaStats.totalCount} items",
+                    actionLabel = "Filter & Sort",
+                    actionIcon  = Icons.Outlined.Tune,
+                    onAction    = { showSortFilterSheet = true },
+                    modifier    = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
 
+            // ── Loading skeletons ────────────────────────────────────────
             if (groupedPhotos.loadState.refresh is LoadState.Loading) {
                 items(count = 30, span = { GridItemSpan(1) }) {
-                    SkeletonPhotoCell(size = (360 / columnCount).dp)
+                    SkeletonPhotoCell()
                 }
             } else {
                 items(
@@ -154,11 +157,11 @@ fun GalleryScreen(
                             val isSelected = photo.id in selectedIds
 
                             PhotoCell(
-                                uri                 = photo.uri.toString(),
-                                photoId             = photo.id,
-                                isVideo             = photo.mimeType.startsWith("video/", ignoreCase = true),
-                                isSelected          = isSelected,
-                                isSelecting         = isSelecting,
+                                uri                     = photo.uri.toString(),
+                                photoId                 = photo.id,
+                                isVideo                 = photo.mimeType.startsWith("video/", ignoreCase = true),
+                                isSelected              = isSelected,
+                                isSelecting             = isSelecting,
                                 sharedTransitionScope   = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,
                                 onClick     = {
@@ -171,16 +174,13 @@ fun GalleryScreen(
                                 }
                             )
                         }
-                        null -> SkeletonPhotoCell(size = (360 / columnCount).dp)
+                        null -> SkeletonPhotoCell()
                     }
                 }
             }
-
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Spacer(modifier = Modifier.height(16.dp))
-            }
         }
 
+        // ── Multi-select bar — now uses shared OmniSelectionBar ──────────
         AnimatedVisibility(
             visible  = isSelecting,
             enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -190,132 +190,31 @@ fun GalleryScreen(
                 .navigationBarsPadding()
                 .padding(bottom = SelectionBarBottomPadding)
         ) {
-            SelectionActionBar(
+            OmniSelectionBar(
                 count    = selectedIds.size,
-                onClose  = { viewModel.clearSelection() },
-                onShare  = { /* TODO */ },
-                onDelete = { /* TODO */ },
-                onMore   = { /* TODO */ }
+                onClose  = viewModel::clearSelection,
+                onShare  = { /* TODO Phase 4 */ },
+                onDelete = { /* TODO Phase 4 */ },
+                onMore   = { /* TODO Phase 4 */ }
             )
         }
     }
-}
 
-// ── Vibe Albums Row ───────────────────────────────────────────────────────────────
-
-@Composable
-private fun VibeAlbumsRow(modifier: Modifier = Modifier) {
-    Column(modifier = modifier) {
-        Row(
-            modifier              = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment     = Alignment.CenterVertically
-        ) {
-            Text(
-                text       = "Vibe Albums",
-                style      = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color      = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text  = "See all",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding        = PaddingValues(horizontal = 8.dp)
-        ) {
-            items(placeholderVibes) { vibe -> VibeChipCard(vibe = vibe) }
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun VibeChipCard(vibe: VibeChip) {
-    Box(
-        modifier = Modifier
-            .width(100.dp)
-            .height(120.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Brush.linearGradient(listOf(vibe.color, vibe.color.copy(alpha = 0.7f))))
-            .combinedClickable(onClick = {})
-            .padding(12.dp),
-        contentAlignment = Alignment.BottomStart
-    ) {
-        Column {
-            Text(text = vibe.emoji, fontSize = 24.sp)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text       = vibe.label,
-                style      = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color      = Color.White,
-                lineHeight = 18.sp
-            )
-        }
-    }
-}
-
-// ── Section Sub-header ─────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SectionSubHeader(
-    title:     String,
-    count:     Int,
-    isLoading: Boolean,
-    onSort:    () -> Unit,
-    modifier:  Modifier = Modifier
-) {
-    Row(
-        modifier              = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment     = Alignment.CenterVertically
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text       = title,
-                style      = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color      = MaterialTheme.colorScheme.onBackground
-            )
-            if (!isLoading && count > 0) {
-                Spacer(modifier = Modifier.width(6.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
-                        .padding(horizontal = 7.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text       = "$count",
-                        style      = MaterialTheme.typography.labelSmall,
-                        color      = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+    // ── Sort / filter bottom sheet ───────────────────────────────────────────
+    if (showSortFilterSheet) {
+        GallerySortFilterSheet(
+            currentFilter = currentFilter,
+            currentSort   = sortConfig,
+            onDismiss     = { showSortFilterSheet = false },
+            onApply       = { sort, filter ->
+                viewModel.updateSortAndFilter(sort, filter)
+                showSortFilterSheet = false
             }
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier          = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .combinedClickable(onClick = onSort)
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Icon(Icons.Outlined.Tune, "Sort", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.width(4.dp))
-            Text("Sort", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-        }
+        )
     }
 }
 
-// ── Date Header row ───────────────────────────────────────────────────────────────
+// ── Date header row ────────────────────────────────────────────────────────────
 
 @Composable
 private fun DateHeaderRow(label: String) {
@@ -333,7 +232,7 @@ private fun DateHeaderRow(label: String) {
     }
 }
 
-// ── Photo Cell ────────────────────────────────────────────────────────────────────
+// ── Photo cell ─────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -343,7 +242,7 @@ private fun PhotoCell(
     isVideo:                Boolean,
     isSelected:             Boolean,
     isSelecting:            Boolean,
-    sharedTransitionScope:   SharedTransitionScope?,
+    sharedTransitionScope:  SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     onClick:                () -> Unit,
     onLongClick:            () -> Unit
@@ -351,19 +250,19 @@ private fun PhotoCell(
     val scale by animateFloatAsState(
         targetValue   = if (isSelected) 0.88f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label         = "photo_scale_$photoId"
+        label         = "photo_scale"
     )
 
     val sharedModifier: Modifier = if (
-        sharedTransitionScope   != null &&
+        sharedTransitionScope != null &&
         animatedVisibilityScope != null &&
         !isSelecting
     ) {
         with(sharedTransitionScope) {
             Modifier.sharedElement(
-                sharedContentState = rememberSharedContentState(key = photoSharedKey(photoId)),
+                sharedContentState      = rememberSharedContentState(key = photoSharedKey(photoId)),
                 animatedVisibilityScope = animatedVisibilityScope,
-                boundsTransform   = com.omnimemoria.ui.detail.photosBoundsTransform
+                boundsTransform         = photosBoundsTransform
             )
         }
     } else Modifier
@@ -372,11 +271,8 @@ private fun PhotoCell(
         modifier = Modifier
             .aspectRatio(1f)
             .scale(scale)
-            .clip(RoundedCornerShape(if (isSelected) 14.dp else 8.dp))
-            .combinedClickable(
-                onClick     = onClick,
-                onLongClick = onLongClick
-            )
+            .clip(RoundedCornerShape(if (isSelected) 14.dp else 10.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         CachedThumbnail(
             uri      = uri,
@@ -385,30 +281,28 @@ private fun PhotoCell(
                 .then(sharedModifier)
         )
 
+        // Video badge
         if (isVideo) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(6.dp)
-                    .clip(RoundedCornerShape(999.dp))
+                    .clip(RoundedCornerShape(99.dp))
                     .background(Color.Black.copy(alpha = 0.55f))
                     .padding(horizontal = 6.dp, vertical = 3.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Video",
-                    tint = Color.White,
+                    Icons.Filled.PlayArrow,
+                    "Video",
+                    tint     = Color.White,
                     modifier = Modifier.size(14.dp)
                 )
             }
         }
 
-        AnimatedVisibility(
-            visible = isSelecting,
-            enter   = fadeIn(tween(150)),
-            exit    = fadeOut(tween(150))
-        ) {
+        // Selection overlay
+        AnimatedVisibility(visible = isSelecting, enter = fadeIn(), exit = fadeOut()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -419,10 +313,13 @@ private fun PhotoCell(
             ) {
                 if (isSelected) {
                     Icon(
-                        imageVector        = Icons.Filled.CheckCircle,
-                        contentDescription = "Selected",
-                        tint               = MaterialTheme.colorScheme.primary,
-                        modifier           = Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp)
+                        Icons.Filled.CheckCircle,
+                        "Selected",
+                        tint     = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .size(22.dp)
                     )
                 } else {
                     Box(
@@ -439,87 +336,195 @@ private fun PhotoCell(
     }
 }
 
-// ── Cached Thumbnail ──────────────────────────────────────────────────────────────
+// ── Cached thumbnail ───────────────────────────────────────────────────────────
 
 @Composable
 private fun CachedThumbnail(uri: String, modifier: Modifier) {
     val context = LocalContext.current
     AsyncImage(
-        model = ImageRequest.Builder(context)
-            .data(uri)
-            .size(Size(512, 512))
-            .build(),
+        model              = ImageRequest.Builder(context).data(uri).size(Size(512, 512)).build(),
         contentDescription = null,
         contentScale       = ContentScale.Crop,
         modifier           = modifier
     )
 }
 
-// ── Skeleton shimmer cell ─────────────────────────────────────────────────────────
+// ── Skeleton cell ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun SkeletonPhotoCell(size: Dp) {
-    val alpha by rememberInfiniteTransition(label = "skeleton")
-        .animateFloat(
-            initialValue  = 0.2f,
-            targetValue   = 0.5f,
-            animationSpec = infiniteRepeatable(
-                animation  = tween(900, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "skeleton_alpha"
-        )
-    Box(
+private fun SkeletonPhotoCell() {
+    ShimmerBox(
         modifier = Modifier
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha))
+            .clip(RoundedCornerShape(10.dp))
     )
 }
 
-// ── Selection Action Bar ──────────────────────────────────────────────────────────
+// ── Sort / filter bottom sheet ─────────────────────────────────────────────────
+// Unified with FolderDetailScreen's sort sheet — same visual language.
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SelectionActionBar(
-    count:    Int,
-    onClose:  () -> Unit,
-    onShare:  () -> Unit,
-    onDelete: () -> Unit,
-    onMore:   () -> Unit
+private fun GallerySortFilterSheet(
+    currentFilter: MediaFilter,
+    currentSort:   SortConfig,
+    onDismiss:     () -> Unit,
+    onApply:       (SortConfig, MediaFilter) -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(
-                Brush.horizontalGradient(
-                    listOf(Color(0xFF1E1C30).copy(alpha = 0.95f), Color(0xFF2D26A0).copy(alpha = 0.9f))
-                )
-            )
+    var sortBy    by remember { mutableStateOf(currentSort.sortBy) }
+    var sortOrder by remember { mutableStateOf(currentSort.sortOrder) }
+    var filterBy  by remember { mutableStateOf(currentFilter) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor   = Color(0xFF141220),
+        shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
-        Row(
-            modifier              = Modifier
+        Column(
+            modifier            = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .navigationBarsPadding()
+                // FIXED: Using valid start/end/top/bottom padding bounds instead of mixing horizontal with vertical components.
+                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Outlined.Close, null, tint = Color.White)
+            // Handle
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(36.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFF3A3860))
+            )
+            Spacer(Modifier.height(20.dp))
+
+            Text(
+                "Filter & Sort",
+                style      = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color      = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(Modifier.height(18.dp))
+
+            // ── Content type ───────────────────────────────────────────
+            Text(
+                "Show",
+                style  = MaterialTheme.typography.labelMedium,
+                color  = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MediaFilter.entries.forEach { target ->
+                    FilterChip(
+                        selected = filterBy == target,
+                        onClick  = { filterBy = target },
+                        label    = {
+                            Text(
+                                when (target) {
+                                    MediaFilter.ALL         -> "All"
+                                    MediaFilter.PHOTOS_ONLY -> "Photos"
+                                    MediaFilter.VIDEOS_ONLY -> "Videos"
+                                }
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                            selectedLabelColor     = MaterialTheme.colorScheme.primary
+                        )
+                    )
                 }
-                Text(
-                    text       = "$count selected",
-                    style      = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color      = Color.White
-                )
             }
-            Row {
-                IconButton(onClick = onShare)  { Icon(Icons.Outlined.Share,    null, tint = Color.White,       modifier = Modifier.size(22.dp)) }
-                IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete,   null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(22.dp)) }
-                IconButton(onClick = onMore)   { Icon(Icons.Outlined.MoreVert, null, tint = Color.White,       modifier = Modifier.size(22.dp)) }
+
+            Spacer(Modifier.height(20.dp))
+
+            // ── Sort by ────────────────────────────────────────────────
+            Text(
+                "Sort by",
+                style  = MaterialTheme.typography.labelMedium,
+                color  = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+
+            listOf(
+                SortBy.DATE_TAKEN to "Date Taken",
+                SortBy.NAME       to "File Name",
+                SortBy.SIZE       to "Storage Size"
+            ).forEach { (candidate, label) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (sortBy == candidate)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                            else Color.Transparent
+                        )
+                        .clickable { sortBy = candidate }
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = sortBy == candidate,
+                        onClick  = { sortBy = candidate },
+                        colors   = RadioButtonDefaults.colors(
+                            selectedColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text  = label,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // ── Direction ──────────────────────────────────────────────
+            Text(
+                "Direction",
+                style  = MaterialTheme.typography.labelMedium,
+                color  = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    SortOrder.DESCENDING to "Newest / Largest ↓",
+                    SortOrder.ASCENDING  to "Oldest / Smallest ↑"
+                ).forEach { (ord, lbl) ->
+                    FilterChip(
+                        selected = sortOrder == ord,
+                        onClick  = { sortOrder = ord },
+                        label    = { Text(lbl) },
+                        colors   = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                            selectedLabelColor     = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(28.dp))
+
+            // ── Apply button ───────────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.primary)
+                    .clickable { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder), filterBy) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Apply",
+                    color      = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    style      = MaterialTheme.typography.titleSmall
+                )
             }
         }
     }

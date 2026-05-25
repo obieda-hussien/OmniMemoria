@@ -61,5 +61,6 @@ class AppPreferences constructor(
 
         val VAULT_PIN_HASH = DataStoreCompat.stringKey("vault_pin_hash")
         val SORT_PRESETS_JSON = DataStoreCompat.stringKey("sort_presets_json")
+        val RECENT_SEARCHES = DataStoreCompat.stringKey("recent_searches")
     }
 }
