@@ -1,4 +1,3 @@
-
 package com.omnimemoria.ui.detail
 
 import android.app.Activity
