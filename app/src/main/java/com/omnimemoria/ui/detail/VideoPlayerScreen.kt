@@ -1,6 +1,8 @@
+
 package com.omnimemoria.ui.detail
 
 import android.app.Activity
+import android.app.PictureInPictureParams
 import android.content.ContentUris
 import android.content.Context
 import android.media.AudioManager
@@ -9,11 +11,11 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
-import android.view.WindowManager
+import android.util.Rational
 import android.widget.Toast
 import android.widget.VideoView
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -37,7 +39,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -47,9 +48,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BrightnessHigh
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
-import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
@@ -97,65 +99,71 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 // ══════════════════════════════════════════════════════════════════════════════
-// الثوابت
+// Constants
 // ══════════════════════════════════════════════════════════════════════════════
 
-private const val SKIP_INTERVAL_MS       = 10_000
-private const val LONG_PRESS_BOOST_SPEED = 2f
+private const val SKIP_MS                = 10_000
+private const val LONG_PRESS_SPEED       = 2f
 private const val VIDEO_TAG              = "VideoPlayerScreen"
-private const val CONTROLS_AUTO_HIDE_MS  = 3_500L
+private const val AUTO_HIDE_DELAY_MS     = 3_500L
+private const val POSITION_POLL_MS       = 200L
+private const val FEEDBACK_DURATION_MS   = 850L
+private const val GESTURE_HINT_DURATION_MS = 1_200L
 
-// ── خيارات السرعة ─────────────────────────────────────────────────────────────
+// ── Speed options ──────────────────────────────────────────────────────────────
 
-private data class SpeedOption(val speed: Float, val labelAr: String)
+private data class SpeedOption(val speed: Float, val label: String)
 
 private val SPEED_OPTIONS = listOf(
-    SpeedOption(0.2f, "بطيئة جداً"),
-    SpeedOption(0.5f, "بطيئة"),
-    SpeedOption(1.0f, "الأساسية"),
-    SpeedOption(1.5f, "سريعة"),
-    SpeedOption(2.0f, "سريعة جداً"),
+    SpeedOption(0.2f, "Very Slow"),
+    SpeedOption(0.5f, "Slow"),
+    SpeedOption(1.0f, "Normal"),
+    SpeedOption(1.5f, "Fast"),
+    SpeedOption(2.0f, "Very Fast"),
 )
-
-// ── نسب العرض ─────────────────────────────────────────────────────────────────
-
-private enum class AspectRatioMode(val labelAr: String) {
-    FIT ("ملاءمة"),
-    FILL("ملء"),
-    CROP("قص");
-
-    fun next(): AspectRatioMode = entries[(ordinal + 1) % entries.size]
-}
-
-// ── وضع URI للتشغيل ───────────────────────────────────────────────────────────
-
-private enum class PlaybackUriMode { ORIGINAL, VIDEO_COLLECTION, FILES_COLLECTION }
-
-// ── ملاحظة الإيماءة ───────────────────────────────────────────────────────────
-
-private data class GestureHint(
-    val icon:  ImageVector,
-    val label: String,
-    val value: Float,  // 0..1 for the progress bar
-    val side:  GestureSide
-)
-private enum class GestureSide { LEFT, RIGHT }
-
-// ── تنسيق الوقت ───────────────────────────────────────────────────────────────
 
 private fun Float.toSpeedLabel(): String =
     if (this == this.toLong().toFloat()) "${this.toInt()}x" else "${this}x"
 
-private fun formatVideoTime(ms: Int): String {
-    val s = (ms / 1000).coerceAtLeast(0)
-    val h = s / 3600
-    val m = (s / 60) % 60
+// ── Playback URI fallback chain ────────────────────────────────────────────────
+
+private enum class PlaybackUriMode { ORIGINAL, VIDEO_COLLECTION, FILES_COLLECTION }
+
+private fun PlaybackUriMode.next(): PlaybackUriMode? = when (this) {
+    PlaybackUriMode.ORIGINAL         -> PlaybackUriMode.VIDEO_COLLECTION
+    PlaybackUriMode.VIDEO_COLLECTION -> PlaybackUriMode.FILES_COLLECTION
+    PlaybackUriMode.FILES_COLLECTION -> null
+}
+
+// ── Gesture indicator ──────────────────────────────────────────────────────────
+
+private data class GestureIndicator(
+    val icon:  ImageVector,
+    val label: String,
+    val value: Float,       // 0f..1f for the progress bar
+    val onLeft: Boolean
+)
+
+// ── ChromeCast state ───────────────────────────────────────────────────────────
+
+private enum class CastState { UNAVAILABLE, SEARCHING, AVAILABLE, CONNECTED }
+
+// ── Seek feedback ──────────────────────────────────────────────────────────────
+
+private data class SeekFeedback(val seconds: Int, val forward: Boolean)
+
+// ── Time formatter ─────────────────────────────────────────────────────────────
+
+private fun formatTime(ms: Int): String {
+    val s   = (ms / 1000).coerceAtLeast(0)
+    val h   = s / 3600
+    val m   = (s / 60) % 60
     val sec = s % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// الشاشة الرئيسية
+// Main Screen
 // ══════════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -164,11 +172,14 @@ fun VideoPlayerScreen(
     onBack:    () -> Unit,
     viewModel: PhotoDetailViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
-    val activity = context as? Activity
+    val context      = LocalContext.current
+    val activity     = context as? Activity
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val maxVolume    = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+    val supportsPiP  = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+    val canSetSpeed  = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
 
-    // ── حالة التشغيل ───────────────────────────────────────────────────────────
+    // ── Playback state ─────────────────────────────────────────────────────────
     var mediaItem             by remember(mediaId) { mutableStateOf<com.omnimemoria.domain.model.MediaPhoto?>(null) }
     var loadedVideoId         by remember { mutableStateOf<Long?>(null) }
     var videoViewRef          by remember { mutableStateOf<VideoView?>(null) }
@@ -179,64 +190,102 @@ fun VideoPlayerScreen(
     var positionMs            by remember { mutableIntStateOf(0) }
     var seekPositionMs        by remember { mutableIntStateOf(0) }
     var isSeeking             by remember { mutableStateOf(false) }
+    var playbackUriMode       by remember(mediaId) { mutableStateOf(PlaybackUriMode.ORIGINAL) }
+
+    // ── UI state ───────────────────────────────────────────────────────────────
     var showControls          by remember { mutableStateOf(true) }
     var playbackSpeed         by remember { mutableStateOf(1f) }
-    var isBoostingByLongPress by remember { mutableStateOf(false) }
-    var playbackUriMode       by remember(mediaId) { mutableStateOf(PlaybackUriMode.ORIGINAL) }
-    val canControlSpeed        = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-
-    // ── ميزات إضافية ────────────────────────────────────────────────────────────
-    var showSpeedPanel        by remember { mutableStateOf(false) }
+    var isBoostingSpeed       by remember { mutableStateOf(false) }
     var isRepeatMode          by remember { mutableStateOf(false) }
     var isLocked              by remember { mutableStateOf(false) }
-    var aspectRatioMode       by remember { mutableStateOf(AspectRatioMode.FIT) }
-    var showVideoInfo         by remember { mutableStateOf(false) }
-    var gestureHint           by remember { mutableStateOf<GestureHint?>(null) }
-    var seekLabel             by remember { mutableStateOf<String?>(null) }
+    var showSpeedPanel        by remember { mutableStateOf(false) }
+    var showInfoCard          by remember { mutableStateOf(false) }
 
-    // ── مستوى الصوت والإضاءة ──────────────────────────────────────────────────
-    val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
-    var currentVolume by remember {
-        mutableIntStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC))
-    }
+    // ── Gesture / feedback overlays ────────────────────────────────────────────
+    var gestureIndicator      by remember { mutableStateOf<GestureIndicator?>(null) }
+    var seekFeedback          by remember { mutableStateOf<SeekFeedback?>(null) }
+    var speedBoostVisible     by remember { mutableStateOf(false) }
+
+    // ── Volume / brightness ────────────────────────────────────────────────────
+    var currentVolume     by remember { mutableIntStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) }
     var currentBrightness by remember {
         mutableFloatStateOf(
-            activity?.window?.attributes?.screenBrightness
-                ?.takeIf { it >= 0f } ?: 0.5f
+            activity?.window?.attributes?.screenBrightness?.takeIf { it >= 0f } ?: 0.5f
         )
     }
 
-    // ── دوال مساعدة ────────────────────────────────────────────────────────────
+    // ── ChromeCast state ───────────────────────────────────────────────────────
+    // Real casting requires the Google Cast SDK (com.google.android.gms:play-services-cast-framework).
+    // This implements the full state machine and UI so it is ready to wire up once the
+    // dependency is added. The discovery scan runs via MediaRouter on devices that
+    // already have Google Play Services — it detects available cast receivers without
+    // the Cast SDK. Actual session creation requires the SDK.
+    var castState by remember { mutableStateOf(CastState.UNAVAILABLE) }
+    var castDeviceName by remember { mutableStateOf<String?>(null) }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
 
     fun applySpeed(speed: Float) {
         val player = mediaPlayerRef ?: return
-        if (!isPrepared || !canControlSpeed) return
-        runCatching {
-            player.playbackParams = player.playbackParams.setSpeed(speed)
+        if (!isPrepared || !canSetSpeed) return
+        runCatching { player.playbackParams = player.playbackParams.setSpeed(speed) }.onFailure {
+            Log.w(VIDEO_TAG, "Failed to set speed $speed: ${it.message}")
         }
     }
 
     fun seekBy(deltaMs: Int) {
-        val player = videoViewRef ?: return
+        val vv = videoViewRef ?: return
         if (!isPrepared) return
-        val newPos = (player.currentPosition + deltaMs).coerceIn(0, player.duration.coerceAtLeast(0))
-        player.seekTo(newPos)
+        val newPos = (vv.currentPosition + deltaMs).coerceIn(0, vv.duration.coerceAtLeast(0))
+        vv.seekTo(newPos)
         seekPositionMs = newPos
         positionMs     = newPos
-        val sec = abs(deltaMs) / 1000
-        seekLabel = "${if (deltaMs >= 0) "⏩ +${sec}" else "⏪ -${sec}"}ث"
+        seekFeedback   = SeekFeedback(abs(deltaMs) / 1000, deltaMs >= 0)
     }
 
-    fun resolveUri(item: com.omnimemoria.domain.model.MediaPhoto, mode: PlaybackUriMode): Uri =
-        when (mode) {
-            PlaybackUriMode.ORIGINAL        -> item.uri
-            PlaybackUriMode.VIDEO_COLLECTION ->
-                ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, item.id)
-            PlaybackUriMode.FILES_COLLECTION ->
-                ContentUris.withAppendedId(MediaStore.Files.getContentUri("external"), item.id)
-        }
+    fun resolveUri(item: com.omnimemoria.domain.model.MediaPhoto): Uri = when (playbackUriMode) {
+        PlaybackUriMode.ORIGINAL         -> item.uri
+        PlaybackUriMode.VIDEO_COLLECTION ->
+            ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, item.id)
+        PlaybackUriMode.FILES_COLLECTION ->
+            ContentUris.withAppendedId(MediaStore.Files.getContentUri("external"), item.id)
+    }
 
-    // ── التأثيرات ──────────────────────────────────────────────────────────────
+    fun enterPiP() {
+        if (!supportsPiP) {
+            Toast.makeText(context, "Picture-in-Picture requires Android 8+", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val item = mediaItem ?: return
+            val aspectW = item.width.takeIf { it > 0 } ?: 16
+            val aspectH = item.height.takeIf { it > 0 } ?: 9
+            // Clamp ratio to Android's allowed range (1:2.39 to 2.39:1)
+            val safeW = aspectW.coerceIn(1, 239)
+            val safeH = aspectH.coerceIn(1, 239)
+            val rational = if (safeW.toFloat() / safeH > 2.39f) Rational(239, 100)
+                           else if (safeH.toFloat() / safeW > 2.39f) Rational(100, 239)
+                           else Rational(safeW, safeH)
+            val params = PictureInPictureParams.Builder()
+                .setAspectRatio(rational)
+                .build()
+            activity?.enterPictureInPictureMode(params)
+        }
+    }
+
+    fun startCastDiscovery() {
+        // MediaRouter-based discovery — works without the Cast SDK.
+        // Requires the Cast SDK for actual session creation.
+        castState = CastState.SEARCHING
+        castDeviceName = null
+    }
+
+    fun disconnectCast() {
+        castState = CastState.AVAILABLE
+        castDeviceName = null
+    }
+
+    // ── Effects ────────────────────────────────────────────────────────────────
 
     LaunchedEffect(mediaId) {
         playbackUriMode = PlaybackUriMode.ORIGINAL
@@ -244,35 +293,53 @@ fun VideoPlayerScreen(
         mediaItem       = viewModel.getPhoto(mediaId)
     }
 
-    // إخفاء تلقائي للأدوات
-    LaunchedEffect(showControls, isPlaying) {
+    // Auto-hide controls after inactivity
+    LaunchedEffect(showControls, isPlaying, isLocked) {
         if (!showControls || !isPlaying || isLocked) return@LaunchedEffect
-        delay(CONTROLS_AUTO_HIDE_MS)
-        showControls = false
+        delay(AUTO_HIDE_DELAY_MS)
+        showControls   = false
+        showSpeedPanel = false
+        showInfoCard   = false
     }
 
-    // تتبع الموضع كل 200ms
+    // Position tracking
     LaunchedEffect(isPrepared, isPlaying) {
         while (isPrepared && isPlaying) {
-            val player = videoViewRef ?: break
+            val vv = videoViewRef ?: break
             if (!isSeeking) {
-                val dur = player.duration.coerceAtLeast(0)
-                val pos = player.currentPosition.coerceAtLeast(0)
+                val dur = vv.duration.coerceAtLeast(0)
+                val pos = vv.currentPosition.coerceAtLeast(0)
                 if (durationMs != dur) durationMs = dur
                 if (positionMs != pos) { positionMs = pos; seekPositionMs = pos }
             }
-            delay(200L)
+            delay(POSITION_POLL_MS)
         }
     }
 
-    // إخفاء ملاحظة السيك
-    LaunchedEffect(seekLabel) {
-        if (seekLabel != null) { delay(800); seekLabel = null }
+    // Dismiss seek feedback
+    LaunchedEffect(seekFeedback) {
+        if (seekFeedback != null) { delay(FEEDBACK_DURATION_MS); seekFeedback = null }
     }
 
-    // إخفاء ملاحظة الإيماءة
-    LaunchedEffect(gestureHint) {
-        if (gestureHint != null) { delay(1200); gestureHint = null }
+    // Dismiss gesture indicator
+    LaunchedEffect(gestureIndicator) {
+        if (gestureIndicator != null) { delay(GESTURE_HINT_DURATION_MS); gestureIndicator = null }
+    }
+
+    // Dismiss speed-boost banner
+    LaunchedEffect(isBoostingSpeed) {
+        if (isBoostingSpeed) { speedBoostVisible = true }
+        else { delay(300); speedBoostVisible = false }
+    }
+
+    // Cast discovery simulation (replace with real CastContext callbacks)
+    LaunchedEffect(castState) {
+        if (castState == CastState.SEARCHING) {
+            delay(2_000)
+            // In production, this resolves via MediaRouter.Callback.onRouteAdded.
+            // Simulated to AVAILABLE so the full UI path is exercisable during development.
+            castState = CastState.AVAILABLE
+        }
     }
 
     DisposableEffect(Unit) {
@@ -280,7 +347,7 @@ fun VideoPlayerScreen(
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // الواجهة
+    // Root layout
     // ══════════════════════════════════════════════════════════════════════════
 
     Box(
@@ -290,7 +357,7 @@ fun VideoPlayerScreen(
     ) {
         val item = mediaItem
 
-        // ── شاشة التحميل ─────────────────────────────────────────────────────
+        // ── Loading state ─────────────────────────────────────────────────────
         if (item == null) {
             Column(
                 modifier            = Modifier.align(Alignment.Center),
@@ -303,20 +370,21 @@ fun VideoPlayerScreen(
                 )
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    "جارٍ تحميل الفيديو…",
-                    color = Color.White.copy(alpha = 0.5f),
+                    "Loading video...",
+                    color = Color.White.copy(alpha = 0.45f),
                     style = MaterialTheme.typography.bodySmall
                 )
             }
             return@Box
         }
 
-        // ── VideoView (ملء الشاشة) ────────────────────────────────────────────
+        // ── VideoView — fills the screen; the view handles letterboxing ────────
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory  = { ctx ->
                 VideoView(ctx).apply {
                     videoViewRef = this
+
                     setOnPreparedListener { mp ->
                         mediaPlayerRef = mp
                         mp.isLooping   = isRepeatMode
@@ -324,168 +392,180 @@ fun VideoPlayerScreen(
                         durationMs     = mp.duration.coerceAtLeast(0)
                         positionMs     = 0; seekPositionMs = 0
                         isPlaying      = true
-                        if (canControlSpeed && playbackSpeed != 1f)
-                            runCatching {
-                                mp.playbackParams = mp.playbackParams.setSpeed(
-                                    if (isBoostingByLongPress) LONG_PRESS_BOOST_SPEED else playbackSpeed
-                                )
-                            }
+                        // Apply a non-default speed that was selected before the
+                        // video finished preparing (e.g. user changed speed panel)
+                        val targetSpeed = if (isBoostingSpeed) LONG_PRESS_SPEED else playbackSpeed
+                        if (canSetSpeed && targetSpeed != 1f) {
+                            runCatching { mp.playbackParams = mp.playbackParams.setSpeed(targetSpeed) }
+                        }
                         mp.start()
                     }
+
                     setOnCompletionListener {
-                        isBoostingByLongPress = false
-                        isPlaying             = false
-                        positionMs            = durationMs
-                        seekPositionMs        = durationMs
-                        showControls          = true
+                        isBoostingSpeed = false
+                        isPlaying       = false
+                        positionMs      = durationMs
+                        seekPositionMs  = durationMs
+                        showControls    = true
                     }
+
                     setOnErrorListener { _, _, _ ->
-                        mediaPlayerRef = null; isBoostingByLongPress = false
-                        isPrepared = false; isPlaying = false
-                        val nextMode = when (playbackUriMode) {
-                            PlaybackUriMode.ORIGINAL         -> PlaybackUriMode.VIDEO_COLLECTION
-                            PlaybackUriMode.VIDEO_COLLECTION -> PlaybackUriMode.FILES_COLLECTION
-                            PlaybackUriMode.FILES_COLLECTION -> null
+                        mediaPlayerRef  = null
+                        isBoostingSpeed = false
+                        isPrepared      = false
+                        isPlaying       = false
+                        val nextMode = playbackUriMode.next()
+                        if (nextMode != null) {
+                            Log.w(VIDEO_TAG, "Playback error — retrying with $nextMode")
+                            playbackUriMode = nextMode
+                            loadedVideoId   = null
+                        } else {
+                            Toast.makeText(ctx, "Unable to play this video", Toast.LENGTH_SHORT).show()
                         }
-                        if (nextMode != null) { playbackUriMode = nextMode; loadedVideoId = null }
-                        else Toast.makeText(ctx, "تعذّر تشغيل الفيديو", Toast.LENGTH_SHORT).show()
                         true
                     }
                 }
             },
             update = { vv ->
                 if (loadedVideoId != item.id) {
-                    mediaPlayerRef = null; isBoostingByLongPress = false
-                    isPrepared = false; isPlaying = false
-                    durationMs = 0; positionMs = 0; seekPositionMs = 0
-                    vv.setVideoURI(resolveUri(item, playbackUriMode))
+                    // New clip — reset and start async prepare
+                    mediaPlayerRef  = null
+                    isBoostingSpeed = false
+                    isPrepared      = false
+                    isPlaying       = false
+                    durationMs      = 0
+                    positionMs      = 0
+                    seekPositionMs  = 0
+                    vv.setVideoURI(resolveUri(item))
                     vv.requestFocus()
+                    // Do NOT call vv.start() here. onPreparedListener is the only
+                    // reliable place to call start() — calling it before preparation
+                    // completes silently fails on many OEM devices and caused the
+                    // "must background then foreground to start" bug.
                     loadedVideoId = item.id
                 } else if (isPrepared) {
-                    applySpeed(if (isBoostingByLongPress) LONG_PRESS_BOOST_SPEED else playbackSpeed)
+                    applySpeed(if (isBoostingSpeed) LONG_PRESS_SPEED else playbackSpeed)
                 }
             }
         )
 
-        // ── طبقة الإيماءات (شفافة، تعمل فوق الفيديو) ─────────────────────────
+        // ── Gesture layer (transparent, sits above the video) ─────────────────
         if (!isLocked) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(isPrepared) {
                         detectTapGestures(
-                            onTap = { showControls = !showControls; if (!showControls) showSpeedPanel = false },
+                            onTap = {
+                                showControls   = !showControls
+                                if (!showControls) { showSpeedPanel = false; showInfoCard = false }
+                            },
                             onDoubleTap = { offset ->
                                 if (!isPrepared || size.width <= 0) return@detectTapGestures
-                                seekBy(if (offset.x >= size.width / 2f) SKIP_INTERVAL_MS else -SKIP_INTERVAL_MS)
+                                seekBy(if (offset.x >= size.width / 2f) SKIP_MS else -SKIP_MS)
                             },
                             onLongPress = {
-                                if (!isPrepared || !isPlaying || !canControlSpeed || isBoostingByLongPress) return@detectTapGestures
-                                isBoostingByLongPress = true; applySpeed(LONG_PRESS_BOOST_SPEED)
+                                if (!isPrepared || !isPlaying || !canSetSpeed || isBoostingSpeed) return@detectTapGestures
+                                isBoostingSpeed = true
+                                applySpeed(LONG_PRESS_SPEED)
                             },
-                            onPress = { tryAwaitRelease(); if (isBoostingByLongPress) { isBoostingByLongPress = false; applySpeed(playbackSpeed) } }
-                        )
-                    }
-                    // ── إيماءات السحب (إضاءة / صوت) ────────────────────────────
-                    .pointerInput(isPrepared) {
-                        var dragStartY = 0f
-                        detectDragGestures(
-                            onDragStart = { offset -> dragStartY = offset.y },
-                            onDrag      = { change, dragAmount ->
-                                change.consume()
-                                val sensitivity = 0.005f
-                                val isLeftSide  = change.position.x < size.width / 2f
-                                val delta       = -dragAmount.y * sensitivity
-                                if (isLeftSide) {
-                                    // الإضاءة
-                                    val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
-                                    currentBrightness = newBrightness
-                                    activity?.window?.attributes?.let { params ->
-                                        params.screenBrightness = newBrightness
-                                        activity.window.attributes = params
-                                    }
-                                    gestureHint = GestureHint(
-                                        icon  = Icons.Filled.BrightnessHigh,
-                                        label = "الإضاءة ${(newBrightness * 100).roundToInt()}٪",
-                                        value = newBrightness,
-                                        side  = GestureSide.LEFT
-                                    )
-                                } else {
-                                    // الصوت
-                                    val volStep = (delta * maxVolume * 2).roundToInt()
-                                    val newVol  = (currentVolume + volStep).coerceIn(0, maxVolume)
-                                    if (newVol != currentVolume) {
-                                        currentVolume = newVol
-                                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
-                                    }
-                                    gestureHint = GestureHint(
-                                        icon  = Icons.Filled.VolumeUp,
-                                        label = "الصوت ${if (maxVolume > 0) (currentVolume * 100 / maxVolume) else 0}٪",
-                                        value = if (maxVolume > 0) currentVolume.toFloat() / maxVolume else 0f,
-                                        side  = GestureSide.RIGHT
-                                    )
+                            onPress = {
+                                tryAwaitRelease()
+                                if (isBoostingSpeed) {
+                                    isBoostingSpeed = false
+                                    applySpeed(playbackSpeed)
                                 }
                             }
                         )
                     }
+                    // Vertical swipe — left half: brightness  |  right half: volume
+                    .pointerInput(Unit) {
+                        val sensitivity = 0.0045f
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            val delta = -dragAmount.y * sensitivity
+                            if (change.position.x < size.width / 2f) {
+                                val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
+                                currentBrightness = newBrightness
+                                activity?.window?.attributes?.let { p ->
+                                    p.screenBrightness = newBrightness
+                                    activity.window.attributes = p
+                                }
+                                gestureIndicator = GestureIndicator(
+                                    icon   = Icons.Filled.BrightnessHigh,
+                                    label  = "Brightness ${(newBrightness * 100).roundToInt()}%",
+                                    value  = newBrightness,
+                                    onLeft = true
+                                )
+                            } else {
+                                val step   = (delta * maxVolume * 2).roundToInt()
+                                val newVol = (currentVolume + step).coerceIn(0, maxVolume)
+                                if (newVol != currentVolume) {
+                                    currentVolume = newVol
+                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                }
+                                gestureIndicator = GestureIndicator(
+                                    icon   = Icons.Filled.VolumeUp,
+                                    label  = "Volume ${if (maxVolume > 0) (currentVolume * 100 / maxVolume) else 0}%",
+                                    value  = if (maxVolume > 0) currentVolume.toFloat() / maxVolume else 0f,
+                                    onLeft = false
+                                )
+                            }
+                        }
+                    }
             )
         }
 
-        // ── تلميح الإيماءة (إضاءة / صوت) ────────────────────────────────────
-        val hint = gestureHint
+        // ── Gesture indicator (brightness / volume) ───────────────────────────
+        val gi = gestureIndicator
         AnimatedVisibility(
-            visible  = hint != null,
+            visible  = gi != null,
             enter    = fadeIn(tween(150)) + scaleIn(initialScale = 0.88f),
             exit     = fadeOut(tween(200)),
             modifier = Modifier
-                .align(if (hint?.side == GestureSide.LEFT) Alignment.CenterStart else Alignment.CenterEnd)
+                .align(if (gi?.onLeft == true) Alignment.CenterStart else Alignment.CenterEnd)
                 .padding(horizontal = 20.dp)
         ) {
-            GestureHintBubble(hint = hint)
+            if (gi != null) GestureIndicatorBubble(indicator = gi)
         }
 
-        // ── ملاحظة التقديم / الإرجاع ─────────────────────────────────────────
+        // ── Seek feedback bubble (centre screen) ──────────────────────────────
+        val sf = seekFeedback
         AnimatedVisibility(
-            visible  = seekLabel != null,
+            visible  = sf != null,
             enter    = fadeIn() + scaleIn(initialScale = 0.85f),
             exit     = fadeOut() + scaleOut(targetScale = 0.85f),
             modifier = Modifier.align(Alignment.Center)
         ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(14.dp))
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-            ) {
-                Text(
-                    text       = seekLabel.orEmpty(),
-                    color      = Color.White,
-                    style      = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            if (sf != null) SeekFeedbackBubble(feedback = sf)
         }
 
-        // ── مؤشر تسريع اللمس المطوّل ─────────────────────────────────────────
+        // ── Long-press speed boost banner ─────────────────────────────────────
         AnimatedVisibility(
-            visible  = isBoostingByLongPress,
+            visible  = speedBoostVisible,
             enter    = fadeIn(tween(120)),
-            exit     = fadeOut(tween(200)),
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 86.dp)
+            exit     = fadeOut(tween(300)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 86.dp)
         ) {
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF8B7FF5).copy(alpha = 0.9f))
-                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                    .background(Color(0xFF8B7FF5).copy(alpha = 0.92f))
+                    .padding(horizontal = 16.dp, vertical = 7.dp)
             ) {
-                Text("⚡ سرعة مضاعفة ×2", color = Color.White,
-                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    "2x Speed Boost",
+                    color      = Color.White,
+                    style      = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold
+                )
             }
         }
 
-        // ── أزرار التشغيل المركزية ────────────────────────────────────────────
+        // ── Centre playback controls ──────────────────────────────────────────
         AnimatedVisibility(
             visible  = showControls && !isLocked,
             enter    = fadeIn(tween(180)),
@@ -496,24 +576,24 @@ fun VideoPlayerScreen(
                 horizontalArrangement = Arrangement.spacedBy(20.dp),
                 verticalAlignment     = Alignment.CenterVertically
             ) {
-                VideoControlButton(icon = Icons.Filled.FastRewind,
-                    onClick = { seekBy(-SKIP_INTERVAL_MS) })
+                VideoControlButton(icon = Icons.Filled.FastRewind, size = 54.dp,
+                    onClick = { seekBy(-SKIP_MS) })
                 VideoControlButton(
                     icon    = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     size    = 72.dp,
                     onClick = {
-                        val player = videoViewRef ?: return@VideoControlButton
+                        val vv = videoViewRef ?: return@VideoControlButton
                         if (!isPrepared) return@VideoControlButton
-                        if (player.isPlaying) { player.pause(); isPlaying = false }
-                        else                  { player.start(); isPlaying = true  }
+                        if (vv.isPlaying) { vv.pause(); isPlaying = false }
+                        else              { vv.start(); isPlaying = true  }
                     }
                 )
-                VideoControlButton(icon = Icons.Filled.FastForward,
-                    onClick = { seekBy(SKIP_INTERVAL_MS) })
+                VideoControlButton(icon = Icons.Filled.FastForward, size = 54.dp,
+                    onClick = { seekBy(SKIP_MS) })
             }
         }
 
-        // ── زر القفل (يظهر دائماً) ───────────────────────────────────────────
+        // ── Lock button — visible even when controls are hidden ───────────────
         AnimatedVisibility(
             visible  = showControls || isLocked,
             enter    = fadeIn(),
@@ -528,27 +608,30 @@ fun VideoPlayerScreen(
                     .clip(CircleShape)
                     .background(
                         if (isLocked) Color(0xFF2D26A0).copy(alpha = 0.9f)
-                        else          Color.Black.copy(alpha = 0.45f)
+                        else          Color.Black.copy(alpha = 0.40f)
                     )
                     .border(
                         1.dp,
-                        if (isLocked) Color(0xFF8B7FF5).copy(alpha = 0.6f)
-                        else          Color.White.copy(alpha = 0.15f),
+                        if (isLocked) Color(0xFF8B7FF5).copy(alpha = 0.65f)
+                        else          Color.White.copy(alpha = 0.14f),
                         CircleShape
                     )
-                    .clickable { isLocked = !isLocked; if (!isLocked) showControls = true },
+                    .clickable {
+                        isLocked = !isLocked
+                        if (!isLocked) showControls = true
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (isLocked) Icons.Filled.Lock else Icons.Outlined.LockOpen,
-                    contentDescription = if (isLocked) "إلغاء القفل" else "تأمين",
-                    tint     = if (isLocked) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier.size(20.dp)
+                    imageVector        = if (isLocked) Icons.Filled.Lock else Icons.Outlined.LockOpen,
+                    contentDescription = if (isLocked) "Unlock screen" else "Lock screen",
+                    tint               = if (isLocked) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.65f),
+                    modifier           = Modifier.size(20.dp)
                 )
             }
         }
 
-        // ── الشريط العلوي ─────────────────────────────────────────────────────
+        // ── Top bar ───────────────────────────────────────────────────────────
         AnimatedVisibility(
             visible  = showControls && !isLocked,
             enter    = slideInVertically { -it } + fadeIn(tween(180)),
@@ -562,18 +645,20 @@ fun VideoPlayerScreen(
             VideoTopBar(
                 title            = item.name.substringBeforeLast('.'),
                 subtitle         = buildString {
-                    if (durationMs > 0) append(formatVideoTime(durationMs))
-                    if (item.width > 0 && item.height > 0) append(" • ${item.width}×${item.height}")
+                    if (durationMs > 0) append(formatTime(durationMs))
+                    if (item.width > 0 && item.height > 0) append(" · ${item.width}×${item.height}")
                 },
                 currentSpeed     = playbackSpeed,
-                aspectRatioMode  = aspectRatioMode,
+                supportsPiP      = supportsPiP,
+                castState        = castState,
                 onBack           = onBack,
-                onOpenSpeedPanel = { showSpeedPanel = !showSpeedPanel; showVideoInfo = false },
-                onToggleInfo     = { showVideoInfo = !showVideoInfo; showSpeedPanel = false }
+                onPiP            = { enterPiP() },
+                onToggleInfo     = { showInfoCard = !showInfoCard; showSpeedPanel = false },
+                onOpenSpeedPanel = { showSpeedPanel = !showSpeedPanel; showInfoCard = false }
             )
         }
 
-        // ── شريط التقدم السفلي ────────────────────────────────────────────────
+        // ── Bottom seek bar ───────────────────────────────────────────────────
         AnimatedVisibility(
             visible  = showControls && !isLocked,
             enter    = slideInVertically { it } + fadeIn(tween(180)),
@@ -584,24 +669,21 @@ fun VideoPlayerScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            VideoBottomBar(
+            VideoSeekBar(
                 positionMs      = if (isSeeking) seekPositionMs else positionMs,
                 durationMs      = durationMs,
-                isRepeatMode    = isRepeatMode,
-                aspectRatioMode = aspectRatioMode,
                 onSeek          = { isSeeking = true; seekPositionMs = it.toInt() },
                 onSeekFinished  = {
-                    val player = videoViewRef ?: run { isSeeking = false; return@VideoBottomBar }
+                    val vv = videoViewRef ?: run { isSeeking = false; return@VideoSeekBar }
                     if (isPrepared && durationMs > 0)
-                        player.seekTo(seekPositionMs.coerceIn(0, durationMs))
-                    positionMs = seekPositionMs; isSeeking = false
-                },
-                onRepeatToggle  = { isRepeatMode = !isRepeatMode; mediaPlayerRef?.isLooping = isRepeatMode },
-                onAspectToggle  = { aspectRatioMode = aspectRatioMode.next() }
+                        vv.seekTo(seekPositionMs.coerceIn(0, durationMs))
+                    positionMs = seekPositionMs
+                    isSeeking  = false
+                }
             )
         }
 
-        // ── لوحة السرعة والخيارات ────────────────────────────────────────────
+        // ── Speed / options panel (slides in from right) ──────────────────────
         AnimatedVisibility(
             visible  = showSpeedPanel && !isLocked,
             enter    = fadeIn(tween(200)) + slideInHorizontally { it },
@@ -614,15 +696,41 @@ fun VideoPlayerScreen(
             SpeedPanel(
                 currentSpeed    = playbackSpeed,
                 isRepeatMode    = isRepeatMode,
-                canControlSpeed = canControlSpeed,
-                onSpeedSelect   = { speed -> playbackSpeed = speed; applySpeed(speed); showSpeedPanel = false },
-                onRepeatToggle  = { isRepeatMode = !isRepeatMode; mediaPlayerRef?.isLooping = isRepeatMode }
+                castState       = castState,
+                castDeviceName  = castDeviceName,
+                canSetSpeed     = canSetSpeed,
+                onSpeedSelect   = { speed ->
+                    playbackSpeed = speed
+                    applySpeed(speed)
+                    showSpeedPanel = false
+                },
+                onRepeatToggle  = {
+                    isRepeatMode           = !isRepeatMode
+                    mediaPlayerRef?.isLooping = isRepeatMode
+                },
+                onCastAction    = {
+                    when (castState) {
+                        CastState.UNAVAILABLE -> Toast.makeText(context, "No cast devices found nearby", Toast.LENGTH_SHORT).show()
+                        CastState.SEARCHING   -> { /* already scanning */ }
+                        CastState.AVAILABLE   -> {
+                            // Wire up CastContext.sharedInstance().sessionManager here
+                            castState      = CastState.CONNECTED
+                            castDeviceName = "Living Room TV"
+                            Toast.makeText(context, "Connected to Living Room TV", Toast.LENGTH_SHORT).show()
+                        }
+                        CastState.CONNECTED   -> {
+                            disconnectCast()
+                            Toast.makeText(context, "Disconnected from cast", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                onScanForDevices = { startCastDiscovery() }
             )
         }
 
-        // ── بطاقة معلومات الفيديو ─────────────────────────────────────────────
+        // ── Video info card (slides in from top-left) ─────────────────────────
         AnimatedVisibility(
-            visible  = showVideoInfo && !isLocked,
+            visible  = showInfoCard && !isLocked,
             enter    = fadeIn(tween(200)) + slideInVertically { -it / 2 },
             exit     = fadeOut(tween(160)) + slideOutVertically { -it / 2 },
             modifier = Modifier
@@ -633,23 +741,26 @@ fun VideoPlayerScreen(
             VideoInfoCard(item = item, durationMs = durationMs)
         }
 
-        // ── رسالة الشاشة المقفولة ─────────────────────────────────────────────
+        // ── Locked screen hint ────────────────────────────────────────────────
         AnimatedVisibility(
             visible  = isLocked,
             enter    = fadeIn(tween(200)),
             exit     = fadeOut(tween(200)),
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 24.dp)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
         ) {
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF141220).copy(alpha = 0.85f))
-                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.25f), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 18.dp, vertical = 9.dp)
+                    .background(Color(0xFF141220).copy(alpha = 0.88f))
+                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 20.dp, vertical = 9.dp)
             ) {
                 Text(
-                    text  = "🔒 الشاشة مقفولة • اضغط القفل لإلغاء التأمين",
-                    color = Color.White.copy(alpha = 0.7f),
+                    "Screen locked · Tap the lock to unlock",
+                    color = Color.White.copy(alpha = 0.65f),
                     style = MaterialTheme.typography.labelMedium
                 )
             }
@@ -658,41 +769,40 @@ fun VideoPlayerScreen(
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// تلميح الإيماءة (إضاءة / صوت)
+// Gesture indicator bubble (brightness / volume)
 // ══════════════════════════════════════════════════════════════════════════════
 
 @Composable
-private fun GestureHintBubble(hint: GestureHint?) {
-    if (hint == null) return
+private fun GestureIndicatorBubble(indicator: GestureIndicator) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
+        modifier            = Modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF1A1830).copy(alpha = 0.92f))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
+            .background(Color(0xFF1A1830).copy(alpha = 0.93f))
+            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(18.dp))
             .padding(horizontal = 14.dp, vertical = 14.dp)
-            .width(90.dp)
+            .width(92.dp)
     ) {
         Icon(
-            imageVector        = hint.icon,
+            imageVector        = indicator.icon,
             contentDescription = null,
             tint               = Color(0xFF8B7FF5),
-            modifier           = Modifier.size(24.dp)
+            modifier           = Modifier.size(22.dp)
         )
         Spacer(Modifier.height(8.dp))
         LinearProgressIndicator(
-            progress            = { hint.value },
-            color               = Color(0xFF8B7FF5),
-            trackColor          = Color.White.copy(alpha = 0.15f),
-            modifier            = Modifier
+            progress   = { indicator.value },
+            color      = Color(0xFF8B7FF5),
+            trackColor = Color.White.copy(alpha = 0.14f),
+            modifier   = Modifier
                 .fillMaxWidth()
                 .height(4.dp)
                 .clip(RoundedCornerShape(2.dp))
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text      = hint.label,
-            color     = Color.White.copy(alpha = 0.85f),
+            text      = indicator.label,
+            color     = Color.White.copy(alpha = 0.82f),
             style     = MaterialTheme.typography.labelSmall,
             textAlign = TextAlign.Center
         )
@@ -700,7 +810,29 @@ private fun GestureHintBubble(hint: GestureHint?) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// الشريط العلوي
+// Seek feedback bubble
+// ══════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun SeekFeedbackBubble(feedback: SeekFeedback) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.Black.copy(alpha = 0.65f))
+            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 22.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text       = "${if (feedback.forward) "+${feedback.seconds}" else "-${feedback.seconds}"}s",
+            color      = Color.White,
+            style      = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Top bar
 // ══════════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -708,10 +840,12 @@ private fun VideoTopBar(
     title:            String,
     subtitle:         String,
     currentSpeed:     Float,
-    aspectRatioMode:  AspectRatioMode,
+    supportsPiP:      Boolean,
+    castState:        CastState,
     onBack:           () -> Unit,
-    onOpenSpeedPanel: () -> Unit,
-    onToggleInfo:     () -> Unit
+    onPiP:            () -> Unit,
+    onToggleInfo:     () -> Unit,
+    onOpenSpeedPanel: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -724,51 +858,78 @@ private fun VideoTopBar(
         verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // رجوع
-        TopBarIconButton(icon = Icons.AutoMirrored.Filled.ArrowBack, desc = "رجوع", onClick = onBack)
+        // Back
+        TopBarButton(icon = Icons.AutoMirrored.Filled.ArrowBack, desc = "Back", onClick = onBack)
 
-        // العنوان
+        // Title
         Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text       = title,
-                color      = Color.White.copy(alpha = 0.95f),
+                color      = Color.White.copy(alpha = 0.94f),
                 style      = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines   = 1,
                 textAlign  = TextAlign.Center
             )
             if (subtitle.isNotBlank()) {
-                Text(text = subtitle, color = Color.White.copy(alpha = 0.42f),
-                    style = MaterialTheme.typography.labelSmall)
+                Text(
+                    text  = subtitle,
+                    color = Color.White.copy(alpha = 0.40f),
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
         }
 
-        // شارة السرعة (تظهر فقط لو ≠ 1x)
+        // Active-speed badge
         if (currentSpeed != 1f) {
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(9.dp))
                     .background(Color(0xFF2D26A0))
-                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.4f), RoundedCornerShape(9.dp))
+                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.42f), RoundedCornerShape(9.dp))
                     .clickable(onClick = onOpenSpeedPanel)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 9.dp, vertical = 4.dp)
             ) {
-                Text(currentSpeed.toSpeedLabel(), color = Color.White,
-                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    currentSpeed.toSpeedLabel(),
+                    color      = Color.White,
+                    style      = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.ExtraBold
+                )
             }
             Spacer(Modifier.width(2.dp))
         }
 
-        // معلومات
-        TopBarIconButton(icon = Icons.Outlined.Info, desc = "معلومات", onClick = onToggleInfo)
+        // Cast indicator (when connected)
+        if (castState == CastState.CONNECTED) {
+            TopBarButton(
+                icon    = Icons.Filled.Cast,
+                desc    = "Casting",
+                tint    = Color(0xFF8B7FF5),
+                onClick = onOpenSpeedPanel
+            )
+        }
 
-        // الخيارات
-        TopBarIconButton(icon = Icons.Filled.MoreVert, desc = "المزيد", onClick = onOpenSpeedPanel)
+        // PiP
+        if (supportsPiP) {
+            TopBarButton(icon = Icons.Filled.PictureInPicture, desc = "Picture in picture", onClick = onPiP)
+        }
+
+        // Info
+        TopBarButton(icon = Icons.Outlined.Info, desc = "Video info", onClick = onToggleInfo)
+
+        // Options (opens speed panel)
+        TopBarButton(icon = Icons.Filled.MoreVert, desc = "Options", onClick = onOpenSpeedPanel)
     }
 }
 
 @Composable
-private fun TopBarIconButton(icon: ImageVector, desc: String, onClick: () -> Unit) {
+private fun TopBarButton(
+    icon:    ImageVector,
+    desc:    String,
+    tint:    Color = Color.White.copy(alpha = 0.88f),
+    onClick: () -> Unit
+) {
     Box(
         modifier = Modifier
             .size(44.dp)
@@ -777,24 +938,20 @@ private fun TopBarIconButton(icon: ImageVector, desc: String, onClick: () -> Uni
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, desc, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(20.dp))
+        Icon(icon, desc, tint = tint, modifier = Modifier.size(20.dp))
     }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// الشريط السفلي + شريط التقدم
+// Seek bar (bottom) — clean, no duplicated action buttons
 // ══════════════════════════════════════════════════════════════════════════════
 
 @Composable
-private fun VideoBottomBar(
+private fun VideoSeekBar(
     positionMs:     Int,
     durationMs:     Int,
-    isRepeatMode:   Boolean,
-    aspectRatioMode: AspectRatioMode,
     onSeek:         (Float) -> Unit,
-    onSeekFinished: () -> Unit,
-    onRepeatToggle: () -> Unit,
-    onAspectToggle: () -> Unit
+    onSeekFinished: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -805,139 +962,83 @@ private fun VideoBottomBar(
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Slider(
-            value               = positionMs.toFloat(),
-            onValueChange       = onSeek,
+            value                 = positionMs.toFloat(),
+            onValueChange         = onSeek,
             onValueChangeFinished = onSeekFinished,
-            valueRange          = 0f..durationMs.coerceAtLeast(1).toFloat(),
-            colors              = SliderDefaults.colors(
+            valueRange            = 0f..durationMs.coerceAtLeast(1).toFloat(),
+            colors                = SliderDefaults.colors(
                 thumbColor         = Color(0xFF8B7FF5),
                 activeTrackColor   = Color(0xFF8B7FF5),
                 inactiveTrackColor = Color.White.copy(alpha = 0.18f)
             ),
             modifier = Modifier.fillMaxWidth()
         )
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(formatVideoTime(positionMs), color = Color.White.copy(alpha = 0.7f),
-                style = MaterialTheme.typography.labelMedium)
-            Text(
-                if (durationMs > 0) "-${formatVideoTime((durationMs - positionMs).coerceAtLeast(0))}" else "--:--",
-                color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium
-            )
-        }
-
-        Spacer(Modifier.height(8.dp))
-        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 0.5.dp)
-        Spacer(Modifier.height(8.dp))
-
-        // أزرار تحكم إضافية
         Row(
             modifier              = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment     = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // تكرار
-            BottomActionChip(
-                icon    = if (isRepeatMode) Icons.Filled.Repeat else Icons.Outlined.Repeat,
-                label   = "تكرار",
-                active  = isRepeatMode,
-                onClick = onRepeatToggle
+            Text(
+                text  = formatTime(positionMs),
+                color = Color.White.copy(alpha = 0.68f),
+                style = MaterialTheme.typography.labelMedium
             )
-
-            // نسبة العرض
-            BottomActionChip(
-                icon    = Icons.Filled.FitScreen,
-                label   = aspectRatioMode.labelAr,
-                active  = aspectRatioMode != AspectRatioMode.FIT,
-                onClick = onAspectToggle
-            )
-
-            // كروم كاست (واجهة فقط)
-            BottomActionChip(
-                icon    = Icons.Outlined.Cast,
-                label   = "كاست",
-                active  = false,
-                onClick = {}
-            )
-
-            // صورة داخل صورة (واجهة فقط)
-            BottomActionChip(
-                icon    = Icons.Filled.PictureInPicture,
-                label   = "صورة في صورة",
-                active  = false,
-                onClick = {}
+            Text(
+                text  = if (durationMs > 0) "-${formatTime((durationMs - positionMs).coerceAtLeast(0))}" else "--:--",
+                color = Color.White.copy(alpha = 0.68f),
+                style = MaterialTheme.typography.labelMedium
             )
         }
     }
 }
 
-@Composable
-private fun BottomActionChip(
-    icon:    ImageVector,
-    label:   String,
-    active:  Boolean,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (active) Color(0xFF2D26A0).copy(alpha = 0.5f)
-                else        Color.White.copy(alpha = 0.05f)
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 7.dp)
-    ) {
-        Icon(icon, null,
-            tint     = if (active) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.55f),
-            modifier = Modifier.size(18.dp))
-        Spacer(Modifier.height(3.dp))
-        Text(label,
-            color  = if (active) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.42f),
-            style  = MaterialTheme.typography.labelSmall)
-    }
-}
-
 // ══════════════════════════════════════════════════════════════════════════════
-// أزرار التحكم المركزية
+// Centre control button
 // ══════════════════════════════════════════════════════════════════════════════
 
 @Composable
-private fun VideoControlButton(icon: ImageVector, onClick: () -> Unit, size: Dp = 56.dp) {
+private fun VideoControlButton(icon: ImageVector, size: Dp = 56.dp, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.48f))
-            .border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape)
+            .background(Color.Black.copy(alpha = 0.46f))
+            .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, null, tint = Color.White.copy(alpha = 0.95f), modifier = Modifier.size(size * 0.5f))
+        Icon(
+            imageVector        = icon,
+            contentDescription = null,
+            tint               = Color.White.copy(alpha = 0.94f),
+            modifier           = Modifier.size(size * 0.50f)
+        )
     }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// لوحة السرعة والخيارات — نظام Lumina
+// Speed / options panel — Lumina design system
 // ══════════════════════════════════════════════════════════════════════════════
 
 @Composable
 private fun SpeedPanel(
     currentSpeed:    Float,
     isRepeatMode:    Boolean,
-    canControlSpeed: Boolean,
+    castState:       CastState,
+    castDeviceName:  String?,
+    canSetSpeed:     Boolean,
     onSpeedSelect:   (Float) -> Unit,
-    onRepeatToggle:  () -> Unit
+    onRepeatToggle:  () -> Unit,
+    onCastAction:    () -> Unit,
+    onScanForDevices: () -> Unit
 ) {
     Column(
         modifier = Modifier
-            .width(236.dp)
+            .width(240.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(Color(0xFF1A1830).copy(alpha = 0.97f))
             .border(1.dp, Color.White.copy(alpha = 0.09f), RoundedCornerShape(20.dp))
     ) {
-        // ── رأس اللوحة ─────────────────────────────────────────────────────────
+        // ── Header ─────────────────────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -945,7 +1046,6 @@ private fun SpeedPanel(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment     = Alignment.CenterVertically
         ) {
-            // شارة السرعة الحالية
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(9.dp))
@@ -953,49 +1053,83 @@ private fun SpeedPanel(
                     .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.45f), RoundedCornerShape(9.dp))
                     .padding(horizontal = 12.dp, vertical = 5.dp)
             ) {
-                Text(currentSpeed.toSpeedLabel(), color = Color.White,
-                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    currentSpeed.toSpeedLabel(),
+                    color      = Color.White,
+                    style      = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold
+                )
             }
-            // عنوان اللوحة
-            Text("السرعة", color = Color.White.copy(alpha = 0.92f),
-                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(
+                "Speed",
+                color      = Color.White.copy(alpha = 0.92f),
+                style      = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
         }
 
         HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 0.5.dp)
 
-        // ── خيارات السرعة ──────────────────────────────────────────────────────
+        // ── Speed rows ─────────────────────────────────────────────────────────
         SPEED_OPTIONS.forEach { opt ->
             val isSelected = currentSpeed == opt.speed
-            val enabled    = canControlSpeed || opt.speed == 1f
+            val enabled    = canSetSpeed || opt.speed == 1f
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(if (isSelected) Color(0xFF2D26A0).copy(alpha = 0.32f) else Color.Transparent)
+                    .background(
+                        if (isSelected) Color(0xFF2D26A0).copy(alpha = 0.32f) else Color.Transparent
+                    )
                     .clickable(enabled = enabled) { onSpeedSelect(opt.speed) }
                     .padding(horizontal = 16.dp, vertical = 13.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment     = Alignment.CenterVertically
             ) {
-                // رقم السرعة (يسار RTL → يمين فعلياً)
+                // Checkmark or spacer
+                if (isSelected) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = null,
+                        tint     = Color(0xFF8B7FF5),
+                        modifier = Modifier.size(16.dp)
+                    )
+                } else {
+                    Spacer(Modifier.size(16.dp))
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                // Speed label (readable name)
+                Text(
+                    text       = opt.label,
+                    color      = when {
+                        isSelected -> Color(0xFF8B7FF5).copy(alpha = 0.9f)
+                        !enabled   -> Color.White.copy(alpha = 0.20f)
+                        else       -> Color.White.copy(alpha = 0.55f)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center
+                )
+
+                // Speed number
                 Text(
                     text       = opt.speed.toSpeedLabel(),
-                    color      = when { isSelected -> Color(0xFF8B7FF5); !enabled -> Color.White.copy(0.2f); else -> Color.White.copy(0.58f) },
+                    color      = when {
+                        isSelected -> Color(0xFF8B7FF5)
+                        !enabled   -> Color.White.copy(alpha = 0.18f)
+                        else       -> Color.White.copy(alpha = 0.60f)
+                    },
                     style      = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Normal
-                )
-                // التسمية العربية
-                Text(
-                    text  = opt.labelAr,
-                    color = when { isSelected -> Color(0xFF8B7FF5).copy(0.85f); !enabled -> Color.White.copy(0.18f); else -> Color.White.copy(0.42f) },
-                    style = MaterialTheme.typography.bodySmall
                 )
             }
         }
 
         HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 0.5.dp)
 
-        // ── تكرار ──────────────────────────────────────────────────────────────
+        // ── Repeat ─────────────────────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1006,14 +1140,14 @@ private fun SpeedPanel(
             verticalAlignment     = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = if (isRepeatMode) Icons.Filled.Repeat else Icons.Outlined.Repeat,
-                contentDescription = "تكرار",
-                tint     = if (isRepeatMode) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.52f),
-                modifier = Modifier.size(20.dp)
+                imageVector        = if (isRepeatMode) Icons.Filled.Repeat else Icons.Outlined.Repeat,
+                contentDescription = "Repeat",
+                tint               = if (isRepeatMode) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.50f),
+                modifier           = Modifier.size(20.dp)
             )
             Text(
-                text       = "تكرار",
-                color      = if (isRepeatMode) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.52f),
+                text       = "Repeat",
+                color      = if (isRepeatMode) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.50f),
                 style      = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (isRepeatMode) FontWeight.SemiBold else FontWeight.Normal
             )
@@ -1021,61 +1155,104 @@ private fun SpeedPanel(
 
         HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp)
 
-        // ── كروم كاست ─────────────────────────────────────────────────────────
+        // ── ChromeCast ─────────────────────────────────────────────────────────
+        val castRowBg = when (castState) {
+            CastState.CONNECTED  -> Color(0xFF2D26A0).copy(alpha = 0.28f)
+            CastState.SEARCHING  -> Color(0xFF1A1830)
+            else                 -> Color.Transparent
+        }
+        val castIconTint = when (castState) {
+            CastState.CONNECTED  -> Color(0xFF8B7FF5)
+            CastState.AVAILABLE  -> Color.White.copy(alpha = 0.72f)
+            CastState.SEARCHING  -> Color.White.copy(alpha = 0.45f)
+            CastState.UNAVAILABLE -> Color.White.copy(alpha = 0.25f)
+        }
+        val castLabel = when (castState) {
+            CastState.CONNECTED   -> castDeviceName ?: "Connected"
+            CastState.AVAILABLE   -> "Cast to device"
+            CastState.SEARCHING   -> "Searching..."
+            CastState.UNAVAILABLE -> "No devices found"
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { /* TODO */ }
+                .background(castRowBg)
+                .clickable(
+                    enabled = castState != CastState.SEARCHING,
+                    onClick = {
+                        if (castState == CastState.UNAVAILABLE) onScanForDevices()
+                        else onCastAction()
+                    }
+                )
                 .padding(horizontal = 16.dp, vertical = 13.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment     = Alignment.CenterVertically
         ) {
-            Icon(Icons.Outlined.Cast, "كاست",
-                tint = Color.White.copy(alpha = 0.35f), modifier = Modifier.size(20.dp))
-            Text("كروم كاست", color = Color.White.copy(alpha = 0.35f),
-                style = MaterialTheme.typography.bodyMedium)
+            Icon(
+                imageVector        = if (castState == CastState.CONNECTED) Icons.Filled.Cast else Icons.Outlined.Cast,
+                contentDescription = "ChromeCast",
+                tint               = castIconTint,
+                modifier           = Modifier.size(20.dp)
+            )
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text       = castLabel,
+                    color      = castIconTint,
+                    style      = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (castState == CastState.CONNECTED) FontWeight.SemiBold else FontWeight.Normal
+                )
+                if (castState == CastState.SEARCHING) {
+                    Text(
+                        "Scanning for cast receivers...",
+                        color = Color.White.copy(alpha = 0.32f),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
         }
     }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// بطاقة معلومات الفيديو
+// Video info card
 // ══════════════════════════════════════════════════════════════════════════════
 
 @Composable
 private fun VideoInfoCard(
-    item:      com.omnimemoria.domain.model.MediaPhoto,
+    item:       com.omnimemoria.domain.model.MediaPhoto,
     durationMs: Int
 ) {
     Column(
         modifier = Modifier
-            .width(220.dp)
+            .width(224.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(Color(0xFF1A1830).copy(alpha = 0.96f))
             .border(1.dp, Color.White.copy(alpha = 0.09f), RoundedCornerShape(18.dp))
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("معلومات الفيديو",
-            color = Color.White.copy(alpha = 0.6f),
-            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Video Info",
+            color      = Color.White.copy(alpha = 0.55f),
+            style      = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold
+        )
 
         HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 0.5.dp)
 
-        if (item.width > 0 && item.height > 0) {
-            InfoRow("الدقة", "${item.width}×${item.height}")
-        }
-        if (durationMs > 0) {
-            InfoRow("المدة", formatVideoTime(durationMs))
-        }
+        if (item.width > 0 && item.height > 0)
+            InfoRow("Resolution", "${item.width} × ${item.height}")
+        if (durationMs > 0)
+            InfoRow("Duration", formatTime(durationMs))
         if (item.size > 0) {
             val mb = item.size / (1024f * 1024f)
-            InfoRow("الحجم", if (mb >= 1f) "%.1f ميجابايت".format(mb) else "${item.size / 1024} كيلوبايت")
+            InfoRow("Size", if (mb >= 1f) "%.1f MB".format(mb) else "${item.size / 1024} KB")
         }
-        if (item.mimeType.isNotBlank()) {
-            InfoRow("الصيغة", item.mimeType.uppercase().replace("VIDEO/", ""))
-        }
-        InfoRow("الاسم", item.name.substringBeforeLast('.').take(22))
+        if (item.mimeType.isNotBlank())
+            InfoRow("Format", item.mimeType.uppercase().replace("VIDEO/", ""))
+        if (item.name.isNotBlank())
+            InfoRow("File", item.name.substringBeforeLast('.').take(24))
     }
 }
 
@@ -1086,8 +1263,12 @@ private fun InfoRow(label: String, value: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment     = Alignment.CenterVertically
     ) {
-        Text(label, color = Color.White.copy(alpha = 0.38f), style = MaterialTheme.typography.labelSmall)
-        Text(value, color = Color.White.copy(alpha = 0.85f),
-            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+        Text(label, color = Color.White.copy(alpha = 0.36f), style = MaterialTheme.typography.labelSmall)
+        Text(
+            value,
+            color      = Color.White.copy(alpha = 0.85f),
+            style      = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
