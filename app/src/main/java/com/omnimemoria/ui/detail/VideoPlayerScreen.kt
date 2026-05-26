@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
@@ -62,6 +63,7 @@ import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -168,6 +170,7 @@ private fun formatTime(ms: Int): String {
 @Composable
 fun VideoPlayerScreen(
     mediaId:   Long,
+    externalUriStr: String? = null,
     onBack:    () -> Unit,
     viewModel: PhotoDetailViewModel = hiltViewModel()
 ) {
@@ -653,7 +656,15 @@ fun VideoPlayerScreen(
                 onBack           = onBack,
                 onPiP            = { enterPiP() },
                 onToggleInfo     = { showInfoCard = !showInfoCard; showSpeedPanel = false },
-                onOpenSpeedPanel = { showSpeedPanel = !showSpeedPanel; showInfoCard = false }
+                onOpenSpeedPanel = { showSpeedPanel = !showSpeedPanel; showInfoCard = false },
+                onShare          = {
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = item.mimeType
+                        putExtra(Intent.EXTRA_STREAM, item.uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(shareIntent, "Share Video"))
+                }
             )
         }
 
@@ -844,7 +855,8 @@ private fun VideoTopBar(
     onBack:           () -> Unit,
     onPiP:            () -> Unit,
     onToggleInfo:     () -> Unit,
-    onOpenSpeedPanel: () -> Unit
+    onOpenSpeedPanel: () -> Unit,
+    onShare:          () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -913,6 +925,10 @@ private fun VideoTopBar(
         if (supportsPiP) {
             TopBarButton(icon = Icons.Filled.PictureInPicture, desc = "Picture in picture", onClick = onPiP)
         }
+
+
+        // Share
+        TopBarButton(icon = Icons.Outlined.Share, desc = "Share", onClick = onShare)
 
         // Info
         TopBarButton(icon = Icons.Outlined.Info, desc = "Video info", onClick = onToggleInfo)

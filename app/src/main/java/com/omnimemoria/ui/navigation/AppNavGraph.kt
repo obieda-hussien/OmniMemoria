@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -24,26 +25,48 @@ import com.omnimemoria.ui.settings.SettingsScreen
 
 object AppRoutes {
     const val Home     = "home"
-    const val Detail   = "detail/{photoId}?bucketId={bucketId}"
+    const val Detail   = "detail/{photoId}?bucketId={bucketId}&externalUri={externalUri}"
     const val Folder   = "folder/{bucketId}"
-    const val Video    = "video/{mediaId}"
+    const val Video    = "video/{mediaId}?externalUri={externalUri}"
     const val Settings = "settings"
 
-    fun detail(photoId: Long, bucketId: String? = null): String {
-        return if (bucketId.isNullOrBlank()) "detail/$photoId"
-        else "detail/$photoId?bucketId=${android.net.Uri.encode(bucketId)}"
+    fun detail(photoId: Long, bucketId: String? = null, externalUri: String? = null): String {
+        val base = if (bucketId.isNullOrBlank()) "detail/$photoId" else "detail/$photoId?bucketId=${android.net.Uri.encode(bucketId)}"
+        return if (externalUri != null) {
+            val delim = if (base.contains("?")) "&" else "?"
+            "$base${delim}externalUri=${android.net.Uri.encode(externalUri)}"
+        } else {
+            base
+        }
     }
     fun folder(bucketId: String): String = "folder/${android.net.Uri.encode(bucketId)}"
-    fun video(mediaId: Long): String = "video/$mediaId"
+    fun video(mediaId: Long, externalUri: String? = null): String {
+        return if (externalUri != null) "video/$mediaId?externalUri=${android.net.Uri.encode(externalUri)}"
+        else "video/$mediaId"
+    }
 }
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun AppNavGraph() {
+fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
     val navController = rememberNavController()
 
     // SharedTransitionLayout creates the SharedTransitionScope that all
     // shared-element participants (grid thumbnails ↔ detail viewer) reference.
+
+    val startDestination = remember(externalUri, intentType) {
+        if (externalUri != null) {
+            val isVideo = intentType?.startsWith("video/") == true
+            if (isVideo) {
+                AppRoutes.video(0L, externalUri)
+            } else {
+                AppRoutes.detail(0L, null, externalUri)
+            }
+        } else {
+            AppRoutes.Home
+        }
+    }
+
     SharedTransitionLayout {
         // Provide SharedTransitionScope globally via CompositionLocal so that
         // GalleryScreen / PhotoDetailScreen can access it without threading
@@ -51,7 +74,7 @@ fun AppNavGraph() {
         CompositionLocalProvider(LocalSharedTransitionScope provides this) {
             NavHost(
                 navController    = navController,
-                startDestination = AppRoutes.Home,
+                startDestination = startDestination,
                 enterTransition = { fadeIn(tween(200)) },
                 exitTransition = { fadeOut(tween(200)) },
                 popEnterTransition = { fadeIn(tween(200)) },
@@ -85,6 +108,11 @@ fun AppNavGraph() {
                             type = NavType.StringType
                             nullable = true
                             defaultValue = null
+                        },
+                        navArgument("externalUri") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
                         }
                     ),
                     enterTransition = {
@@ -102,13 +130,23 @@ fun AppNavGraph() {
                 ) { backStackEntry ->
                     val photoId = backStackEntry.arguments?.getLong("photoId") ?: 0L
                     val bucketId = backStackEntry.arguments?.getString("bucketId")
+                    val extUri = backStackEntry.arguments?.getString("externalUri")
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                         PhotoDetailScreen(
                             photoId = photoId,
                             bucketId = bucketId,
-                            onBack  = { navController.popBackStack() },
-                            onOpenVideo = { mediaId ->
-                                navController.navigate(AppRoutes.video(mediaId))
+                            externalUriStr = extUri,
+                            onBack  = {
+                                if (extUri != null) {
+                                    // if launched from outside, just finish activity?
+                                    // simpler to just pop and go back to launcher or close
+                                    navController.popBackStack()
+                                } else {
+                                    navController.popBackStack()
+                                }
+                            },
+                            onOpenVideo = { mediaId, videoUri ->
+                                navController.navigate(AppRoutes.video(mediaId, videoUri))
                             }
                         )
                     }
@@ -131,12 +169,21 @@ fun AppNavGraph() {
 
                 composable(
                     route = AppRoutes.Video,
-                    arguments = listOf(navArgument("mediaId") { type = NavType.LongType })
+                    arguments = listOf(
+                        navArgument("mediaId") { type = NavType.LongType },
+                        navArgument("externalUri") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        }
+                    )
                 ) { backStackEntry ->
                     val mediaId = backStackEntry.arguments?.getLong("mediaId") ?: 0L
+                    val extUri = backStackEntry.arguments?.getString("externalUri")
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                         VideoPlayerScreen(
                             mediaId = mediaId,
+                            externalUriStr = extUri,
                             onBack = { navController.popBackStack() }
                         )
                     }

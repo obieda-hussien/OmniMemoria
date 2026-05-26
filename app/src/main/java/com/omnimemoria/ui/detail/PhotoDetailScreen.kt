@@ -52,8 +52,9 @@ import java.util.Locale
 fun PhotoDetailScreen(
     photoId:     Long,
     bucketId:    String? = null,
+    externalUriStr: String? = null,
     onBack:      () -> Unit,
-    onOpenVideo: (mediaId: Long) -> Unit,
+    onOpenVideo: (mediaId: Long, externalUri: String?) -> Unit,
     viewModel:   PhotoDetailViewModel = hiltViewModel()
 ) {
     BackHandler(onBack = onBack)
@@ -63,8 +64,8 @@ fun PhotoDetailScreen(
     val initialPage by viewModel.initialPage.collectAsState()
     val isFavorite  by viewModel.isFavorite.collectAsState()
 
-    LaunchedEffect(photoId, bucketId) {
-        viewModel.loadAllPhotos(photoId, bucketId)
+    LaunchedEffect(photoId, bucketId, externalUriStr) {
+        viewModel.loadAllPhotos(photoId, bucketId, externalUriStr)
     }
 
     if (photoList.isEmpty()) {
@@ -107,7 +108,7 @@ private fun PhotoPager(
     startPage:  Int,
     isFavorite: Boolean,
     onBack:     () -> Unit,
-    onOpenVideo: (mediaId: Long) -> Unit,
+    onOpenVideo: (mediaId: Long, externalUri: String?) -> Unit,
     onFavorite: (Long) -> Unit
 ) {
     val sharedTransitionScope   = LocalSharedTransitionScope.current
@@ -164,7 +165,7 @@ private fun PhotoPager(
 
                 if (photo.mimeType.startsWith("video/", ignoreCase = true)) {
                     // Video thumbnail + play overlay
-                    Box(modifier = mediaMod.clickable { onOpenVideo(photo.id) }) {
+                    Box(modifier = mediaMod.clickable { onOpenVideo(photo.id, if (photo.id == -1L) photo.uri.toString() else null) }) {
                         AsyncImage(
                             model              = imageRequest,
                             contentDescription = photo.name,
@@ -179,7 +180,7 @@ private fun PhotoPager(
                                 .clip(CircleShape)
                                 .background(Color.Black.copy(alpha = 0.55f))
                                 .border(1.5.dp, Color.White.copy(alpha = 0.3f), CircleShape)
-                                .clickable { onOpenVideo(photo.id) },
+                                .clickable { onOpenVideo(photo.id, if (photo.id == -1L) photo.uri.toString() else null) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -302,7 +303,15 @@ private fun PhotoPager(
             DetailBottomBar(
                 isFavorite = isFavorite,
                 onFavorite = { onFavorite(currentPhoto?.id ?: return@DetailBottomBar) },
-                onShare    = { },
+                onShare    = {
+                    val shareIntent = android.content.Intent().apply {
+                        action = android.content.Intent.ACTION_SEND
+                        putExtra(android.content.Intent.EXTRA_STREAM, currentPhoto?.uri)
+                        type = currentPhoto?.mimeType ?: "image/*"
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Media"))
+                },
                 onDelete   = { },
                 onEdit     = { }
             )
