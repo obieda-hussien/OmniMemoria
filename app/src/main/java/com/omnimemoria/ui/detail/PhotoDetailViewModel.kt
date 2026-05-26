@@ -45,8 +45,16 @@ class PhotoDetailViewModel @Inject constructor(
     val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
 
     // ── تحميل كل الصور مرة واحدة ─────────────────────────────────────────────
-    fun loadAllPhotos(photoId: Long, bucketId: String?) {
+    fun loadAllPhotos(photoId: Long, bucketId: String?, externalUriStr: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
+            if (externalUriStr != null) {
+                val single = getPhotoFromUri(externalUriStr)
+                if (single != null) {
+                    _photoList.value = listOf(single)
+                    _initialPage.value = 0
+                }
+                return@launch
+            }
             mediaStoreRepository.getPhotoById(photoId)?.let { seed ->
                 _photoList.value = listOf(seed)
                 _initialPage.value = 0
@@ -90,6 +98,30 @@ class PhotoDetailViewModel @Inject constructor(
             }
             // TODO Phase 3: add deleteFavorite(photoId) to FavoritesDao
             _isFavorite.value = !currently
+        }
+    }
+
+
+    suspend fun getPhotoFromUri(uriStr: String): MediaPhoto? = withContext(Dispatchers.IO) {
+        try {
+            val uri = android.net.Uri.parse(uriStr)
+            // Create a dummy MediaPhoto for external intent
+            MediaPhoto(
+                id = -1L,
+                uri = uri,
+                name = "External Media",
+                size = 0L,
+                mimeType = "",
+                dateTaken = 0L,
+                dateModified = 0L,
+                dateAdded = 0L,
+                width = 0,
+                height = 0,
+                latitude = null,
+                longitude = null
+            )
+        } catch(e: Exception) {
+            null
         }
     }
 

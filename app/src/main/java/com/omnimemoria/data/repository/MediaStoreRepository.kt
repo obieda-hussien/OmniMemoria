@@ -197,13 +197,23 @@ class MediaStoreRepository @Inject constructor(
     // ══ 6. كل الصور مرتبة بناءً على الإعدادات — للـ PhotoDetail swipe window ══════════════
     fun getAllPhotos(sortConfig: SortConfig): List<MediaPhoto> {
         val results = mutableListOf<MediaPhoto>()
-        contentResolver.query(
-            mediaCollection,
-            photoProjection,
-            // تمرير null للـ limit و offset لجلب كل الصور
-            buildQueryArgs(sortConfig, null, null),
-            null
-        )?.use { cursor ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            contentResolver.query(
+                mediaCollection,
+                photoProjection,
+                buildQueryArgs(sortConfig, null, null),
+                null
+            )
+        } else {
+            val sortOrderStr = getSortOrderStr(sortConfig)
+            contentResolver.query(
+                mediaCollection,
+                photoProjection,
+                mediaSelection,
+                mediaSelectionArgs,
+                sortOrderStr
+            )
+        }?.use { cursor ->
             while (cursor.moveToNext()) results += cursor.toMediaPhoto()
         }
         
@@ -251,12 +261,23 @@ class MediaStoreRepository @Inject constructor(
 
     fun getAllPhotosByFolder(bucketId: String, sortConfig: SortConfig): List<MediaPhoto> {
         val results = mutableListOf<MediaPhoto>()
-        contentResolver.query(
-            mediaCollection,
-            photoProjection,
-            buildQueryArgs(sortConfig, null, null, bucketId),
-            null
-        )?.use { cursor ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            contentResolver.query(
+                mediaCollection,
+                photoProjection,
+                buildQueryArgs(sortConfig, null, null, bucketId),
+                null
+            )
+        } else {
+            val sortOrderStr = getSortOrderStr(sortConfig)
+            contentResolver.query(
+                mediaCollection,
+                photoProjection,
+                "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($mediaSelection)",
+                arrayOf(bucketId, *mediaSelectionArgs),
+                sortOrderStr
+            )
+        }?.use { cursor ->
             while (cursor.moveToNext()) results += cursor.toMediaPhoto()
         }
 
@@ -394,6 +415,29 @@ class MediaStoreRepository @Inject constructor(
     companion object {
         private const val PAGE_SIZE = 60
 
+        private fun getSortOrderStr(sc: SortConfig): String {
+            val (col, fallback) = when (sc.sortBy) {
+                SortBy.DATE_TAKEN      -> MediaStore.MediaColumns.DATE_TAKEN    to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.DATE_MODIFIED   -> MediaStore.MediaColumns.DATE_MODIFIED to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.SIZE            -> MediaStore.MediaColumns.SIZE          to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.NAME            -> MediaStore.MediaColumns.DISPLAY_NAME  to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.TYPE            -> MediaStore.MediaColumns.MIME_TYPE     to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.RESOLUTION      -> MediaStore.MediaColumns.WIDTH         to MediaStore.MediaColumns.HEIGHT
+                SortBy.DURATION        -> MediaStore.MediaColumns.DATE_TAKEN    to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.FAVORITES_FIRST -> MediaStore.MediaColumns.DATE_TAKEN  to MediaStore.MediaColumns.DATE_ADDED
+            }
+            val sqlDir = when (sc.sortOrder) {
+                SortOrder.ASCENDING  -> "ASC"
+                SortOrder.DESCENDING -> "DESC"
+            }
+            if (sc.sortBy == SortBy.DATE_TAKEN) {
+                val effectiveDateOrderExpr = "CASE WHEN ${MediaStore.MediaColumns.DATE_TAKEN} > 0 THEN ${MediaStore.MediaColumns.DATE_TAKEN} WHEN ${MediaStore.MediaColumns.DATE_MODIFIED} > 0 THEN ${MediaStore.MediaColumns.DATE_MODIFIED} * 1000 ELSE ${MediaStore.MediaColumns.DATE_ADDED} * 1000 END"
+                return "$effectiveDateOrderExpr $sqlDir, ${MediaStore.MediaColumns._ID} $sqlDir"
+            }
+            return "$col $sqlDir, $fallback $sqlDir, ${MediaStore.MediaColumns._ID} $sqlDir"
+        }
+
+
         // ── FIX: added DATE_MODIFIED and DATE_ADDED for fallback display ──────
         // Snapchat / received media often has DATE_TAKEN = 0.
         // DATE_MODIFIED (seconds) is always present; DATE_ADDED (seconds) is the
@@ -421,10 +465,28 @@ class MediaStoreRepository @Inject constructor(
             bucketId: String? = null
         ): List<MediaPhoto> {
             val results = mutableListOf<MediaPhoto>()
-            cr.query(
-                MediaStore.Files.getContentUri("external"),
-                photoProjection, buildQueryArgs(sortConfig, limit, offset, bucketId), null
-            )?.use { cursor ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                cr.query(
+                    MediaStore.Files.getContentUri("external"),
+                    photoProjection, buildQueryArgs(sortConfig, limit, offset, bucketId), null
+                )
+            } else {
+                val sortOrderStr = getSortOrderStr(sortConfig)
+                if (bucketId.isNullOrBlank()) {
+                    cr.query(
+                        MediaStore.Files.getContentUri("external"),
+                        photoProjection, mediaSelection, mediaSelectionArgs, "$sortOrderStr LIMIT $limit OFFSET $offset"
+                    )
+                } else {
+                    cr.query(
+                        MediaStore.Files.getContentUri("external"),
+                        photoProjection,
+                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($mediaSelection)",
+                        arrayOf(bucketId, *mediaSelectionArgs),
+                        "$sortOrderStr LIMIT $limit OFFSET $offset"
+                    )
+                }
+            }?.use { cursor ->
                 while (cursor.moveToNext()) results += cursor.toMediaPhoto()
             }
             if (sortConfig.sortBy != SortBy.RESOLUTION) return results
