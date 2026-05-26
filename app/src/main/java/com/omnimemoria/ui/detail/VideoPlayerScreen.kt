@@ -429,7 +429,8 @@ fun VideoPlayerScreen(
                 }
             },
             update = { vv ->
-                if (loadedVideoId != item.id) {
+                val currentLoadedId = if (item.id == -1L) item.uri.hashCode().toLong() else item.id
+                if (loadedVideoId != currentLoadedId) {
                     // New clip — reset and start async prepare
                     mediaPlayerRef  = null
                     isBoostingSpeed = false
@@ -444,7 +445,7 @@ fun VideoPlayerScreen(
                     // reliable place to call start() — calling it before preparation
                     // completes silently fails on many OEM devices and caused the
                     // "must background then foreground to start" bug.
-                    loadedVideoId = item.id
+                    loadedVideoId = currentLoadedId
                 } else if (isPrepared) {
                     applySpeed(if (isBoostingSpeed) LONG_PRESS_SPEED else playbackSpeed)
                 }

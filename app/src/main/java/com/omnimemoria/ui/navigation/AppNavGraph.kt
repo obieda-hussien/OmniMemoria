@@ -131,16 +131,17 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                     val photoId = backStackEntry.arguments?.getLong("photoId") ?: 0L
                     val bucketId = backStackEntry.arguments?.getString("bucketId")
                     val extUri = backStackEntry.arguments?.getString("externalUri")
+                    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                         PhotoDetailScreen(
                             photoId = photoId,
                             bucketId = bucketId,
                             externalUriStr = extUri,
                             onBack  = {
-                                if (extUri != null) {
+                                                                                                if (extUri != null) {
                                     // if launched from outside, just finish activity?
                                     // simpler to just pop and go back to launcher or close
-                                    navController.popBackStack()
+                                    activity?.finish()
                                 } else {
                                     navController.popBackStack()
                                 }
@@ -180,11 +181,12 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                 ) { backStackEntry ->
                     val mediaId = backStackEntry.arguments?.getLong("mediaId") ?: 0L
                     val extUri = backStackEntry.arguments?.getString("externalUri")
+                    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                         VideoPlayerScreen(
                             mediaId = mediaId,
                             externalUriStr = extUri,
-                            onBack = { navController.popBackStack() }
+                            onBack = { if (extUri != null) activity?.finish() else navController.popBackStack() }
                         )
                     }
                 }
