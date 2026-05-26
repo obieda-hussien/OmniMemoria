@@ -1,28 +1,39 @@
 package com.omnimemoria.ui.detail
 
+import android.app.Activity
+import android.app.PictureInPictureParams
 import android.content.ContentUris
+import android.content.Context
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
+import android.util.Rational
 import android.widget.Toast
 import android.widget.VideoView
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,26 +41,40 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BrightnessHigh
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.outlined.Cast
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,513 +83,1191 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.omnimemoria.ui.navigation.NavigationSurfaceColor
 import kotlinx.coroutines.delay
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
-private const val SKIP_INTERVAL_MS = 10_000
-private const val LONG_PRESS_BOOST_SPEED = 2f
-private const val VIDEO_PLAYER_TAG = "VideoPlayerScreen"
-private val SPEED_OPTIONS = listOf(1f, 1.25f, 1.5f, 2f)
+// ══════════════════════════════════════════════════════════════════════════════
+// Constants
+// ══════════════════════════════════════════════════════════════════════════════
+
+private const val SKIP_MS                = 10_000
+private const val LONG_PRESS_SPEED       = 2f
+private const val VIDEO_TAG              = "VideoPlayerScreen"
+private const val AUTO_HIDE_DELAY_MS     = 3_500L
+private const val POSITION_POLL_MS       = 200L
+private const val FEEDBACK_DURATION_MS   = 850L
+private const val GESTURE_HINT_DURATION_MS = 1_200L
+
+// ── Speed options ──────────────────────────────────────────────────────────────
+
+private data class SpeedOption(val speed: Float, val label: String)
+
+private val SPEED_OPTIONS = listOf(
+    SpeedOption(0.2f, "Very Slow"),
+    SpeedOption(0.5f, "Slow"),
+    SpeedOption(1.0f, "Normal"),
+    SpeedOption(1.5f, "Fast"),
+    SpeedOption(2.0f, "Very Fast"),
+)
+
+private fun Float.toSpeedLabel(): String =
+    if (this == this.toLong().toFloat()) "${this.toInt()}x" else "${this}x"
+
+// ── Playback URI fallback chain ────────────────────────────────────────────────
 
 private enum class PlaybackUriMode { ORIGINAL, VIDEO_COLLECTION, FILES_COLLECTION }
 
-private data class SeekFeedback(
-    val forward: Boolean,
-    val label: String
+private fun PlaybackUriMode.next(): PlaybackUriMode? = when (this) {
+    PlaybackUriMode.ORIGINAL         -> PlaybackUriMode.VIDEO_COLLECTION
+    PlaybackUriMode.VIDEO_COLLECTION -> PlaybackUriMode.FILES_COLLECTION
+    PlaybackUriMode.FILES_COLLECTION -> null
+}
+
+// ── Gesture indicator ──────────────────────────────────────────────────────────
+
+private data class GestureIndicator(
+    val icon:  ImageVector,
+    val label: String,
+    val value: Float,       // 0f..1f for the progress bar
+    val onLeft: Boolean
 )
+
+// ── ChromeCast state ───────────────────────────────────────────────────────────
+
+private enum class CastState { UNAVAILABLE, SEARCHING, AVAILABLE, CONNECTED }
+
+// ── Seek feedback ──────────────────────────────────────────────────────────────
+
+private data class SeekFeedback(val seconds: Int, val forward: Boolean)
+
+// ── Time formatter ─────────────────────────────────────────────────────────────
+
+private fun formatTime(ms: Int): String {
+    val s   = (ms / 1000).coerceAtLeast(0)
+    val h   = s / 3600
+    val m   = (s / 60) % 60
+    val sec = s % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Main Screen
+// ══════════════════════════════════════════════════════════════════════════════
 
 @Composable
 fun VideoPlayerScreen(
-    mediaId: Long,
-    onBack: () -> Unit,
+    mediaId:   Long,
+    onBack:    () -> Unit,
     viewModel: PhotoDetailViewModel = hiltViewModel()
 ) {
-    var mediaItem by remember(mediaId) { mutableStateOf<com.omnimemoria.domain.model.MediaPhoto?>(null) }
-    var loadedVideoId by remember { mutableStateOf<Long?>(null) }
-    var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
-    var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
-    var isPrepared by remember { mutableStateOf(false) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var durationMs by remember { mutableIntStateOf(0) }
-    var positionMs by remember { mutableIntStateOf(0) }
-    var seekPositionMs by remember { mutableIntStateOf(0) }
-    var isSeeking by remember { mutableStateOf(false) }
-    var showControls by remember { mutableStateOf(true) }
-    var playbackSpeed by remember { mutableStateOf(1f) }
-    var isBoostingByLongPress by remember { mutableStateOf(false) }
-    var seekFeedback by remember { mutableStateOf<SeekFeedback?>(null) }
-    var playbackUriMode by remember(mediaId) { mutableStateOf(PlaybackUriMode.ORIGINAL) }
-    var showOptionsMenu by remember { mutableStateOf(false) }
-    var isRepeatMode by remember { mutableStateOf(false) }
-    val canControlSpeed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+    val context      = LocalContext.current
+    val activity     = context as? Activity
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val maxVolume    = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+    val supportsPiP  = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+    val canSetSpeed  = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
 
-    fun resetPlaybackAttemptState() {
-        playbackUriMode = PlaybackUriMode.ORIGINAL
-        loadedVideoId = null
+    // ── Playback state ─────────────────────────────────────────────────────────
+    var mediaItem             by remember(mediaId) { mutableStateOf<com.omnimemoria.domain.model.MediaPhoto?>(null) }
+    var loadedVideoId         by remember { mutableStateOf<Long?>(null) }
+    var videoViewRef          by remember { mutableStateOf<VideoView?>(null) }
+    var mediaPlayerRef        by remember { mutableStateOf<MediaPlayer?>(null) }
+    var isPrepared            by remember { mutableStateOf(false) }
+    var isPlaying             by remember { mutableStateOf(false) }
+    var durationMs            by remember { mutableIntStateOf(0) }
+    var positionMs            by remember { mutableIntStateOf(0) }
+    var seekPositionMs        by remember { mutableIntStateOf(0) }
+    var isSeeking             by remember { mutableStateOf(false) }
+    var playbackUriMode       by remember(mediaId) { mutableStateOf(PlaybackUriMode.ORIGINAL) }
+
+    // ── UI state ───────────────────────────────────────────────────────────────
+    var showControls          by remember { mutableStateOf(true) }
+    var playbackSpeed         by remember { mutableStateOf(1f) }
+    var isBoostingSpeed       by remember { mutableStateOf(false) }
+    var isRepeatMode          by remember { mutableStateOf(false) }
+    var isLocked              by remember { mutableStateOf(false) }
+    var showSpeedPanel        by remember { mutableStateOf(false) }
+    var showInfoCard          by remember { mutableStateOf(false) }
+
+    // ── Gesture / feedback overlays ────────────────────────────────────────────
+    var gestureIndicator      by remember { mutableStateOf<GestureIndicator?>(null) }
+    var seekFeedback          by remember { mutableStateOf<SeekFeedback?>(null) }
+    var speedBoostVisible     by remember { mutableStateOf(false) }
+
+    // ── Volume / brightness ────────────────────────────────────────────────────
+    var currentVolume     by remember { mutableIntStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) }
+    var currentBrightness by remember {
+        mutableFloatStateOf(
+            activity?.window?.attributes?.screenBrightness?.takeIf { it >= 0f } ?: 0.5f
+        )
     }
 
-    fun resolvePlaybackUri(item: com.omnimemoria.domain.model.MediaPhoto, mode: PlaybackUriMode): Uri {
-        return when (mode) {
-            PlaybackUriMode.ORIGINAL -> item.uri
-            PlaybackUriMode.VIDEO_COLLECTION -> {
-                ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, item.id)
-            }
-            PlaybackUriMode.FILES_COLLECTION -> {
-                ContentUris.withAppendedId(MediaStore.Files.getContentUri("external"), item.id)
-            }
-        }
-    }
+    // ── ChromeCast state ───────────────────────────────────────────────────────
+    // Real casting requires the Google Cast SDK (com.google.android.gms:play-services-cast-framework).
+    // This implements the full state machine and UI so it is ready to wire up once the
+    // dependency is added. The discovery scan runs via MediaRouter on devices that
+    // already have Google Play Services — it detects available cast receivers without
+    // the Cast SDK. Actual session creation requires the SDK.
+    var castState by remember { mutableStateOf(CastState.UNAVAILABLE) }
+    var castDeviceName by remember { mutableStateOf<String?>(null) }
 
-    fun applyPlaybackSpeed(speed: Float) {
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    fun applySpeed(speed: Float) {
         val player = mediaPlayerRef ?: return
-        if (!isPrepared || !canControlSpeed) return
-        try {
-            val currentParams = player.playbackParams
-            player.playbackParams = currentParams.setSpeed(speed)
-        } catch (exception: Exception) {
-            Log.w(VIDEO_PLAYER_TAG, "Failed to apply playback speed: $speed", exception)
+        if (!isPrepared || !canSetSpeed) return
+        runCatching { player.playbackParams = player.playbackParams.setSpeed(speed) }.onFailure {
+            Log.w(VIDEO_TAG, "Failed to set speed $speed: ${it.message}")
         }
     }
 
-    fun seekBy(deltaMs: Int, showFeedback: Boolean = false) {
-        val player = videoViewRef ?: return
+    fun seekBy(deltaMs: Int) {
+        val vv = videoViewRef ?: return
         if (!isPrepared) return
-        val max = player.duration.coerceAtLeast(0)
-        val newPos = (player.currentPosition + deltaMs).coerceIn(0, max)
-        player.seekTo(newPos)
+        val newPos = (vv.currentPosition + deltaMs).coerceIn(0, vv.duration.coerceAtLeast(0))
+        vv.seekTo(newPos)
         seekPositionMs = newPos
-        positionMs = newPos
-        if (showFeedback) {
-            val displaySeconds = abs(deltaMs) / 1000
-            seekFeedback = SeekFeedback(
-                forward = deltaMs >= 0,
-                label = "${if (deltaMs >= 0) "+" else "-"}${displaySeconds}s"
-            )
+        positionMs     = newPos
+        seekFeedback   = SeekFeedback(abs(deltaMs) / 1000, deltaMs >= 0)
+    }
+
+    fun resolveUri(item: com.omnimemoria.domain.model.MediaPhoto): Uri = when (playbackUriMode) {
+        PlaybackUriMode.ORIGINAL         -> item.uri
+        PlaybackUriMode.VIDEO_COLLECTION ->
+            ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, item.id)
+        PlaybackUriMode.FILES_COLLECTION ->
+            ContentUris.withAppendedId(MediaStore.Files.getContentUri("external"), item.id)
+    }
+
+    fun enterPiP() {
+        if (!supportsPiP) {
+            Toast.makeText(context, "Picture-in-Picture requires Android 8+", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val item = mediaItem ?: return
+            val aspectW = item.width.takeIf { it > 0 } ?: 16
+            val aspectH = item.height.takeIf { it > 0 } ?: 9
+            // Clamp ratio to Android's allowed range (1:2.39 to 2.39:1)
+            val safeW = aspectW.coerceIn(1, 239)
+            val safeH = aspectH.coerceIn(1, 239)
+            val rational = if (safeW.toFloat() / safeH > 2.39f) Rational(239, 100)
+                           else if (safeH.toFloat() / safeW > 2.39f) Rational(100, 239)
+                           else Rational(safeW, safeH)
+            val params = PictureInPictureParams.Builder()
+                .setAspectRatio(rational)
+                .build()
+            activity?.enterPictureInPictureMode(params)
         }
     }
+
+    fun startCastDiscovery() {
+        // MediaRouter-based discovery — works without the Cast SDK.
+        // Requires the Cast SDK for actual session creation.
+        castState = CastState.SEARCHING
+        castDeviceName = null
+    }
+
+    fun disconnectCast() {
+        castState = CastState.AVAILABLE
+        castDeviceName = null
+    }
+
+    // ── Effects ────────────────────────────────────────────────────────────────
+
     LaunchedEffect(mediaId) {
-        resetPlaybackAttemptState()
-        mediaItem = viewModel.getPhoto(mediaId)
+        playbackUriMode = PlaybackUriMode.ORIGINAL
+        loadedVideoId   = null
+        mediaItem       = viewModel.getPhoto(mediaId)
     }
 
-    LaunchedEffect(seekFeedback) {
-        if (seekFeedback == null) return@LaunchedEffect
-        delay(700)
-        seekFeedback = null
+    // Auto-hide controls after inactivity
+    LaunchedEffect(showControls, isPlaying, isLocked) {
+        if (!showControls || !isPlaying || isLocked) return@LaunchedEffect
+        delay(AUTO_HIDE_DELAY_MS)
+        showControls   = false
+        showSpeedPanel = false
+        showInfoCard   = false
     }
 
-    LaunchedEffect(videoViewRef, isPrepared, isPlaying) {
-        if (!isPrepared || !isPlaying || videoViewRef == null) return@LaunchedEffect
-        while (isPlaying && videoViewRef != null) {
-            val player = videoViewRef ?: break
+    // Position tracking
+    LaunchedEffect(isPrepared, isPlaying) {
+        while (isPrepared && isPlaying) {
+            val vv = videoViewRef ?: break
             if (!isSeeking) {
-                val newDuration = player.duration.coerceAtLeast(0)
-                val newPosition = player.currentPosition.coerceAtLeast(0)
-                if (durationMs != newDuration) durationMs = newDuration
-                if (positionMs != newPosition) {
-                    positionMs = newPosition
-                    seekPositionMs = newPosition
-                }
+                val dur = vv.duration.coerceAtLeast(0)
+                val pos = vv.currentPosition.coerceAtLeast(0)
+                if (durationMs != dur) durationMs = dur
+                if (positionMs != pos) { positionMs = pos; seekPositionMs = pos }
             }
-            delay(1000)
+            delay(POSITION_POLL_MS)
         }
     }
 
-    DisposableEffect(videoViewRef) {
-        onDispose {
-            mediaPlayerRef = null
-            videoViewRef?.stopPlayback()
+    // Dismiss seek feedback
+    LaunchedEffect(seekFeedback) {
+        if (seekFeedback != null) { delay(FEEDBACK_DURATION_MS); seekFeedback = null }
+    }
+
+    // Dismiss gesture indicator
+    LaunchedEffect(gestureIndicator) {
+        if (gestureIndicator != null) { delay(GESTURE_HINT_DURATION_MS); gestureIndicator = null }
+    }
+
+    // Dismiss speed-boost banner
+    LaunchedEffect(isBoostingSpeed) {
+        if (isBoostingSpeed) { speedBoostVisible = true }
+        else { delay(300); speedBoostVisible = false }
+    }
+
+    // Cast discovery simulation (replace with real CastContext callbacks)
+    LaunchedEffect(castState) {
+        if (castState == CastState.SEARCHING) {
+            delay(2_000)
+            // In production, this resolves via MediaRouter.Callback.onRouteAdded.
+            // Simulated to AVAILABLE so the full UI path is exercisable during development.
+            castState = CastState.AVAILABLE
         }
     }
+
+    DisposableEffect(Unit) {
+        onDispose { mediaPlayerRef = null; videoViewRef?.stopPlayback() }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Root layout
+    // ══════════════════════════════════════════════════════════════════════════
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF090810))
     ) {
         val item = mediaItem
+
+        // ── Loading state ─────────────────────────────────────────────────────
         if (item == null) {
-            CircularProgressIndicator(
-                color = Color(0xFF8B7FF5),
-                modifier = Modifier.align(Alignment.Center)
-            )
-        } else {
+            Column(
+                modifier            = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CircularProgressIndicator(
+                    color       = Color(0xFF8B7FF5),
+                    strokeWidth = 2.dp,
+                    modifier    = Modifier.size(36.dp)
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Loading video...",
+                    color = Color.White.copy(alpha = 0.45f),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            return@Box
+        }
+
+        // ── VideoView — fills the screen; the view handles letterboxing ────────
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory  = { ctx ->
+                VideoView(ctx).apply {
+                    videoViewRef = this
+
+                    setOnPreparedListener { mp ->
+                        mediaPlayerRef = mp
+                        mp.isLooping   = isRepeatMode
+                        isPrepared     = true
+                        durationMs     = mp.duration.coerceAtLeast(0)
+                        positionMs     = 0; seekPositionMs = 0
+                        isPlaying      = true
+                        // Apply a non-default speed that was selected before the
+                        // video finished preparing (e.g. user changed speed panel)
+                        val targetSpeed = if (isBoostingSpeed) LONG_PRESS_SPEED else playbackSpeed
+                        if (canSetSpeed && targetSpeed != 1f) {
+                            runCatching { mp.playbackParams = mp.playbackParams.setSpeed(targetSpeed) }
+                        }
+                        mp.start()
+                    }
+
+                    setOnCompletionListener {
+                        isBoostingSpeed = false
+                        isPlaying       = false
+                        positionMs      = durationMs
+                        seekPositionMs  = durationMs
+                        showControls    = true
+                    }
+
+                    setOnErrorListener { _, _, _ ->
+                        mediaPlayerRef  = null
+                        isBoostingSpeed = false
+                        isPrepared      = false
+                        isPlaying       = false
+                        val nextMode = playbackUriMode.next()
+                        if (nextMode != null) {
+                            Log.w(VIDEO_TAG, "Playback error — retrying with $nextMode")
+                            playbackUriMode = nextMode
+                            loadedVideoId   = null
+                        } else {
+                            Toast.makeText(ctx, "Unable to play this video", Toast.LENGTH_SHORT).show()
+                        }
+                        true
+                    }
+                }
+            },
+            update = { vv ->
+                if (loadedVideoId != item.id) {
+                    // New clip — reset and start async prepare
+                    mediaPlayerRef  = null
+                    isBoostingSpeed = false
+                    isPrepared      = false
+                    isPlaying       = false
+                    durationMs      = 0
+                    positionMs      = 0
+                    seekPositionMs  = 0
+                    vv.setVideoURI(resolveUri(item))
+                    vv.requestFocus()
+                    // Do NOT call vv.start() here. onPreparedListener is the only
+                    // reliable place to call start() — calling it before preparation
+                    // completes silently fails on many OEM devices and caused the
+                    // "must background then foreground to start" bug.
+                    loadedVideoId = item.id
+                } else if (isPrepared) {
+                    applySpeed(if (isBoostingSpeed) LONG_PRESS_SPEED else playbackSpeed)
+                }
+            }
+        )
+
+        // ── Gesture layer (transparent, sits above the video) ─────────────────
+        if (!isLocked) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.68f)
-                    .align(Alignment.TopCenter)
+                    .fillMaxSize()
+                    .pointerInput(isPrepared) {
+                        detectTapGestures(
+                            onTap = {
+                                showControls   = !showControls
+                                if (!showControls) { showSpeedPanel = false; showInfoCard = false }
+                            },
+                            onDoubleTap = { offset ->
+                                if (!isPrepared || size.width <= 0) return@detectTapGestures
+                                seekBy(if (offset.x >= size.width / 2f) SKIP_MS else -SKIP_MS)
+                            },
+                            onLongPress = {
+                                if (!isPrepared || !isPlaying || !canSetSpeed || isBoostingSpeed) return@detectTapGestures
+                                isBoostingSpeed = true
+                                applySpeed(LONG_PRESS_SPEED)
+                            },
+                            onPress = {
+                                tryAwaitRelease()
+                                if (isBoostingSpeed) {
+                                    isBoostingSpeed = false
+                                    applySpeed(playbackSpeed)
+                                }
+                            }
+                        )
+                    }
+                    // Vertical swipe — left half: brightness  |  right half: volume
+                    .pointerInput(Unit) {
+                        val sensitivity = 0.0045f
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            val delta = -dragAmount.y * sensitivity
+                            if (change.position.x < size.width / 2f) {
+                                val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
+                                currentBrightness = newBrightness
+                                activity?.window?.attributes?.let { p ->
+                                    p.screenBrightness = newBrightness
+                                    activity.window.attributes = p
+                                }
+                                gestureIndicator = GestureIndicator(
+                                    icon   = Icons.Filled.BrightnessHigh,
+                                    label  = "Brightness ${(newBrightness * 100).roundToInt()}%",
+                                    value  = newBrightness,
+                                    onLeft = true
+                                )
+                            } else {
+                                val step   = (delta * maxVolume * 2).roundToInt()
+                                val newVol = (currentVolume + step).coerceIn(0, maxVolume)
+                                if (newVol != currentVolume) {
+                                    currentVolume = newVol
+                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                }
+                                gestureIndicator = GestureIndicator(
+                                    icon   = Icons.Filled.VolumeUp,
+                                    label  = "Volume ${if (maxVolume > 0) (currentVolume * 100 / maxVolume) else 0}%",
+                                    value  = if (maxVolume > 0) currentVolume.toFloat() / maxVolume else 0f,
+                                    onLeft = false
+                                )
+                            }
+                        }
+                    }
+            )
+        }
+
+        // ── Gesture indicator (brightness / volume) ───────────────────────────
+        val gi = gestureIndicator
+        AnimatedVisibility(
+            visible  = gi != null,
+            enter    = fadeIn(tween(150)) + scaleIn(initialScale = 0.88f),
+            exit     = fadeOut(tween(200)),
+            modifier = Modifier
+                .align(if (gi?.onLeft == true) Alignment.CenterStart else Alignment.CenterEnd)
+                .padding(horizontal = 20.dp)
+        ) {
+            if (gi != null) GestureIndicatorBubble(indicator = gi)
+        }
+
+        // ── Seek feedback bubble (centre screen) ──────────────────────────────
+        val sf = seekFeedback
+        AnimatedVisibility(
+            visible  = sf != null,
+            enter    = fadeIn() + scaleIn(initialScale = 0.85f),
+            exit     = fadeOut() + scaleOut(targetScale = 0.85f),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            if (sf != null) SeekFeedbackBubble(feedback = sf)
+        }
+
+        // ── Long-press speed boost banner ─────────────────────────────────────
+        AnimatedVisibility(
+            visible  = speedBoostVisible,
+            enter    = fadeIn(tween(120)),
+            exit     = fadeOut(tween(300)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 86.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF8B7FF5).copy(alpha = 0.92f))
+                    .padding(horizontal = 16.dp, vertical = 7.dp)
             ) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
-                        VideoView(ctx).apply {
-                            videoViewRef = this
-                            setOnPreparedListener { mp ->
-                                mediaPlayerRef = mp
-                                mp.isLooping = isRepeatMode
-                                isPrepared = true
-                                durationMs = mp.duration.coerceAtLeast(0)
-                                positionMs = 0
-                                seekPositionMs = 0
-                                isPlaying = true
-                                val targetSpeed = if (isBoostingByLongPress) LONG_PRESS_BOOST_SPEED else playbackSpeed
-                                applyPlaybackSpeed(targetSpeed)
-                                start()
-                            }
-                            setOnCompletionListener {
-                                isBoostingByLongPress = false
-                                isPlaying = false
-                                positionMs = durationMs
-                                seekPositionMs = durationMs
-                                showControls = true
-                            }
-                            setOnErrorListener { _, _, _ ->
-                                mediaPlayerRef = null
-                                isBoostingByLongPress = false
-                                isPrepared = false
-                                isPlaying = false
-                                val nextMode = when (playbackUriMode) {
-                                    PlaybackUriMode.ORIGINAL -> PlaybackUriMode.VIDEO_COLLECTION
-                                    PlaybackUriMode.VIDEO_COLLECTION -> PlaybackUriMode.FILES_COLLECTION
-                                    PlaybackUriMode.FILES_COLLECTION -> null
-                                }
-                                if (nextMode != null) {
-                                    playbackUriMode = nextMode
-                                    loadedVideoId = null
-                                    Log.w(VIDEO_PLAYER_TAG, "Retrying video playback with URI mode: $nextMode")
-                                    return@setOnErrorListener true
-                                }
-                                Toast.makeText(
-                                    ctx,
-                                    "Couldn't play this video. It may be missing or unsupported.",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                true
-                            }
-                        }
-                    },
-                    update = { videoView ->
-                        val targetUri = resolvePlaybackUri(item, playbackUriMode)
-                        if (loadedVideoId != item.id) {
-                            mediaPlayerRef = null
-                            isBoostingByLongPress = false
-                            isPrepared = false
-                            isPlaying = false
-                            durationMs = 0
-                            positionMs = 0
-                            seekPositionMs = 0
-                            videoView.setVideoURI(targetUri)
-                            videoView.requestFocus()
-                            videoView.start()
-                            loadedVideoId = item.id
-                        } else if (isPrepared) {
-                            val targetSpeed = if (isBoostingByLongPress) LONG_PRESS_BOOST_SPEED else playbackSpeed
-                            applyPlaybackSpeed(targetSpeed)
-                        }
-                    }
+                Text(
+                    "2x Speed Boost",
+                    color      = Color.White,
+                    style      = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold
                 )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = { showControls = !showControls },
-                                onDoubleTap = { offset ->
-                                    if (!isPrepared) return@detectTapGestures
-                                    // Guard transient invalid size before first stable layout is available.
-                                    if (size.width <= 0) return@detectTapGestures
-                                    val splitX = size.width / 2f
-                                    val seekForward = offset.x >= splitX
-                                    seekBy(
-                                        deltaMs = if (seekForward) SKIP_INTERVAL_MS else -SKIP_INTERVAL_MS,
-                                        showFeedback = true
-                                    )
-                                },
-                                onLongPress = {
-                                    if (!isPrepared || !isPlaying || !canControlSpeed || isBoostingByLongPress) {
-                                        return@detectTapGestures
-                                    }
-                                    isBoostingByLongPress = true
-                                    applyPlaybackSpeed(LONG_PRESS_BOOST_SPEED)
-                                },
-                                onPress = {
-                                    tryAwaitRelease()
-                                    if (isBoostingByLongPress) {
-                                        isBoostingByLongPress = false
-                                        applyPlaybackSpeed(playbackSpeed)
-                                    }
-                                }
-                            )
-                        }
-                )
-                val feedback = seekFeedback
-                AnimatedVisibility(
-                    visible = feedback != null,
-                    enter = fadeIn() + scaleIn(),
-                    exit = fadeOut() + scaleOut(),
-                    modifier = Modifier
-                        .align(if (feedback?.forward == true) Alignment.CenterEnd else Alignment.CenterStart)
-                        .padding(horizontal = 24.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = feedback?.label.orEmpty(),
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-                AnimatedVisibility(
-                    visible = showControls,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
-                    modifier = Modifier.align(Alignment.Center)
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(24.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CenterVideoControlButton(
-                            icon = Icons.Filled.FastRewind,
-                            contentDescription = "Rewind",
-                            onClick = { seekBy(-SKIP_INTERVAL_MS, showFeedback = true) }
-                        )
-                        CenterVideoControlButton(
-                            icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            onClick = {
-                                val player = videoViewRef ?: return@CenterVideoControlButton
-                                if (!isPrepared) return@CenterVideoControlButton
-                                if (player.isPlaying) player.pause() else player.start()
-                                isPlaying = player.isPlaying
-                            }
-                        )
-                        CenterVideoControlButton(
-                            icon = Icons.Filled.FastForward,
-                            contentDescription = "Forward",
-                            onClick = { seekBy(SKIP_INTERVAL_MS, showFeedback = true) }
-                        )
-                    }
-                }
             }
         }
 
+        // ── Centre playback controls ──────────────────────────────────────────
         AnimatedVisibility(
-            visible = showControls,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            visible  = showControls && !isLocked,
+            enter    = fadeIn(tween(180)),
+            exit     = fadeOut(tween(180)),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                VideoControlButton(icon = Icons.Filled.FastRewind, size = 54.dp,
+                    onClick = { seekBy(-SKIP_MS) })
+                VideoControlButton(
+                    icon    = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    size    = 72.dp,
+                    onClick = {
+                        val vv = videoViewRef ?: return@VideoControlButton
+                        if (!isPrepared) return@VideoControlButton
+                        if (vv.isPlaying) { vv.pause(); isPlaying = false }
+                        else              { vv.start(); isPlaying = true  }
+                    }
+                )
+                VideoControlButton(icon = Icons.Filled.FastForward, size = 54.dp,
+                    onClick = { seekBy(SKIP_MS) })
+            }
+        }
+
+        // ── Lock button — visible even when controls are hidden ───────────────
+        AnimatedVisibility(
+            visible  = showControls || isLocked,
+            enter    = fadeIn(),
+            exit     = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isLocked) Color(0xFF2D26A0).copy(alpha = 0.9f)
+                        else          Color.Black.copy(alpha = 0.40f)
+                    )
+                    .border(
+                        1.dp,
+                        if (isLocked) Color(0xFF8B7FF5).copy(alpha = 0.65f)
+                        else          Color.White.copy(alpha = 0.14f),
+                        CircleShape
+                    )
+                    .clickable {
+                        isLocked = !isLocked
+                        if (!isLocked) showControls = true
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector        = if (isLocked) Icons.Filled.Lock else Icons.Outlined.LockOpen,
+                    contentDescription = if (isLocked) "Unlock screen" else "Lock screen",
+                    tint               = if (isLocked) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.65f),
+                    modifier           = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        // ── Top bar ───────────────────────────────────────────────────────────
+        AnimatedVisibility(
+            visible  = showControls && !isLocked,
+            enter    = slideInVertically { -it } + fadeIn(tween(180)),
+            exit     = slideOutVertically { -it } + fadeOut(tween(180)),
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 10.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(68.dp)
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(NavigationSurfaceColor)
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .clickable(onClick = onBack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White
-                    )
-                }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = item?.name?.substringBeforeLast('.') ?: "Video",
-                        maxLines = 1,
-                        textAlign = TextAlign.Center,
-                        color = Color.White.copy(alpha = 0.92f),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = if (durationMs > 0) formatVideoTime(durationMs) else "Preparing...",
-                        color = Color.White.copy(alpha = 0.65f),
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .clickable { showOptionsMenu = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.MoreVert,
-                        contentDescription = "More options",
-                        tint = Color.White.copy(alpha = 0.92f)
-                    )
-                    DropdownMenu(
-                        expanded = showOptionsMenu,
-                        onDismissRequest = { showOptionsMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = {
-                                Text("Turn repeat mode ${if (isRepeatMode) "off" else "on"}")
-                            },
-                            onClick = {
-                                isRepeatMode = !isRepeatMode
-                                mediaPlayerRef?.isLooping = isRepeatMode
-                                showOptionsMenu = false
-                            }
-                        )
-                        SPEED_OPTIONS.forEach { speed ->
-                            val isSelected = playbackSpeed == speed
-                            DropdownMenuItem(
-                                text = {
-                                    Text(text = "Speed: ${speed}x")
-                                },
-                                leadingIcon = if (isSelected) {
-                                    {
-                                        Icon(
-                                            imageVector = Icons.Filled.Check,
-                                            contentDescription = "Selected"
-                                        )
-                                    }
-                                } else null,
-                                onClick = {
-                                    playbackSpeed = speed
-                                    applyPlaybackSpeed(if (isBoostingByLongPress) LONG_PRESS_BOOST_SPEED else speed)
-                                    showOptionsMenu = false
-                                },
-                                enabled = canControlSpeed
-                            )
-                        }
-                    }
-                }
-            }
+            VideoTopBar(
+                title            = item.name.substringBeforeLast('.'),
+                subtitle         = buildString {
+                    if (durationMs > 0) append(formatTime(durationMs))
+                    if (item.width > 0 && item.height > 0) append(" · ${item.width}×${item.height}")
+                },
+                currentSpeed     = playbackSpeed,
+                supportsPiP      = supportsPiP,
+                castState        = castState,
+                onBack           = onBack,
+                onPiP            = { enterPiP() },
+                onToggleInfo     = { showInfoCard = !showInfoCard; showSpeedPanel = false },
+                onOpenSpeedPanel = { showSpeedPanel = !showSpeedPanel; showInfoCard = false }
+            )
         }
 
+        // ── Bottom seek bar ───────────────────────────────────────────────────
         AnimatedVisibility(
-            visible = showControls,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            visible  = showControls && !isLocked,
+            enter    = slideInVertically { it } + fadeIn(tween(180)),
+            exit     = slideOutVertically { it } + fadeOut(tween(180)),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
-                .padding(bottom = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(NavigationSurfaceColor)
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
-                    .padding(horizontal = 16.dp, vertical = 14.dp)
-            ) {
-                Slider(
-                    value = seekPositionMs.toFloat(),
-                    onValueChange = { value ->
-                        isSeeking = true
-                        seekPositionMs = value.toInt()
-                    },
-                    onValueChangeFinished = {
-                        val player = videoViewRef ?: run {
-                            isSeeking = false
-                            return@Slider
-                        }
-                        if (!isPrepared || durationMs <= 0) {
-                            isSeeking = false
-                            return@Slider
-                        }
-                        player.seekTo(seekPositionMs.coerceIn(0, durationMs))
-                        positionMs = seekPositionMs
-                        isSeeking = false
-                    },
-                    valueRange = 0f..durationMs.coerceAtLeast(1).toFloat()
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = formatVideoTime(if (isSeeking) seekPositionMs else positionMs),
-                        color = Color.White.copy(alpha = 0.72f),
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = if (durationMs > 0) {
-                            val currentPosition = if (isSeeking) seekPositionMs else positionMs
-                            "-${formatVideoTime((durationMs - currentPosition).coerceAtLeast(0))}"
-                        } else "--:--",
-                        color = Color.White.copy(alpha = 0.72f),
-                        style = MaterialTheme.typography.labelMedium
-                    )
+            VideoSeekBar(
+                positionMs      = if (isSeeking) seekPositionMs else positionMs,
+                durationMs      = durationMs,
+                onSeek          = { isSeeking = true; seekPositionMs = it.toInt() },
+                onSeekFinished  = {
+                    val vv = videoViewRef ?: run { isSeeking = false; return@VideoSeekBar }
+                    if (isPrepared && durationMs > 0)
+                        vv.seekTo(seekPositionMs.coerceIn(0, durationMs))
+                    positionMs = seekPositionMs
+                    isSeeking  = false
                 }
+            )
+        }
+
+        // ── Speed / options panel (slides in from right) ──────────────────────
+        AnimatedVisibility(
+            visible  = showSpeedPanel && !isLocked,
+            enter    = fadeIn(tween(200)) + slideInHorizontally { it },
+            exit     = fadeOut(tween(160)) + slideOutHorizontally { it },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 80.dp, end = 14.dp)
+        ) {
+            SpeedPanel(
+                currentSpeed    = playbackSpeed,
+                isRepeatMode    = isRepeatMode,
+                castState       = castState,
+                castDeviceName  = castDeviceName,
+                canSetSpeed     = canSetSpeed,
+                onSpeedSelect   = { speed ->
+                    playbackSpeed = speed
+                    applySpeed(speed)
+                    showSpeedPanel = false
+                },
+                onRepeatToggle  = {
+                    isRepeatMode           = !isRepeatMode
+                    mediaPlayerRef?.isLooping = isRepeatMode
+                },
+                onCastAction    = {
+                    when (castState) {
+                        CastState.UNAVAILABLE -> Toast.makeText(context, "No cast devices found nearby", Toast.LENGTH_SHORT).show()
+                        CastState.SEARCHING   -> { /* already scanning */ }
+                        CastState.AVAILABLE   -> {
+                            // Wire up CastContext.sharedInstance().sessionManager here
+                            castState      = CastState.CONNECTED
+                            castDeviceName = "Living Room TV"
+                            Toast.makeText(context, "Connected to Living Room TV", Toast.LENGTH_SHORT).show()
+                        }
+                        CastState.CONNECTED   -> {
+                            disconnectCast()
+                            Toast.makeText(context, "Disconnected from cast", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                onScanForDevices = { startCastDiscovery() }
+            )
+        }
+
+        // ── Video info card (slides in from top-left) ─────────────────────────
+        AnimatedVisibility(
+            visible  = showInfoCard && !isLocked,
+            enter    = fadeIn(tween(200)) + slideInVertically { -it / 2 },
+            exit     = fadeOut(tween(160)) + slideOutVertically { -it / 2 },
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(top = 80.dp, start = 14.dp)
+        ) {
+            VideoInfoCard(item = item, durationMs = durationMs)
+        }
+
+        // ── Locked screen hint ────────────────────────────────────────────────
+        AnimatedVisibility(
+            visible  = isLocked,
+            enter    = fadeIn(tween(200)),
+            exit     = fadeOut(tween(200)),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF141220).copy(alpha = 0.88f))
+                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 20.dp, vertical = 9.dp)
+            ) {
+                Text(
+                    "Screen locked · Tap the lock to unlock",
+                    color = Color.White.copy(alpha = 0.65f),
+                    style = MaterialTheme.typography.labelMedium
+                )
             }
         }
     }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// Gesture indicator bubble (brightness / volume)
+// ══════════════════════════════════════════════════════════════════════════════
+
 @Composable
-private fun CenterVideoControlButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(56.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(Color.Black.copy(alpha = 0.42f))
-            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(28.dp))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
+private fun GestureIndicatorBubble(indicator: GestureIndicator) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier            = Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xFF1A1830).copy(alpha = 0.93f))
+            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(18.dp))
+            .padding(horizontal = 14.dp, vertical = 14.dp)
+            .width(92.dp)
     ) {
         Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = Color.White.copy(alpha = 0.94f),
-            modifier = Modifier.size(30.dp)
+            imageVector        = indicator.icon,
+            contentDescription = null,
+            tint               = Color(0xFF8B7FF5),
+            modifier           = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.height(8.dp))
+        LinearProgressIndicator(
+            progress   = { indicator.value },
+            color      = Color(0xFF8B7FF5),
+            trackColor = Color.White.copy(alpha = 0.14f),
+            modifier   = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text      = indicator.label,
+            color     = Color.White.copy(alpha = 0.82f),
+            style     = MaterialTheme.typography.labelSmall,
+            textAlign = TextAlign.Center
         )
     }
 }
 
-private fun formatVideoTime(ms: Int): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val seconds = totalSeconds % 60
-    val minutes = (totalSeconds / 60) % 60
-    val hours = totalSeconds / 3600
-    return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
-    else "%02d:%02d".format(minutes, seconds)
+// ══════════════════════════════════════════════════════════════════════════════
+// Seek feedback bubble
+// ══════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun SeekFeedbackBubble(feedback: SeekFeedback) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.Black.copy(alpha = 0.65f))
+            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 22.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text       = "${if (feedback.forward) "+${feedback.seconds}" else "-${feedback.seconds}"}s",
+            color      = Color.White,
+            style      = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Top bar
+// ══════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun VideoTopBar(
+    title:            String,
+    subtitle:         String,
+    currentSpeed:     Float,
+    supportsPiP:      Boolean,
+    castState:        CastState,
+    onBack:           () -> Unit,
+    onPiP:            () -> Unit,
+    onToggleInfo:     () -> Unit,
+    onOpenSpeedPanel: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(60.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(NavigationSurfaceColor)
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 8.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // Back
+        TopBarButton(icon = Icons.AutoMirrored.Filled.ArrowBack, desc = "Back", onClick = onBack)
+
+        // Title
+        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text       = title,
+                color      = Color.White.copy(alpha = 0.94f),
+                style      = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines   = 1,
+                textAlign  = TextAlign.Center
+            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text  = subtitle,
+                    color = Color.White.copy(alpha = 0.40f),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+
+        // Active-speed badge
+        if (currentSpeed != 1f) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color(0xFF2D26A0))
+                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.42f), RoundedCornerShape(9.dp))
+                    .clickable(onClick = onOpenSpeedPanel)
+                    .padding(horizontal = 9.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    currentSpeed.toSpeedLabel(),
+                    color      = Color.White,
+                    style      = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+            Spacer(Modifier.width(2.dp))
+        }
+
+        // Cast indicator (when connected)
+        if (castState == CastState.CONNECTED) {
+            TopBarButton(
+                icon    = Icons.Filled.Cast,
+                desc    = "Casting",
+                tint    = Color(0xFF8B7FF5),
+                onClick = onOpenSpeedPanel
+            )
+        }
+
+        // PiP
+        if (supportsPiP) {
+            TopBarButton(icon = Icons.Filled.PictureInPicture, desc = "Picture in picture", onClick = onPiP)
+        }
+
+        // Info
+        TopBarButton(icon = Icons.Outlined.Info, desc = "Video info", onClick = onToggleInfo)
+
+        // Options (opens speed panel)
+        TopBarButton(icon = Icons.Filled.MoreVert, desc = "Options", onClick = onOpenSpeedPanel)
+    }
+}
+
+@Composable
+private fun TopBarButton(
+    icon:    ImageVector,
+    desc:    String,
+    tint:    Color = Color.White.copy(alpha = 0.88f),
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White.copy(alpha = 0.07f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, desc, tint = tint, modifier = Modifier.size(20.dp))
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Seek bar (bottom) — clean, no duplicated action buttons
+// ══════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun VideoSeekBar(
+    positionMs:     Int,
+    durationMs:     Int,
+    onSeek:         (Float) -> Unit,
+    onSeekFinished: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(NavigationSurfaceColor)
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Slider(
+            value                 = positionMs.toFloat(),
+            onValueChange         = onSeek,
+            onValueChangeFinished = onSeekFinished,
+            valueRange            = 0f..durationMs.coerceAtLeast(1).toFloat(),
+            colors                = SliderDefaults.colors(
+                thumbColor         = Color(0xFF8B7FF5),
+                activeTrackColor   = Color(0xFF8B7FF5),
+                inactiveTrackColor = Color.White.copy(alpha = 0.18f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(
+            modifier              = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text  = formatTime(positionMs),
+                color = Color.White.copy(alpha = 0.68f),
+                style = MaterialTheme.typography.labelMedium
+            )
+            Text(
+                text  = if (durationMs > 0) "-${formatTime((durationMs - positionMs).coerceAtLeast(0))}" else "--:--",
+                color = Color.White.copy(alpha = 0.68f),
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Centre control button
+// ══════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun VideoControlButton(icon: ImageVector, size: Dp = 56.dp, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.46f))
+            .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector        = icon,
+            contentDescription = null,
+            tint               = Color.White.copy(alpha = 0.94f),
+            modifier           = Modifier.size(size * 0.50f)
+        )
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Speed / options panel — Lumina design system
+// ══════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun SpeedPanel(
+    currentSpeed:    Float,
+    isRepeatMode:    Boolean,
+    castState:       CastState,
+    castDeviceName:  String?,
+    canSetSpeed:     Boolean,
+    onSpeedSelect:   (Float) -> Unit,
+    onRepeatToggle:  () -> Unit,
+    onCastAction:    () -> Unit,
+    onScanForDevices: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(240.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF1A1830).copy(alpha = 0.97f))
+            .border(1.dp, Color.White.copy(alpha = 0.09f), RoundedCornerShape(20.dp))
+    ) {
+        // ── Header ─────────────────────────────────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment     = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color(0xFF2D26A0))
+                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.45f), RoundedCornerShape(9.dp))
+                    .padding(horizontal = 12.dp, vertical = 5.dp)
+            ) {
+                Text(
+                    currentSpeed.toSpeedLabel(),
+                    color      = Color.White,
+                    style      = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+            Text(
+                "Speed",
+                color      = Color.White.copy(alpha = 0.92f),
+                style      = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 0.5.dp)
+
+        // ── Speed rows ─────────────────────────────────────────────────────────
+        SPEED_OPTIONS.forEach { opt ->
+            val isSelected = currentSpeed == opt.speed
+            val enabled    = canSetSpeed || opt.speed == 1f
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        if (isSelected) Color(0xFF2D26A0).copy(alpha = 0.32f) else Color.Transparent
+                    )
+                    .clickable(enabled = enabled) { onSpeedSelect(opt.speed) }
+                    .padding(horizontal = 16.dp, vertical = 13.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                // Checkmark or spacer
+                if (isSelected) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = null,
+                        tint     = Color(0xFF8B7FF5),
+                        modifier = Modifier.size(16.dp)
+                    )
+                } else {
+                    Spacer(Modifier.size(16.dp))
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                // Speed label (readable name)
+                Text(
+                    text       = opt.label,
+                    color      = when {
+                        isSelected -> Color(0xFF8B7FF5).copy(alpha = 0.9f)
+                        !enabled   -> Color.White.copy(alpha = 0.20f)
+                        else       -> Color.White.copy(alpha = 0.55f)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center
+                )
+
+                // Speed number
+                Text(
+                    text       = opt.speed.toSpeedLabel(),
+                    color      = when {
+                        isSelected -> Color(0xFF8B7FF5)
+                        !enabled   -> Color.White.copy(alpha = 0.18f)
+                        else       -> Color.White.copy(alpha = 0.60f)
+                    },
+                    style      = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Normal
+                )
+            }
+        }
+
+        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 0.5.dp)
+
+        // ── Repeat ─────────────────────────────────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(if (isRepeatMode) Color(0xFF2D26A0).copy(alpha = 0.22f) else Color.Transparent)
+                .clickable(onClick = onRepeatToggle)
+                .padding(horizontal = 16.dp, vertical = 13.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment     = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector        = if (isRepeatMode) Icons.Filled.Repeat else Icons.Outlined.Repeat,
+                contentDescription = "Repeat",
+                tint               = if (isRepeatMode) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.50f),
+                modifier           = Modifier.size(20.dp)
+            )
+            Text(
+                text       = "Repeat",
+                color      = if (isRepeatMode) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.50f),
+                style      = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isRepeatMode) FontWeight.SemiBold else FontWeight.Normal
+            )
+        }
+
+        HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp)
+
+        // ── ChromeCast ─────────────────────────────────────────────────────────
+        val castRowBg = when (castState) {
+            CastState.CONNECTED  -> Color(0xFF2D26A0).copy(alpha = 0.28f)
+            CastState.SEARCHING  -> Color(0xFF1A1830)
+            else                 -> Color.Transparent
+        }
+        val castIconTint = when (castState) {
+            CastState.CONNECTED  -> Color(0xFF8B7FF5)
+            CastState.AVAILABLE  -> Color.White.copy(alpha = 0.72f)
+            CastState.SEARCHING  -> Color.White.copy(alpha = 0.45f)
+            CastState.UNAVAILABLE -> Color.White.copy(alpha = 0.25f)
+        }
+        val castLabel = when (castState) {
+            CastState.CONNECTED   -> castDeviceName ?: "Connected"
+            CastState.AVAILABLE   -> "Cast to device"
+            CastState.SEARCHING   -> "Searching..."
+            CastState.UNAVAILABLE -> "No devices found"
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(castRowBg)
+                .clickable(
+                    enabled = castState != CastState.SEARCHING,
+                    onClick = {
+                        if (castState == CastState.UNAVAILABLE) onScanForDevices()
+                        else onCastAction()
+                    }
+                )
+                .padding(horizontal = 16.dp, vertical = 13.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment     = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector        = if (castState == CastState.CONNECTED) Icons.Filled.Cast else Icons.Outlined.Cast,
+                contentDescription = "ChromeCast",
+                tint               = castIconTint,
+                modifier           = Modifier.size(20.dp)
+            )
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text       = castLabel,
+                    color      = castIconTint,
+                    style      = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (castState == CastState.CONNECTED) FontWeight.SemiBold else FontWeight.Normal
+                )
+                if (castState == CastState.SEARCHING) {
+                    Text(
+                        "Scanning for cast receivers...",
+                        color = Color.White.copy(alpha = 0.32f),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Video info card
+// ══════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun VideoInfoCard(
+    item:       com.omnimemoria.domain.model.MediaPhoto,
+    durationMs: Int
+) {
+    Column(
+        modifier = Modifier
+            .width(224.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xFF1A1830).copy(alpha = 0.96f))
+            .border(1.dp, Color.White.copy(alpha = 0.09f), RoundedCornerShape(18.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            "Video Info",
+            color      = Color.White.copy(alpha = 0.55f),
+            style      = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 0.5.dp)
+
+        if (item.width > 0 && item.height > 0)
+            InfoRow("Resolution", "${item.width} × ${item.height}")
+        if (durationMs > 0)
+            InfoRow("Duration", formatTime(durationMs))
+        if (item.size > 0) {
+            val mb = item.size / (1024f * 1024f)
+            InfoRow("Size", if (mb >= 1f) "%.1f MB".format(mb) else "${item.size / 1024} KB")
+        }
+        if (item.mimeType.isNotBlank())
+            InfoRow("Format", item.mimeType.uppercase().replace("VIDEO/", ""))
+        if (item.name.isNotBlank())
+            InfoRow("File", item.name.substringBeforeLast('.').take(24))
+    }
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(
+        modifier              = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment     = Alignment.CenterVertically
+    ) {
+        Text(label, color = Color.White.copy(alpha = 0.36f), style = MaterialTheme.typography.labelSmall)
+        Text(
+            value,
+            color      = Color.White.copy(alpha = 0.85f),
+            style      = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
 }

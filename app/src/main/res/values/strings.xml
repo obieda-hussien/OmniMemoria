@@ -1,3 +1,23 @@
 <resources>
     <string name="app_name">OmniMemoria</string>
+    <string name="open_video_with">Open video with</string>
+    <string name="video_trying_compatible_source">Trying a more compatible source…</string>
+    <string name="video_playback_failed_fallback">Playback failed on this device. Retry or open externally.</string>
+    <string name="video_no_compatible_app">No compatible app found.</string>
+    <string name="video_could_not_open_external_player">Could not open external player.</string>
+    <string name="video_retry">Retry</string>
+    <string name="video_open_externally">Open externally</string>
+    <string name="video_hide_details">Hide details</string>
+    <string name="video_show_details">Show details</string>
+    <string name="video_retry_playback">Retry playback</string>
+    <string name="video_open_in_another_app">Open in another app</string>
+    <string name="video_source_original">Original</string>
+    <string name="video_source_video_collection_fallback">Video collection fallback</string>
+    <string name="video_source_files_collection_fallback">Files collection fallback</string>
+    <string name="video_meta_format">Format</string>
+    <string name="video_meta_size">Size</string>
+    <string name="video_meta_resolution">Resolution</string>
+    <string name="video_meta_bitrate">Bitrate</string>
+    <string name="video_meta_frame_rate">Frame rate</string>
+    <string name="video_meta_source">Source</string>
 </resources>
