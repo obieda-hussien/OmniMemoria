@@ -9,6 +9,8 @@ import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.domain.model.MediaFolder
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.domain.model.SortConfig
+import com.omnimemoria.ui.gallery.GalleryStateHolder
+import com.omnimemoria.ui.gallery.MediaFilter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
@@ -21,8 +23,12 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class FolderDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val mediaStoreRepository: MediaStoreRepository
+    private val mediaStoreRepository: MediaStoreRepository,
+    // ── FIX: inject GalleryStateHolder so we can cache the tapped photo
+    // and sync sort config before navigating to PhotoDetailScreen ─────────────
+    private val galleryStateHolder: GalleryStateHolder
 ) : ViewModel() {
+
     val bucketId: String = savedStateHandle["bucketId"] ?: ""
 
     private val _sortConfig = MutableStateFlow(SortConfig())
@@ -34,7 +40,7 @@ class FolderDetailViewModel @Inject constructor(
     private val _selectedIds = MutableStateFlow<Set<Long>>(emptySet())
     val selectedIds: StateFlow<Set<Long>> = _selectedIds.asStateFlow()
 
-    val photos: Flow<PagingData<MediaPhoto>> = sortConfig
+    val photos: Flow<PagingData<MediaPhoto>> = _sortConfig
         .flatMapLatest { mediaStoreRepository.getPhotosByFolder(bucketId, it) }
         .cachedIn(viewModelScope)
 
@@ -46,6 +52,14 @@ class FolderDetailViewModel @Inject constructor(
 
     fun updateSort(config: SortConfig) {
         _sortConfig.value = config
+    }
+
+    // ── FIX: call this right before navigating to PhotoDetailScreen ───────────
+    // Folders always show ALL media types, so filter = ALL.
+    fun prepareForNavigation(photo: MediaPhoto) {
+        galleryStateHolder.cachePendingPhoto(photo)
+        galleryStateHolder.activeSortConfig.value = _sortConfig.value
+        galleryStateHolder.activeFilter.value     = MediaFilter.ALL
     }
 
     fun toggleSelection(photoId: Long) {
