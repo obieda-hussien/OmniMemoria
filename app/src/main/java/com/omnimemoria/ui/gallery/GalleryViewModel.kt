@@ -38,7 +38,7 @@ import javax.inject.Inject
 
 sealed class GalleryItem {
     data class DateHeader(val label: String, val anchorPhotoId: Long) : GalleryItem()
-    data class Photo(val photo: MediaPhoto)  : GalleryItem()
+    data class Photo(val photo: MediaPhoto) : GalleryItem()
 }
 
 enum class MediaFilter { ALL, PHOTOS_ONLY, VIDEOS_ONLY }
@@ -62,7 +62,7 @@ private fun MediaPhoto.toDateGroupLabel(): String {
 }
 
 private fun Calendar.isSameDay(other: Calendar) =
-    get(Calendar.YEAR)       == other.get(Calendar.YEAR) &&
+    get(Calendar.YEAR)        == other.get(Calendar.YEAR) &&
     get(Calendar.DAY_OF_YEAR) == other.get(Calendar.DAY_OF_YEAR)
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -70,6 +70,9 @@ private fun Calendar.isSameDay(other: Calendar) =
 class GalleryViewModel @Inject constructor(
     private val mediaStoreRepository: MediaStoreRepository,
     private val sortPresetRepository:  SortPresetRepository,
+    // ── FIX: inject GalleryStateHolder so we can cache the tapped photo
+    // and sync sort/filter before navigating to PhotoDetailScreen ──────────────
+    private val galleryStateHolder:    GalleryStateHolder,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -95,29 +98,26 @@ class GalleryViewModel @Inject constructor(
     private val _compactTopBar = MutableStateFlow(false)
     val compactTopBar: StateFlow<Boolean> = _compactTopBar.asStateFlow()
 
-    // منطق الفلترة والترتيب المحدث
     private val _currentFilter = MutableStateFlow(MediaFilter.ALL)
     val currentFilter: StateFlow<MediaFilter> = _currentFilter.asStateFlow()
 
     private val _localSortConfig = MutableStateFlow<SortConfig?>(null)
-    
+
     val activeSortConfig: StateFlow<SortConfig> = sortPresetRepository.getCurrentSort()
         .stateIn(viewModelScope, SharingStarted.Eagerly, SortConfig())
 
-    // دمج الترتيب المختار مع الفلتر الحالي لتحديث البيانات تلقائياً
     val groupedPhotos: Flow<PagingData<GalleryItem>> = combine(
         _localSortConfig.combine(activeSortConfig) { local, repo -> local ?: repo },
         _currentFilter
     ) { config, filter -> Pair(config, filter) }
         .flatMapLatest { (config, filter) ->
             mediaStoreRepository.getPhotosPaged(config).map { pagingData ->
-                // تطبيق الفلتر على مستوى الـ Paging
                 val filteredData = when (filter) {
-                    MediaFilter.ALL -> pagingData
+                    MediaFilter.ALL         -> pagingData
                     MediaFilter.PHOTOS_ONLY -> pagingData.filter { !it.mimeType.startsWith("video/", ignoreCase = true) }
-                    MediaFilter.VIDEOS_ONLY -> pagingData.filter { it.mimeType.startsWith("video/", ignoreCase = true) }
+                    MediaFilter.VIDEOS_ONLY -> pagingData.filter {  it.mimeType.startsWith("video/", ignoreCase = true) }
                 }
-                
+
                 filteredData
                     .map { photo -> GalleryItem.Photo(photo) as GalleryItem }
                     .insertSeparators { before, after ->
@@ -127,7 +127,7 @@ class GalleryViewModel @Inject constructor(
                             after == null || after !is GalleryItem.Photo -> null
                             before == null || bLabel != aLabel ->
                                 GalleryItem.DateHeader(
-                                    label = aLabel ?: "",
+                                    label         = aLabel ?: "",
                                     anchorPhotoId = after.photo.id
                                 )
                             else -> null
@@ -155,9 +155,23 @@ class GalleryViewModel @Inject constructor(
         }
     }
 
+    // ── FIX: call this right before navigating to PhotoDetailScreen ───────────
+    // Caches the tapped photo (zero-IO seed) and syncs the active sort/filter
+    // so PhotoDetailViewModel builds the SAME swipe window as the gallery grid.
+    fun prepareForNavigation(photo: MediaPhoto) {
+        galleryStateHolder.cachePendingPhoto(photo)
+        galleryStateHolder.activeSortConfig.value =
+            _localSortConfig.value ?: activeSortConfig.value
+        galleryStateHolder.activeFilter.value = _currentFilter.value
+    }
+
     fun updateSortAndFilter(config: SortConfig, filter: MediaFilter) {
-        _localSortConfig.value = config
-        _currentFilter.value = filter
+        _localSortConfig.value   = config
+        _currentFilter.value     = filter
+        // Keep state holder in sync immediately so any in-flight navigation
+        // that fires right after this call also gets the correct config.
+        galleryStateHolder.activeSortConfig.value = config
+        galleryStateHolder.activeFilter.value     = filter
     }
 
     fun toggleSelection(photoId: Long) {
@@ -173,6 +187,6 @@ class GalleryViewModel @Inject constructor(
             zoomDelta < 0.75f -> _columnCount.value = (c + 1).coerceAtMost(5)
         }
     }
-    fun setColumnCount(count: Int) { _columnCount.value = count.coerceIn(2, 5) }
+    fun setColumnCount(count: Int)      { _columnCount.value   = count.coerceIn(2, 5) }
     fun setCompactTopBar(enabled: Boolean) { _compactTopBar.value = enabled }
 }
