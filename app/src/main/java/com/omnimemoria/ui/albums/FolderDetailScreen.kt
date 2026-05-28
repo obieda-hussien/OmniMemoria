@@ -54,8 +54,8 @@ import com.omnimemoria.ui.photoSharedKey
 @Composable
 fun FolderDetailScreen(
     onPhotoClick: (Long) -> Unit,
-    onBack: () -> Unit,
-    viewModel: FolderDetailViewModel = hiltViewModel()
+    onBack:       () -> Unit,
+    viewModel:    FolderDetailViewModel = hiltViewModel()
 ) {
     val haptic           = LocalHapticFeedback.current
     val photos           = viewModel.photos.collectAsLazyPagingItems()
@@ -91,7 +91,6 @@ fun FolderDetailScreen(
             )
         }
 
-        // Gradient: banner → background
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -120,15 +119,10 @@ fun FolderDetailScreen(
             modifier              = Modifier.fillMaxSize()
         ) {
 
-            // Folder info hero card
             item(span = { GridItemSpan(maxLineSpan) }) {
-                FolderHeroCard(
-                    folder     = folder,
-                    photoCount = photos.itemCount
-                )
+                FolderHeroCard(folder = folder, photoCount = photos.itemCount)
             }
 
-            // Loading skeletons
             if (photos.loadState.refresh is LoadState.Loading) {
                 items(24) {
                     ShimmerBox(
@@ -151,8 +145,15 @@ fun FolderDetailScreen(
                             sharedTransitionScope   = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
                             onClick = {
-                                if (isSelecting) viewModel.toggleSelection(photo.id)
-                                else onPhotoClick(photo.id)
+                                if (isSelecting) {
+                                    viewModel.toggleSelection(photo.id)
+                                } else {
+                                    // ── FIX: cache photo + sync sort config
+                                    // BEFORE navigating so PhotoDetailViewModel
+                                    // builds the correct swipe window ─────────
+                                    viewModel.prepareForNavigation(photo)
+                                    onPhotoClick(photo.id)
+                                }
                             },
                             onLongClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -184,7 +185,6 @@ fun FolderDetailScreen(
                 )
         )
 
-        // ── Floating top bar ─────────────────────────────────────────────────
         FolderTopBar(
             folderName = folder?.name ?: "",
             photoCount = photos.itemCount,
@@ -193,7 +193,6 @@ fun FolderDetailScreen(
             modifier   = Modifier.align(Alignment.TopCenter)
         )
 
-        // ── Multi-select bar ─────────────────────────────────────────────────
         AnimatedVisibility(
             visible  = isSelecting,
             enter    = slideInVertically { it } + fadeIn(),
@@ -213,7 +212,6 @@ fun FolderDetailScreen(
         }
     }
 
-    // ── Sort sheet ───────────────────────────────────────────────────────────
     if (showSortSheet) {
         FolderSortBottomSheet(
             current   = sortConfig,
@@ -240,7 +238,6 @@ private fun FolderHeroCard(
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Cover thumbnail with gradient overlay
         Box(
             modifier = Modifier
                 .size(80.dp)
@@ -253,7 +250,6 @@ private fun FolderHeroCard(
                     contentScale       = ContentScale.Crop,
                     modifier           = Modifier.fillMaxSize()
                 )
-                // Bottom scrim on thumbnail
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -295,7 +291,6 @@ private fun FolderHeroCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(8.dp))
-            // Badge
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -334,7 +329,7 @@ private fun FolderPhotoCell(
     val isVideo = photo.mimeType.startsWith("video/", ignoreCase = true)
 
     val sharedModifier: Modifier = if (
-        sharedTransitionScope != null &&
+        sharedTransitionScope   != null &&
         animatedVisibilityScope != null &&
         !selecting
     ) {
@@ -355,7 +350,6 @@ private fun FolderPhotoCell(
             .clip(RoundedCornerShape(if (selected) 14.dp else 8.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
-        // Image with shared element modifier
         AsyncImage(
             model              = photo.uri,
             contentDescription = photo.name,
@@ -365,7 +359,6 @@ private fun FolderPhotoCell(
                 .then(sharedModifier)
         )
 
-        // Video badge
         if (isVideo) {
             Box(
                 modifier = Modifier
@@ -376,16 +369,11 @@ private fun FolderPhotoCell(
                     .padding(horizontal = 6.dp, vertical = 3.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Filled.PlayArrow,
-                    contentDescription = "Video",
-                    tint               = Color.White,
-                    modifier           = Modifier.size(13.dp)
-                )
+                Icon(Icons.Filled.PlayArrow, "Video",
+                    tint = Color.White, modifier = Modifier.size(13.dp))
             }
         }
 
-        // Selection overlay
         AnimatedVisibility(visible = selecting, enter = fadeIn(), exit = fadeOut()) {
             Box(
                 modifier = Modifier
@@ -397,13 +385,9 @@ private fun FolderPhotoCell(
             ) {
                 if (selected) {
                     Icon(
-                        imageVector        = Icons.Filled.CheckCircle,
-                        contentDescription = "Selected",
-                        tint               = MaterialTheme.colorScheme.primary,
-                        modifier           = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(5.dp)
-                            .size(22.dp)
+                        Icons.Filled.CheckCircle, "Selected",
+                        tint     = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(5.dp).size(22.dp)
                     )
                 } else {
                     Box(
@@ -437,7 +421,6 @@ private fun FolderTopBar(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Back pill
         Box(
             modifier = Modifier
                 .size(44.dp)
@@ -448,10 +431,9 @@ private fun FolderTopBar(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint               = MaterialTheme.colorScheme.onBackground,
-                modifier           = Modifier.size(20.dp)
+                Icons.AutoMirrored.Filled.ArrowBack, "Back",
+                tint     = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.size(20.dp)
             )
         }
 
@@ -474,11 +456,7 @@ private fun FolderTopBar(
             }
         }
 
-        OmniActionChip(
-            label   = "Sort",
-            icon    = Icons.Outlined.Sort,
-            onClick = onSort
-        )
+        OmniActionChip(label = "Sort", icon = Icons.Outlined.Sort, onClick = onSort)
     }
 }
 
@@ -507,22 +485,18 @@ private fun FolderSortBottomSheet(
                 .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            // Handle
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .width(36.dp)
-                    .height(4.dp)
+                    .width(36.dp).height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(Color(0xFF3A3860))
             )
             Spacer(Modifier.height(20.dp))
-            Text(
-                "Sort photos",
-                style      = MaterialTheme.typography.titleMedium,
+            Text("Sort photos",
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color      = MaterialTheme.colorScheme.onBackground
-            )
+                color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(16.dp))
 
             listOf(
@@ -547,24 +521,19 @@ private fun FolderSortBottomSheet(
                         selected = sortBy == candidate,
                         onClick  = { sortBy = candidate },
                         colors   = RadioButtonDefaults.colors(
-                            selectedColor = MaterialTheme.colorScheme.primary
-                        )
+                            selectedColor = MaterialTheme.colorScheme.primary)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        text  = label,
+                    Text(label,
                         color = MaterialTheme.colorScheme.onBackground,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                        style = MaterialTheme.typography.bodyMedium)
                 }
             }
 
             Spacer(Modifier.height(16.dp))
-            Text(
-                "Direction",
+            Text("Direction",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -592,21 +561,17 @@ private fun FolderSortBottomSheet(
                     .height(52.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(
-                        Brush.horizontalGradient(
-                            listOf(Color(0xFF5548D9), Color(0xFF8B7FF5))
-                        )
+                        Brush.horizontalGradient(listOf(Color(0xFF5548D9), Color(0xFF8B7FF5)))
                     )
                     .combinedClickable(onClick = {
                         onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder))
                     }),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    "Apply",
-                    color      = Color.White,
+                Text("Apply",
+                    color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    style      = MaterialTheme.typography.titleSmall
-                )
+                    style = MaterialTheme.typography.titleSmall)
             }
         }
     }
