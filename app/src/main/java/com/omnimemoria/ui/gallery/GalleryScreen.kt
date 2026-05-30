@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -49,6 +50,9 @@ import com.omnimemoria.ui.components.ShimmerBox
 import com.omnimemoria.ui.detail.photosBoundsTransform
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+
+// Rose/crimson color for the favorite heart badge
+private val FavoriteRose = Color(0xFFFF4B6E)
 
 private val SelectionBarBottomPadding = 92.dp
 
@@ -157,15 +161,13 @@ fun GalleryScreen(
                                 isVideo                 = photo.mimeType.startsWith("video/", ignoreCase = true),
                                 isSelected              = isSelected,
                                 isSelecting             = isSelecting,
+                                isFavorite              = item.isFavorite,
                                 sharedTransitionScope   = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,
                                 onClick = {
                                     if (isSelecting) {
                                         viewModel.toggleSelection(photo.id)
                                     } else {
-                                        // ── FIX: cache photo + sync sort/filter BEFORE
-                                        // navigating so PhotoDetailViewModel starts
-                                        // with the correct seed and swipe window ─────
                                         viewModel.prepareForNavigation(photo)
                                         onPhotoClick(photo.id)
                                     }
@@ -236,12 +238,13 @@ private fun DateHeaderRow(label: String) {
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
-private fun PhotoCell(
+internal fun PhotoCell(
     uri:                     String,
     photoId:                 Long,
     isVideo:                 Boolean,
     isSelected:              Boolean,
     isSelecting:             Boolean,
+    isFavorite:              Boolean = false,
     sharedTransitionScope:   SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     onClick:                 () -> Unit,
@@ -281,6 +284,7 @@ private fun PhotoCell(
                 .then(sharedModifier)
         )
 
+        // ── Video badge ────────────────────────────────────────────────────────
         if (isVideo) {
             Box(
                 modifier = Modifier
@@ -296,6 +300,32 @@ private fun PhotoCell(
             }
         }
 
+        // ── Favorite heart badge (bottom-right) ────────────────────────────────
+        AnimatedVisibility(
+            visible = isFavorite,
+            enter   = fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.6f),
+            exit    = fadeOut(tween(140)) + scaleOut(tween(140), targetScale = 0.6f),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(5.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector        = Icons.Filled.Favorite,
+                    contentDescription = "Favorite",
+                    tint               = FavoriteRose,
+                    modifier           = Modifier.size(14.dp)
+                )
+            }
+        }
+
+        // ── Selection overlay ──────────────────────────────────────────────────
         AnimatedVisibility(visible = isSelecting, enter = fadeIn(), exit = fadeOut()) {
             Box(
                 modifier = Modifier
@@ -354,7 +384,7 @@ private fun SkeletonPhotoCell() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GallerySortFilterSheet(
+internal fun GallerySortFilterSheet(
     currentFilter: MediaFilter,
     currentSort:   SortConfig,
     onDismiss:     () -> Unit,

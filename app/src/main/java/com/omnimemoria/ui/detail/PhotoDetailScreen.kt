@@ -88,9 +88,15 @@ fun PhotoDetailScreen(
         isFavorite      = isFavorite,
         onBack          = onBack,
         onOpenVideo     = onOpenVideo,
+        onPageChanged   = { newPhotoId -> viewModel.onPhotoPageChanged(newPhotoId) },
         onFavorite      = { id ->
+            val willBeFavorite = !isFavorite
             viewModel.toggleFavorite(id)
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            if (willBeFavorite) {
+                haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+            } else {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
         }
     )
 }
@@ -105,6 +111,7 @@ private fun PhotoPager(
     isFavorite:      Boolean,
     onBack:          () -> Unit,
     onOpenVideo:     (mediaId: Long, externalUri: String?) -> Unit,
+    onPageChanged:   (Long) -> Unit = {},
     onFavorite:      (Long) -> Unit
 ) {
     val sharedTransitionScope   = LocalSharedTransitionScope.current
@@ -139,6 +146,12 @@ private fun PhotoPager(
 
     val currentPhoto by remember {
         derivedStateOf { photoList.getOrNull(pagerState.currentPage) }
+    }
+
+    // Notify ViewModel when the user swipes to a different photo so the DB-backed
+    // isFavorite observer is updated for the new photo.
+    LaunchedEffect(pagerState.currentPage) {
+        photoList.getOrNull(pagerState.currentPage)?.id?.let { onPageChanged(it) }
     }
 
     var showChrome   by remember { mutableStateOf(true) }

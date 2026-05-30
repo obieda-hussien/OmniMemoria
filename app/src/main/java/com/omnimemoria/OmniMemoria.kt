@@ -124,6 +124,9 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
                 Log.e("OmniMemoria", "Failed to initialize periodic indexing scheduler", throwable)
             }
         }
+
+        // Schedule daily trash-expiry cleanup (battery-not-low constraint)
+        workManagerScheduler.scheduleTrashCleanup()
     }
 
     companion object {

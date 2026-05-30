@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -180,17 +181,29 @@ fun HomeScreen(
                 )
             }
 
-            // Smart FAB
+            // Smart FAB + Favorites chip (same row, FAB end / chip start)
             AnimatedVisibility(
                 visible  = currentTab == HomeTab.GALLERY,
                 enter    = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
                 exit     = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
-                modifier = Modifier.padding(end = 24.dp, bottom = 12.dp)
+                modifier = Modifier.fillMaxWidth()
             ) {
-                SmartFab(
-                    accent  = dynamicAccent,
-                    onClick = { showSmartSheet = true }
-                )
+                Row(
+                    modifier              = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
+                    // ── Favorites floating chip ──────────────────────────────
+                    FavoritesChip(onClick = onFavoritesClick)
+
+                    // ── Smart FAB ────────────────────────────────────────────
+                    SmartFab(
+                        accent  = dynamicAccent,
+                        onClick = { showSmartSheet = true }
+                    )
+                }
             }
 
             OmniBottomNav(
@@ -209,7 +222,13 @@ fun HomeScreen(
     }
 
     if (showSmartSheet) {
-        SmartActionsSheet(onDismiss = { showSmartSheet = false })
+        SmartActionsSheet(
+            onDismiss        = { showSmartSheet = false },
+            onFavoritesClick = {
+                showSmartSheet = false
+                onFavoritesClick()
+            }
+        )
     }
 }
 
@@ -561,6 +580,40 @@ private fun SmartFab(accent: Color?, onClick: () -> Unit) {
     }
 }
 
+// ── Favorites floating chip ───────────────────────────────────────────────────────
+
+@Composable
+private fun FavoritesChip(onClick: () -> Unit) {
+    val rose = Color(0xFFFF4B6E)
+    Surface(
+        onClick          = onClick,
+        shape            = RoundedCornerShape(20.dp),
+        color            = rose.copy(alpha = 0.15f),
+        tonalElevation   = 0.dp,
+        shadowElevation  = 4.dp,
+        modifier         = Modifier.height(40.dp)
+    ) {
+        Row(
+            modifier              = Modifier.padding(horizontal = 14.dp, vertical = 0.dp),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector        = Icons.Filled.Favorite,
+                contentDescription = null,
+                tint               = rose,
+                modifier           = Modifier.size(15.dp)
+            )
+            Text(
+                text       = "Favorites",
+                style      = MaterialTheme.typography.labelLarge,
+                color      = rose,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
 // ── Bottom Nav ────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -637,7 +690,10 @@ private val SmartActionItems = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SmartActionsSheet(onDismiss: () -> Unit) {
+private fun SmartActionsSheet(
+    onDismiss:        () -> Unit,
+    onFavoritesClick: () -> Unit = {}
+) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -666,6 +722,38 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+
+            // ── Favorites shortcut at the top of the sheet ────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFFFF4B6E).copy(alpha = 0.12f))
+                    .clickable { onFavoritesClick() }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier.size(46.dp).clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFFF4B6E).copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Favorite, null,
+                        tint     = Color(0xFFFF4B6E),
+                        modifier = Modifier.size(22.dp))
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Favorites", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text("Your starred memories",
+                        fontSize = 13.sp,
+                        color    = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(Icons.Outlined.ChevronRight, null,
+                    tint     = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(18.dp))
             }
 
             SmartActionItems.forEach { item ->

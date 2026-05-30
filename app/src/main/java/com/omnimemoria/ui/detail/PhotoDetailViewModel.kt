@@ -5,8 +5,7 @@ import android.graphics.BitmapFactory
 import android.provider.MediaStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.omnimemoria.data.local.db.FavoritePhoto
-import com.omnimemoria.data.local.db.FavoritesDao
+import com.omnimemoria.data.repository.FavoritesRepository
 import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.data.repository.SortPresetRepository
 import com.omnimemoria.domain.model.MediaPhoto
@@ -25,8 +24,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class PhotoDetailViewModel @Inject constructor(
-    private val mediaStoreRepository: MediaStoreRepository,
-    private val favoritesDao:         FavoritesDao,
+    private val mediaStoreRepository:  MediaStoreRepository,
+    private val favoritesRepository:   FavoritesRepository,
     private val sortPresetRepository:  SortPresetRepository,
     private val galleryStateHolder:    GalleryStateHolder,
     @ApplicationContext private val context: Context
@@ -47,6 +46,12 @@ class PhotoDetailViewModel @Inject constructor(
      */
     private val _isFullListReady = MutableStateFlow(false)
     val isFullListReady: StateFlow<Boolean> = _isFullListReady.asStateFlow()
+
+    // Current photo being viewed — updated as the pager scrolls
+    private var currentPhotoId: Long = -1L
+
+    // Job that observes DB favorite state for the current photo
+    private var favoriteObserverJob: kotlinx.coroutines.Job? = null
 
     init {
         // ── Zero-IO seed: grab the photo the user just tapped ─────────────────
@@ -113,17 +118,41 @@ class PhotoDetailViewModel @Inject constructor(
             _photoList.value       = all
             _initialPage.value     = targetIndex
             _isFullListReady.value = true
-            _isFavorite.value      = favoritesDao.getAll().any { it.id == photoId }
+
+            // ── Observe DB-backed favorite state for this photo ───────────────
+            observeFavoriteState(photoId)
         }
     }
 
+    /**
+     * Called by the UI when the pager scrolls to a new page, so the ❤️ button
+     * always reflects the DB state of the currently visible photo.
+     */
+    fun onPhotoPageChanged(photoId: Long) {
+        if (photoId == currentPhotoId) return
+        observeFavoriteState(photoId)
+    }
+
+    private fun observeFavoriteState(photoId: Long) {
+        currentPhotoId = photoId
+        favoriteObserverJob?.cancel()
+        favoriteObserverJob = viewModelScope.launch {
+            favoritesRepository.isFavorite(photoId).collect { fav ->
+                _isFavorite.value = fav
+            }
+        }
+    }
+
+    /**
+     * Persists the toggle to Room via [FavoritesRepository].
+     * The [_isFavorite] StateFlow is updated reactively by the DB observer,
+     * so no manual flip is needed here.
+     */
     fun toggleFavorite(photoId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            val currently = _isFavorite.value
-            if (!currently) {
-                favoritesDao.upsert(FavoritePhoto(id = photoId, addedAt = System.currentTimeMillis()))
-            }
-            _isFavorite.value = !currently
+            favoritesRepository.toggleFavorite(photoId)
+            // _isFavorite will be updated automatically by the Flow collector
+            // started in observeFavoriteState().
         }
     }
 

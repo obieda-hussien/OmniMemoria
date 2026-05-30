@@ -16,6 +16,9 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
+// Forward-reference — resolved at link time; no circular import.
+private typealias TrashWorker = com.omnimemoria.data.worker.TrashCleanupWorker
+
 @Singleton
 class WorkManagerScheduler @Inject constructor(
     @ApplicationContext private val context: Context
@@ -74,9 +77,40 @@ class WorkManagerScheduler @Inject constructor(
         WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_PERIODIC_WORK_NAME)
     }
 
+    // ── Trash cleanup (every 24 h, battery-not-low) ───────────────────────────────
+
+    /**
+     * Schedules a periodic job that runs [TrashCleanupWorker] once per day,
+     * only when the battery is not low.  Uses KEEP policy so re-scheduling on
+     * app launch is cheap (no duplicate work is enqueued).
+     */
+    fun scheduleTrashCleanup() {
+        val constraints = Constraints.Builder()
+            .setRequiresBatteryNotLow(true)
+            .build()
+
+        val request = PeriodicWorkRequestBuilder<TrashWorker>(
+            TRASH_CLEANUP_INTERVAL_HOURS,
+            TimeUnit.HOURS
+        )
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            TrashWorker.UNIQUE_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
+
+    fun cancelTrashCleanup() {
+        WorkManager.getInstance(context).cancelUniqueWork(TrashWorker.UNIQUE_WORK_NAME)
+    }
+
     companion object {
         const val UNIQUE_IMMEDIATE_WORK_NAME = "omnimemoria_index_immediate"
         const val UNIQUE_PERIODIC_WORK_NAME = "omnimemoria_index_periodic"
         internal const val PERIODIC_INDEX_INTERVAL_HOURS = 6L
+        internal const val TRASH_CLEANUP_INTERVAL_HOURS  = 24L
     }
 }

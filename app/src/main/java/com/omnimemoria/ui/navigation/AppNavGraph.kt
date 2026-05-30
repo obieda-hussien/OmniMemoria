@@ -20,15 +20,17 @@ import com.omnimemoria.ui.LocalSharedTransitionScope
 import com.omnimemoria.ui.albums.FolderDetailScreen
 import com.omnimemoria.ui.detail.PhotoDetailScreen
 import com.omnimemoria.ui.detail.VideoPlayerScreen
+import com.omnimemoria.ui.favorites.FavoritesScreen
 import com.omnimemoria.ui.home.HomeScreen
 import com.omnimemoria.ui.settings.SettingsScreen
 
 object AppRoutes {
-    const val Home     = "home"
-    const val Detail   = "detail/{photoId}?bucketId={bucketId}&externalUri={externalUri}"
-    const val Folder   = "folder/{bucketId}"
-    const val Video    = "video/{mediaId}?externalUri={externalUri}"
-    const val Settings = "settings"
+    const val Home      = "home"
+    const val Detail    = "detail/{photoId}?bucketId={bucketId}&externalUri={externalUri}"
+    const val Folder    = "folder/{bucketId}"
+    const val Video     = "video/{mediaId}?externalUri={externalUri}"
+    const val Settings  = "settings"
+    const val Favorites = "favorites"
 
     fun detail(photoId: Long, bucketId: String? = null, externalUri: String? = null): String {
         val base = if (bucketId.isNullOrBlank()) "detail/$photoId" else "detail/$photoId?bucketId=${android.net.Uri.encode(bucketId)}"
@@ -94,6 +96,9 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                             },
                             onSettingsClick = {
                                 navController.navigate(AppRoutes.Settings)
+                            },
+                            onFavoritesClick = {
+                                navController.navigate(AppRoutes.Favorites)
                             }
                         )
                     }
@@ -187,6 +192,23 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                             mediaId = mediaId,
                             externalUriStr = extUri,
                             onBack = { if (extUri != null) activity?.finish() else navController.popBackStack() }
+                        )
+                    }
+                }
+
+                // ── Favorites ─────────────────────────────────────────────────
+                composable(
+                    route           = AppRoutes.Favorites,
+                    enterTransition = { scaleIn(tween(220), initialScale = 0.95f) + fadeIn(tween(220)) },
+                    exitTransition  = { scaleOut(tween(180), targetScale = 0.96f) + fadeOut(tween(180)) },
+                    popExitTransition = { scaleOut(tween(180), targetScale = 0.95f) + fadeOut(tween(180)) }
+                ) {
+                    CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
+                        FavoritesScreen(
+                            onPhotoClick = { photoId ->
+                                navController.navigate(AppRoutes.detail(photoId))
+                            },
+                            onBack = { navController.popBackStack() }
                         )
                     }
                 }
