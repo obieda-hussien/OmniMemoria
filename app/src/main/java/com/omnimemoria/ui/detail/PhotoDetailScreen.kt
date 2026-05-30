@@ -40,6 +40,8 @@ import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
 import com.omnimemoria.ui.navigation.NavigationSurfaceColor
 import com.omnimemoria.ui.photoSharedKey
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -114,58 +116,54 @@ private fun PhotoPager(
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
     val context                 = LocalContext.current
 
-    // PagerState always initializes at 0 (the seed photo)
     val pagerState = rememberPagerState(initialPage = 0) { photoList.size }
-
-    // State to track if the silent jump to the target index has completed
     var hasJumped by remember { mutableStateOf(false) }
 
-    // Reset jump state if the list empties (e.g., navigating away and back quickly)
     LaunchedEffect(photoList.size) {
         if (!isFullListReady) hasJumped = false
     }
 
-    // ── The Silent Snap ──
-    // When the full list loads, we jump to the target index silently.
-    // We mark hasJumped = true ONLY after the jump is requested.
+    // ── THE SYNCHRONIZATION BARRIER (The Ultimate Fix) ──
     LaunchedEffect(isFullListReady, startPage, photoList.size) {
         if (isFullListReady && photoList.isNotEmpty()) {
             val target = startPage.coerceIn(0, photoList.lastIndex)
+            
+            // 1. حاجز المزامنة: لن نقوم بالقفز أبداً إلا عندما يؤكد الـ Pager أن
+            // حجمه الداخلي قد تتطابق مع الحجم الجديد للقائمة. هذا يمنع خطأ الـ Clamp
+            // الذي كان يجبر الفهرس على العودة إلى الصفر.
+            snapshotFlow { pagerState.pageCount }
+                .filter { it == photoList.size }
+                .first()
+
+            // 2. الآن، وبعد أن استوعب الـ Pager حجمه، نقفز بأمان مطلق.
             if (pagerState.currentPage != target && !pagerState.isScrollInProgress) {
                 pagerState.scrollToPage(target)
             }
+            
+            // 3. إنهاء حالة التبديل الوهمي
             hasJumped = true
         }
     }
 
-    // ── The Magic Resolver (Core Fix) ──
-    // This function decides WHICH photo to show for ANY given page index.
-    // It prevents the black flash by performing a "Magic Swap" during the 1-frame gap
-    // before the `scrollToPage` executes, guaranteeing stable Shared Element Keys.
+    // ── The Magic Resolver ──
     val resolvePhoto: (Int) -> MediaPhoto? = remember(photoList, isFullListReady, hasJumped, startPage) {
         { page ->
             if (photoList.isEmpty()) {
                 null
             } else if (!isFullListReady) {
-                // Before full list loads, only page 0 is valid
                 if (page == 0) photoList.firstOrNull() else null
             } else if (!hasJumped && startPage != 0) {
-                // GAP FRAME: Full list is loaded, but pager is still at page 0.
-                // We swap page 0 and startPage in memory so Compose finds the seed photo
-                // at page 0, and doesn't throw a Duplicate Key exception for startPage.
                 when (page) {
                     0         -> photoList.getOrNull(startPage)
                     startPage -> photoList.getOrNull(0)
                     else      -> photoList.getOrNull(page)
                 }
             } else {
-                // Normal state after jump
                 photoList.getOrNull(page)
             }
         }
     }
 
-    // Current photo derived safely without causing Pager recompositions
     val currentPhoto by remember(isFullListReady, hasJumped, startPage, photoList) {
         derivedStateOf { resolvePhoto(pagerState.currentPage) }
     }
@@ -176,19 +174,14 @@ private fun PhotoPager(
     Box(
         modifier = Modifier.fillMaxSize().background(Color(0xFF090810))
     ) {
-        // ── Horizontal Pager ───────────────────────────────────────────────────
         HorizontalPager(
             state                   = pagerState,
             modifier                = Modifier.fillMaxSize(),
             beyondViewportPageCount = 1,
-            key                     = { page -> 
-                // Stable keys are MANDATORY for Shared Elements to survive the list swap
-                resolvePhoto(page)?.id ?: "empty_$page" 
-            }
+            key                     = { page -> resolvePhoto(page)?.id ?: "empty_$page" }
         ) { page ->
             val photo = resolvePhoto(page) ?: return@HorizontalPager
 
-            // Shared element scope matching
             val sharedMod: Modifier = if (
                 sharedTransitionScope   != null &&
                 animatedVisibilityScope != null &&
@@ -203,7 +196,6 @@ private fun PhotoPager(
                 }
             } else Modifier
 
-            // No 'key' wrapper needed here, the Pager's 'key' parameter handles it cleanly
             val imageRequest = remember(photo.id, photo.uri) {
                 ImageRequest.Builder(context).data(photo.uri).build()
             }
@@ -298,7 +290,7 @@ private fun PhotoPager(
             }
         }
 
-        // ── Subtle loading bar — visible while full list is still loading ──────
+        // ── Subtle loading bar ─────────────────────────────────────────────────
         AnimatedVisibility(
             visible  = !isFullListReady,
             enter    = fadeIn(tween(200)),
@@ -551,8 +543,6 @@ private fun DetailAction(
         Text(label, color = tint.copy(alpha = 0.75f), style = MaterialTheme.typography.labelSmall)
     }
 }
-
-// ── Shared element helpers ─────────────────────────────────────────────────────
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 internal val photosBoundsTransform = BoundsTransform { _, _ ->
