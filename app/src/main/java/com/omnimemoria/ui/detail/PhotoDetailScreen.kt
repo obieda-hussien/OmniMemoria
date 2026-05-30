@@ -63,7 +63,6 @@ fun PhotoDetailScreen(
 
     val haptic          = LocalHapticFeedback.current
     val photoList       by viewModel.photoList.collectAsState()
-    val initialPage     by viewModel.initialPage.collectAsState()
     val isFavorite      by viewModel.isFavorite.collectAsState()
     val isFullListReady by viewModel.isFullListReady.collectAsState()
 
@@ -87,7 +86,6 @@ fun PhotoDetailScreen(
 
     PhotoPager(
         photoList       = photoList,
-        startPage       = initialPage,
         isFullListReady = isFullListReady,
         isFavorite      = isFavorite,
         onBack          = onBack,
@@ -105,7 +103,6 @@ fun PhotoDetailScreen(
 @Composable
 private fun PhotoPager(
     photoList:       List<MediaPhoto>,
-    startPage:       Int,
     isFullListReady: Boolean,
     isFavorite:      Boolean,
     onBack:          () -> Unit,
@@ -116,6 +113,19 @@ private fun PhotoPager(
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
     val context                 = LocalContext.current
 
+    // 1. DYNAMIC INDEXING: نلتقط الصورة الأصلية التي تم الضغط عليها (مرة واحدة فقط)
+    val seedPhoto = remember { photoList.firstOrNull() }
+
+    // 2. نحسب الفهرس الحقيقي مباشرة داخل Compose للقضاء على الـ Race Condition
+    val targetIndex = remember(photoList, isFullListReady, seedPhoto) {
+        if (isFullListReady && seedPhoto != null) {
+            val index = photoList.indexOfFirst { it.id == seedPhoto.id }
+            if (index >= 0) index else 0
+        } else {
+            0
+        }
+    }
+
     val pagerState = rememberPagerState(initialPage = 0) { photoList.size }
     var hasJumped by remember { mutableStateOf(false) }
 
@@ -123,48 +133,46 @@ private fun PhotoPager(
         if (!isFullListReady) hasJumped = false
     }
 
-    // ── THE SYNCHRONIZATION BARRIER (The Ultimate Fix) ──
-    LaunchedEffect(isFullListReady, startPage, photoList.size) {
+    // 3. THE SYNCHRONIZATION BARRIER: نستخدم الفهرس المحسوب ديناميكياً
+    LaunchedEffect(isFullListReady, targetIndex, photoList.size) {
         if (isFullListReady && photoList.isNotEmpty()) {
-            val target = startPage.coerceIn(0, photoList.lastIndex)
-            
-            // 1. حاجز المزامنة: لن نقوم بالقفز أبداً إلا عندما يؤكد الـ Pager أن
-            // حجمه الداخلي قد تتطابق مع الحجم الجديد للقائمة. هذا يمنع خطأ الـ Clamp
-            // الذي كان يجبر الفهرس على العودة إلى الصفر.
             snapshotFlow { pagerState.pageCount }
                 .filter { it == photoList.size }
                 .first()
 
-            // 2. الآن، وبعد أن استوعب الـ Pager حجمه، نقفز بأمان مطلق.
-            if (pagerState.currentPage != target && !pagerState.isScrollInProgress) {
-                pagerState.scrollToPage(target)
+            if (pagerState.currentPage != targetIndex && !pagerState.isScrollInProgress) {
+                pagerState.scrollToPage(targetIndex)
             }
-            
-            // 3. إنهاء حالة التبديل الوهمي
             hasJumped = true
         }
     }
 
-    // ── The Magic Resolver ──
-    val resolvePhoto: (Int) -> MediaPhoto? = remember(photoList, isFullListReady, hasJumped, startPage) {
+    // 4. SEED PINNING RESOLVER: إجبار الصفحة 0 على عرض الصورة الأصلية لحين إتمام القفزة
+    val resolvePhoto: (Int) -> MediaPhoto? = remember(photoList, isFullListReady, hasJumped, targetIndex, seedPhoto) {
         { page ->
             if (photoList.isEmpty()) {
                 null
             } else if (!isFullListReady) {
-                if (page == 0) photoList.firstOrNull() else null
-            } else if (!hasJumped && startPage != 0) {
+                if (page == 0) seedPhoto else null
+            } else if (!hasJumped) {
+                // Gap Frame: القائمة اكتملت لكن الـ Pager ما زال في الصفحة 0
                 when (page) {
-                    0         -> photoList.getOrNull(startPage)
-                    startPage -> photoList.getOrNull(0)
-                    else      -> photoList.getOrNull(page)
+                    0 -> seedPhoto // نثبت الصورة الأصلية في الفهرس 0
+                    targetIndex -> {
+                        // نضع الصورة الموجودة فعلاً في أول القائمة في هذا المكان مؤقتاً لتجنب تكرار المفاتيح
+                        val actualFirst = photoList.firstOrNull()
+                        if (actualFirst?.id == seedPhoto?.id) photoList.getOrNull(page) else actualFirst
+                    }
+                    else -> photoList.getOrNull(page)
                 }
             } else {
+                // بعد القفزة: كل شيء يعود لطبيعته
                 photoList.getOrNull(page)
             }
         }
     }
 
-    val currentPhoto by remember(isFullListReady, hasJumped, startPage, photoList) {
+    val currentPhoto by remember(isFullListReady, hasJumped, targetIndex, photoList) {
         derivedStateOf { resolvePhoto(pagerState.currentPage) }
     }
 
