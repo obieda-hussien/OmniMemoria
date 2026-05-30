@@ -4,6 +4,7 @@ import com.omnimemoria.data.local.db.FavoritePhoto
 import com.omnimemoria.data.local.db.FavoritesDao
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,7 +27,7 @@ class FavoritesRepository @Inject constructor(
 
     /** Emits the full set of favorited photo IDs on every change. */
     fun getAllFavoriteIds(): Flow<Set<Long>> =
-        favoritesDao.getAllFavoriteIds()
+        favoritesDao.getAllFavoriteIds().map { it.toSet() }
 
     /** Emits the current total count of favorites. */
     fun getFavoritesCount(): Flow<Int> =

@@ -28,6 +28,8 @@ import com.omnimemoria.domain.model.SortConfig
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortOrder
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.omnimemoria.data.repository.FavoritesRepository
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -54,7 +56,8 @@ data class MediaStats(
 @Singleton
 class MediaStoreRepository @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val photoIntelligenceDao: PhotoIntelligenceDao
+    private val photoIntelligenceDao: PhotoIntelligenceDao,
+    private val favoritesRepository: FavoritesRepository
 ) {
     private val contentResolver: ContentResolver = context.contentResolver
     private val mediaCollection: Uri = MediaStore.Files.getContentUri("external")
@@ -237,7 +240,7 @@ class MediaStoreRepository @Inject constructor(
     fun getPhotosPaged(sortConfig: SortConfig): Flow<PagingData<MediaPhoto>> = Pager(
         config              = PagingConfig(pageSize = PAGE_SIZE),
         pagingSourceFactory = {
-            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, sortConfig)
+            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, sortConfig, null, favoritesRepository)
         }
     ).flow
 
@@ -249,7 +252,7 @@ class MediaStoreRepository @Inject constructor(
     fun getPhotosByFolder(bucketId: String, sortConfig: SortConfig): Flow<PagingData<MediaPhoto>> = Pager(
         config              = PagingConfig(pageSize = PAGE_SIZE),
         pagingSourceFactory = {
-            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, sortConfig, bucketId)
+            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, sortConfig, bucketId, favoritesRepository)
         }
     ).flow
 
@@ -342,7 +345,8 @@ class MediaStoreRepository @Inject constructor(
         private val contentResolver:      ContentResolver,
         private val photoIntelligenceDao: PhotoIntelligenceDao,
         private val sortConfig:           SortConfig,
-        private val bucketId:             String? = null
+        private val bucketId:             String? = null,
+        private val favoritesRepository:  FavoritesRepository? = null
     ) : PagingSource<Int, MediaPhoto>() {
         private var cachedVaultedIds: Set<Long>? = null
 
@@ -362,7 +366,22 @@ class MediaStoreRepository @Inject constructor(
                     if (chunk.isEmpty()) {
                         endReached = true
                     } else {
-                        pageData += chunk.filterNot { it.id in vaultedIds }
+                        var processedChunk = chunk.filterNot { it.id in vaultedIds }
+                        if (sortConfig.sortBy == SortBy.RESOLUTION) {
+                            processedChunk = if (sortConfig.sortOrder == SortOrder.ASCENDING) {
+                                processedChunk.sortedBy { it.width * it.height }
+                            } else {
+                                processedChunk.sortedByDescending { it.width * it.height }
+                            }
+                        } else if (sortConfig.sortBy == SortBy.FAVORITES_FIRST && favoritesRepository != null) {
+                            val favoriteIds = kotlinx.coroutines.runBlocking { favoritesRepository.getAllFavoriteIds().first() }
+                            processedChunk = if (sortConfig.sortOrder == SortOrder.ASCENDING) {
+                                processedChunk.sortedBy { if (it.id in favoriteIds) 1 else 0 }
+                            } else {
+                                processedChunk.sortedByDescending { if (it.id in favoriteIds) 1 else 0 }
+                            }
+                        }
+                        pageData += processedChunk
                         offset   += chunk.size
                         if (chunk.size < chunkSize) endReached = true
                     }
@@ -423,7 +442,7 @@ class MediaStoreRepository @Inject constructor(
                 SortBy.NAME            -> MediaStore.MediaColumns.DISPLAY_NAME  to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.TYPE            -> MediaStore.MediaColumns.MIME_TYPE     to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.RESOLUTION      -> MediaStore.MediaColumns.WIDTH         to MediaStore.MediaColumns.HEIGHT
-                SortBy.DURATION        -> MediaStore.MediaColumns.DATE_TAKEN    to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.DURATION        -> MediaStore.MediaColumns.DURATION      to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.FAVORITES_FIRST -> MediaStore.MediaColumns.DATE_TAKEN  to MediaStore.MediaColumns.DATE_ADDED
             }
             val sqlDir = when (sc.sortOrder) {
@@ -510,7 +529,7 @@ class MediaStoreRepository @Inject constructor(
                 SortBy.NAME            -> MediaStore.MediaColumns.DISPLAY_NAME  to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.TYPE            -> MediaStore.MediaColumns.MIME_TYPE     to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.RESOLUTION      -> MediaStore.MediaColumns.WIDTH         to MediaStore.MediaColumns.HEIGHT
-                SortBy.DURATION        -> MediaStore.MediaColumns.DATE_TAKEN    to MediaStore.MediaColumns.DATE_ADDED
+                SortBy.DURATION        -> MediaStore.MediaColumns.DURATION      to MediaStore.MediaColumns.DATE_ADDED
                 SortBy.FAVORITES_FIRST ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
                         MediaStore.MediaColumns.IS_FAVORITE to MediaStore.MediaColumns.DATE_TAKEN
