@@ -40,8 +40,6 @@ import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
 import com.omnimemoria.ui.navigation.NavigationSurfaceColor
 import com.omnimemoria.ui.photoSharedKey
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -113,67 +111,34 @@ private fun PhotoPager(
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
     val context                 = LocalContext.current
 
-    // 1. DYNAMIC INDEXING: نلتقط الصورة الأصلية التي تم الضغط عليها (مرة واحدة فقط)
+    // 1. التقاط الصورة الأصلية التي تم الضغط عليها (تعمل كمرجع ثابت)
     val seedPhoto = remember { photoList.firstOrNull() }
 
-    // 2. نحسب الفهرس الحقيقي مباشرة داخل Compose للقضاء على الـ Race Condition
-    val targetIndex = remember(photoList, isFullListReady, seedPhoto) {
-        if (isFullListReady && seedPhoto != null) {
-            val index = photoList.indexOfFirst { it.id == seedPhoto.id }
-            if (index >= 0) index else 0
+    // 2. الجدار المنيع للـ Race Condition (لن نثق بمتغير واحد، يجب اكتمال الاثنين معاً)
+    val isTrulyReady = isFullListReady && photoList.size > 1
+
+    // 3. حساب الفهرس فور وصول القائمة الفعلية الكاملة
+    val targetIndex = remember(photoList, isTrulyReady, seedPhoto) {
+        if (isTrulyReady && seedPhoto != null) {
+            val idx = photoList.indexOfFirst { it.id == seedPhoto.id }
+            if (idx >= 0) idx else 0
         } else {
             0
         }
     }
 
-    val pagerState = rememberPagerState(initialPage = 0) { photoList.size }
-    var hasJumped by remember { mutableStateOf(false) }
-
-    LaunchedEffect(photoList.size) {
-        if (!isFullListReady) hasJumped = false
+    // 4. السحر البرمجي (The Keyed Pager Swap):
+    // استخدام دالة key يخبر Compose بتدمير الـ PagerState القديم بالكامل بمجرد أن تصبح isTrulyReady = true
+    // وبناء واحد جديد يبدأ فوراً وبدون أي أنيميشن أو أوامر قفز (scrollToPage) عند الفهرس الحقيقي.
+    val pagerState = key(isTrulyReady) {
+        rememberPagerState(
+            initialPage = if (isTrulyReady) targetIndex else 0,
+            pageCount   = { photoList.size }
+        )
     }
 
-    // 3. THE SYNCHRONIZATION BARRIER: نستخدم الفهرس المحسوب ديناميكياً
-    LaunchedEffect(isFullListReady, targetIndex, photoList.size) {
-        if (isFullListReady && photoList.isNotEmpty()) {
-            snapshotFlow { pagerState.pageCount }
-                .filter { it == photoList.size }
-                .first()
-
-            if (pagerState.currentPage != targetIndex && !pagerState.isScrollInProgress) {
-                pagerState.scrollToPage(targetIndex)
-            }
-            hasJumped = true
-        }
-    }
-
-    // 4. SEED PINNING RESOLVER: إجبار الصفحة 0 على عرض الصورة الأصلية لحين إتمام القفزة
-    val resolvePhoto: (Int) -> MediaPhoto? = remember(photoList, isFullListReady, hasJumped, targetIndex, seedPhoto) {
-        { page ->
-            if (photoList.isEmpty()) {
-                null
-            } else if (!isFullListReady) {
-                if (page == 0) seedPhoto else null
-            } else if (!hasJumped) {
-                // Gap Frame: القائمة اكتملت لكن الـ Pager ما زال في الصفحة 0
-                when (page) {
-                    0 -> seedPhoto // نثبت الصورة الأصلية في الفهرس 0
-                    targetIndex -> {
-                        // نضع الصورة الموجودة فعلاً في أول القائمة في هذا المكان مؤقتاً لتجنب تكرار المفاتيح
-                        val actualFirst = photoList.firstOrNull()
-                        if (actualFirst?.id == seedPhoto?.id) photoList.getOrNull(page) else actualFirst
-                    }
-                    else -> photoList.getOrNull(page)
-                }
-            } else {
-                // بعد القفزة: كل شيء يعود لطبيعته
-                photoList.getOrNull(page)
-            }
-        }
-    }
-
-    val currentPhoto by remember(isFullListReady, hasJumped, targetIndex, photoList) {
-        derivedStateOf { resolvePhoto(pagerState.currentPage) }
+    val currentPhoto by remember {
+        derivedStateOf { photoList.getOrNull(pagerState.currentPage) }
     }
 
     var showChrome   by remember { mutableStateOf(true) }
@@ -186,10 +151,11 @@ private fun PhotoPager(
             state                   = pagerState,
             modifier                = Modifier.fillMaxSize(),
             beyondViewportPageCount = 1,
-            key                     = { page -> resolvePhoto(page)?.id ?: "empty_$page" }
+            key                     = { page -> photoList.getOrNull(page)?.id ?: "empty_$page" }
         ) { page ->
-            val photo = resolvePhoto(page) ?: return@HorizontalPager
+            val photo = photoList.getOrNull(page) ?: return@HorizontalPager
 
+            // الـ Shared Element يعمل فقط على الصفحة النشطة
             val sharedMod: Modifier = if (
                 sharedTransitionScope   != null &&
                 animatedVisibilityScope != null &&
@@ -300,7 +266,7 @@ private fun PhotoPager(
 
         // ── Subtle loading bar ─────────────────────────────────────────────────
         AnimatedVisibility(
-            visible  = !isFullListReady,
+            visible  = !isTrulyReady && photoList.size == 1,
             enter    = fadeIn(tween(200)),
             exit     = fadeOut(tween(600)),
             modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
