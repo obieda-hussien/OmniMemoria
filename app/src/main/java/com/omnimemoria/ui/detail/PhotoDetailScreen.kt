@@ -70,8 +70,6 @@ fun PhotoDetailScreen(
     }
 
     // ── Loading state — only shown on cache miss (deep link / notification) ───
-    // Normal gallery → detail flow: photoList always has the seed from the cache
-    // set in GalleryViewModel.cacheForDetail(), so this block is never reached.
     if (photoList.isEmpty()) {
         Box(
             modifier         = Modifier.fillMaxSize().background(Color(0xFF090810)),
@@ -86,12 +84,6 @@ fun PhotoDetailScreen(
         return
     }
 
-    // ── Pager — NO key() wrapper ──────────────────────────────────────────────
-    // Previously: key(initialPage, photoList.size) { PhotoPager(...) }
-    // That recreated the entire pager (and its shared-element scope) every time
-    // the list grew from 1 → N, which broke the transition and caused a black
-    // flash. Now the pager is stable; LaunchedEffect inside it handles the
-    // scroll-to-correct-index silently once isFullListReady flips to true.
     PhotoPager(
         photoList       = photoList,
         startPage       = initialPage,
@@ -124,13 +116,29 @@ private fun PhotoPager(
     val context                 = LocalContext.current
 
     // Always initialise at page 0 (the seed photo).
-    // LaunchedEffect below silently jumps to startPage once the full list lands.
     val pagerState = rememberPagerState(initialPage = 0) { photoList.size }
 
+    // ── VIRTUAL SHIFT FIX: Prevent black flash & layout mismatch during list growth ──
+    // If the full list is loaded but pager hasn't jumped to target index yet,
+    // temporarily replace the item at current page (0) with our clicked photo.
+    // This maintains visual continuity and protects the Shared Element Transition perfectly.
+    val displayList = remember(photoList, isFullListReady, startPage, pagerState.currentPage) {
+        if (isFullListReady && pagerState.currentPage != startPage) {
+            val clickedPhoto = photoList.getOrNull(startPage)
+            if (clickedPhoto != null) {
+                photoList.toMutableList().apply {
+                    val current = pagerState.currentPage.coerceIn(0, lastIndex)
+                    this[current] = clickedPhoto
+                }
+            } else {
+                photoList
+            }
+        } else {
+            photoList
+        }
+    }
+
     // ── Silent snap to correct index when full list is ready ──────────────────
-    // scrollToPage() is instant (no animation), so the user never sees it.
-    // It fires after the shared-element transition (~300ms) has completed, while
-    // the user is still looking at the photo they opened — visually seamless.
     LaunchedEffect(isFullListReady, startPage, photoList.size) {
         if (!isFullListReady || photoList.isEmpty()) return@LaunchedEffect
         val target = startPage.coerceIn(0, photoList.lastIndex)
@@ -147,7 +155,8 @@ private fun PhotoPager(
             pagerState.scrollToPage(last)
     }
 
-    val currentPhoto by remember { derivedStateOf { photoList.getOrNull(pagerState.currentPage) } }
+    // Derive active photo from displayList to keep details cards beautifully synced
+    val currentPhoto by remember { derivedStateOf { displayList.getOrNull(pagerState.currentPage) } }
     var showChrome   by remember { mutableStateOf(true) }
     var showMetadata by remember { mutableStateOf(false) }
 
@@ -161,9 +170,9 @@ private fun PhotoPager(
             modifier                = Modifier.fillMaxSize(),
             beyondViewportPageCount = 1
         ) { page ->
-            val photo = photoList.getOrNull(page) ?: return@HorizontalPager
+            val photo = displayList.getOrNull(page) ?: return@HorizontalPager
 
-            // Shared element only for the active page — keeps transition crisp
+            // Shared element matches key on the active page
             val sharedMod: Modifier = if (
                 sharedTransitionScope   != null &&
                 animatedVisibilityScope != null &&
@@ -275,8 +284,6 @@ private fun PhotoPager(
         }
 
         // ── Subtle loading bar — visible while full list is still loading ──────
-        // Shows only briefly after shared-element transition, then disappears.
-        // Tells the user "swipe list not ready yet" without blocking the UI.
         AnimatedVisibility(
             visible  = !isFullListReady,
             enter    = fadeIn(tween(200)),
