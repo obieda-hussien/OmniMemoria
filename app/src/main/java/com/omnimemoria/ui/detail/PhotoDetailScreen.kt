@@ -50,28 +50,27 @@ import java.util.Locale
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun PhotoDetailScreen(
-    photoId:     Long,
-    bucketId:    String? = null,
-    onBack:      () -> Unit,
-    onOpenVideo: (mediaId: Long) -> Unit,
-    viewModel:   PhotoDetailViewModel = hiltViewModel()
+    photoId:        Long,
+    bucketId:       String?  = null,
+    externalUriStr: String?  = null,
+    onBack:         () -> Unit,
+    onOpenVideo:    (mediaId: Long, externalUri: String?) -> Unit,
+    viewModel:      PhotoDetailViewModel = hiltViewModel()
 ) {
     BackHandler(onBack = onBack)
 
-    val haptic      = LocalHapticFeedback.current
-    val photoList   by viewModel.photoList.collectAsState()
-    val initialPage by viewModel.initialPage.collectAsState()
-    val isFavorite  by viewModel.isFavorite.collectAsState()
+    val haptic          = LocalHapticFeedback.current
+    val photoList       by viewModel.photoList.collectAsState()
+    val isFavorite      by viewModel.isFavorite.collectAsState()
+    val isFullListReady by viewModel.isFullListReady.collectAsState()
 
-    LaunchedEffect(photoId, bucketId) {
-        viewModel.loadAllPhotos(photoId, bucketId)
+    LaunchedEffect(photoId, bucketId, externalUriStr) {
+        viewModel.loadAllPhotos(photoId, bucketId, externalUriStr)
     }
 
     if (photoList.isEmpty()) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF090810)),
+            modifier         = Modifier.fillMaxSize().background(Color(0xFF090810)),
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator(
@@ -83,19 +82,17 @@ fun PhotoDetailScreen(
         return
     }
 
-    key(initialPage, photoList.size) {
-        PhotoPager(
-            photoList   = photoList,
-            startPage   = initialPage,
-            isFavorite  = isFavorite,
-            onBack      = onBack,
-            onOpenVideo = onOpenVideo,
-            onFavorite  = { id ->
-                viewModel.toggleFavorite(id)
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            }
-        )
-    }
+    PhotoPager(
+        photoList       = photoList,
+        isFullListReady = isFullListReady,
+        isFavorite      = isFavorite,
+        onBack          = onBack,
+        onOpenVideo     = onOpenVideo,
+        onFavorite      = { id ->
+            viewModel.toggleFavorite(id)
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    )
 }
 
 // ── Pager ─────────────────────────────────────────────────────────────────────
@@ -103,45 +100,64 @@ fun PhotoDetailScreen(
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun PhotoPager(
-    photoList:  List<MediaPhoto>,
-    startPage:  Int,
-    isFavorite: Boolean,
-    onBack:     () -> Unit,
-    onOpenVideo: (mediaId: Long) -> Unit,
-    onFavorite: (Long) -> Unit
+    photoList:       List<MediaPhoto>,
+    isFullListReady: Boolean,
+    isFavorite:      Boolean,
+    onBack:          () -> Unit,
+    onOpenVideo:     (mediaId: Long, externalUri: String?) -> Unit,
+    onFavorite:      (Long) -> Unit
 ) {
     val sharedTransitionScope   = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
     val context                 = LocalContext.current
 
-    val safeStart  = startPage.coerceIn(0, photoList.lastIndex.coerceAtLeast(0))
-    val pagerState = rememberPagerState(initialPage = safeStart) { photoList.size }
+    // 1. التقاط الصورة الأصلية التي تم الضغط عليها (تعمل كمرجع ثابت)
+    val seedPhoto = remember { photoList.firstOrNull() }
 
-    LaunchedEffect(photoList.size) {
-        val last = photoList.lastIndex
-        if (last >= 0 && pagerState.currentPage > last && !pagerState.isScrollInProgress)
-            pagerState.scrollToPage(last)
+    // 2. الجدار المنيع للـ Race Condition (لن نثق بمتغير واحد، يجب اكتمال الاثنين معاً)
+    val isTrulyReady = isFullListReady && photoList.size > 1
+
+    // 3. حساب الفهرس فور وصول القائمة الفعلية الكاملة
+    val targetIndex = remember(photoList, isTrulyReady, seedPhoto) {
+        if (isTrulyReady && seedPhoto != null) {
+            val idx = photoList.indexOfFirst { it.id == seedPhoto.id }
+            if (idx >= 0) idx else 0
+        } else {
+            0
+        }
     }
 
-    val currentPhoto = photoList.getOrNull(pagerState.currentPage)
+    // 4. السحر البرمجي (The Keyed Pager Swap):
+    // استخدام دالة key يخبر Compose بتدمير الـ PagerState القديم بالكامل بمجرد أن تصبح isTrulyReady = true
+    // وبناء واحد جديد يبدأ فوراً وبدون أي أنيميشن أو أوامر قفز (scrollToPage) عند الفهرس الحقيقي.
+    val pagerState = key(isTrulyReady) {
+        rememberPagerState(
+            initialPage = if (isTrulyReady) targetIndex else 0,
+            pageCount   = { photoList.size }
+        )
+    }
+
+    val currentPhoto by remember {
+        derivedStateOf { photoList.getOrNull(pagerState.currentPage) }
+    }
+
     var showChrome   by remember { mutableStateOf(true) }
     var showMetadata by remember { mutableStateOf(false) }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF090810))
+        modifier = Modifier.fillMaxSize().background(Color(0xFF090810))
     ) {
-        // ── Pager ────────────────────────────────────────────────────────────
         HorizontalPager(
-            state               = pagerState,
-            modifier            = Modifier.fillMaxSize(),
-            beyondViewportPageCount = 1
+            state                   = pagerState,
+            modifier                = Modifier.fillMaxSize(),
+            beyondViewportPageCount = 1,
+            key                     = { page -> photoList.getOrNull(page)?.id ?: "empty_$page" }
         ) { page ->
             val photo = photoList.getOrNull(page) ?: return@HorizontalPager
 
+            // الـ Shared Element يعمل فقط على الصفحة النشطة
             val sharedMod: Modifier = if (
-                sharedTransitionScope != null &&
+                sharedTransitionScope   != null &&
                 animatedVisibilityScope != null &&
                 page == pagerState.currentPage
             ) {
@@ -154,54 +170,48 @@ private fun PhotoPager(
                 }
             } else Modifier
 
-            key(photo.id) {
-                val imageRequest = remember(photo.id, photo.uri) {
-                    ImageRequest.Builder(context).data(photo.uri).build()
-                }
-                val mediaMod = Modifier
-                    .fillMaxSize()
-                    .then(sharedMod)
+            val imageRequest = remember(photo.id, photo.uri) {
+                ImageRequest.Builder(context).data(photo.uri).build()
+            }
+            val mediaMod = Modifier.fillMaxSize().then(sharedMod)
 
-                if (photo.mimeType.startsWith("video/", ignoreCase = true)) {
-                    // Video thumbnail + play overlay
-                    Box(modifier = mediaMod.clickable { onOpenVideo(photo.id) }) {
-                        AsyncImage(
-                            model              = imageRequest,
-                            contentDescription = photo.name,
-                            contentScale       = ContentScale.Fit,
-                            modifier           = Modifier.fillMaxSize()
-                        )
-                        // Play button
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(80.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.55f))
-                                .border(1.5.dp, Color.White.copy(alpha = 0.3f), CircleShape)
-                                .clickable { onOpenVideo(photo.id) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector        = Icons.Filled.PlayCircleFilled,
-                                contentDescription = "Play video",
-                                tint               = Color.White,
-                                modifier           = Modifier.size(48.dp)
-                            )
-                        }
-                    }
-                } else {
-                    ZoomableAsyncImage(
+            if (photo.mimeType.startsWith("video/", ignoreCase = true)) {
+                Box(modifier = mediaMod.clickable {
+                    onOpenVideo(photo.id, if (photo.id == -1L) photo.uri.toString() else null)
+                }) {
+                    AsyncImage(
                         model              = imageRequest,
                         contentDescription = photo.name,
-                        modifier           = mediaMod,
-                        onClick            = { showChrome = !showChrome }
+                        contentScale       = ContentScale.Fit,
+                        modifier           = Modifier.fillMaxSize()
                     )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .border(1.5.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                            .clickable {
+                                onOpenVideo(photo.id, if (photo.id == -1L) photo.uri.toString() else null)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.PlayCircleFilled, "Play video",
+                            tint = Color.White, modifier = Modifier.size(48.dp))
+                    }
                 }
+            } else {
+                ZoomableAsyncImage(
+                    model              = imageRequest,
+                    contentDescription = photo.name,
+                    modifier           = mediaMod,
+                    onClick            = { showChrome = !showChrome }
+                )
             }
         }
 
-        // ── Gradient overlays ────────────────────────────────────────────────
+        // ── Gradient overlays ──────────────────────────────────────────────────
         AnimatedVisibility(
             visible  = showChrome,
             enter    = fadeIn(tween(180)),
@@ -209,41 +219,19 @@ private fun PhotoPager(
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                // Top scrim
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                        .align(Alignment.TopCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent)
-                            )
-                        )
-                )
-                // Bottom scrim
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(240.dp)
-                        .align(Alignment.BottomCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
-                            )
-                        )
-                )
+                Box(modifier = Modifier.fillMaxWidth().height(180.dp).align(Alignment.TopCenter)
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent))))
+                Box(modifier = Modifier.fillMaxWidth().height(240.dp).align(Alignment.BottomCenter)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f)))))
             }
         }
 
-        // ── Top bar ──────────────────────────────────────────────────────────
+        // ── Top bar ────────────────────────────────────────────────────────────
         AnimatedVisibility(
             visible  = showChrome,
             enter    = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
             exit     = slideOutVertically(targetOffsetY  = { -it }) + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
         ) {
             DetailTopBar(
                 photo       = currentPhoto,
@@ -253,14 +241,12 @@ private fun PhotoPager(
             )
         }
 
-        // ── Page counter ─────────────────────────────────────────────────────
+        // ── Page counter ───────────────────────────────────────────────────────
         AnimatedVisibility(
             visible  = showChrome && photoList.size > 1,
             enter    = fadeIn(),
             exit     = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 92.dp)
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 92.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -270,41 +256,60 @@ private fun PhotoPager(
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text  = "${pagerState.currentPage + 1} / ${photoList.size}",
-                    color = Color.White.copy(alpha = 0.9f),
-                    style = MaterialTheme.typography.labelSmall,
+                    text       = "${pagerState.currentPage + 1} / ${photoList.size}",
+                    color      = Color.White.copy(alpha = 0.9f),
+                    style      = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Medium
                 )
             }
         }
 
-        // ── Metadata card ────────────────────────────────────────────────────
+        // ── Subtle loading bar ─────────────────────────────────────────────────
+        AnimatedVisibility(
+            visible  = !isTrulyReady && photoList.size == 1,
+            enter    = fadeIn(tween(200)),
+            exit     = fadeOut(tween(600)),
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
+        ) {
+            LinearProgressIndicator(
+                color      = Color(0xFF8B7FF5),
+                trackColor = Color.Transparent,
+                modifier   = Modifier.fillMaxWidth().height(2.dp)
+            )
+        }
+
+        // ── Metadata card ──────────────────────────────────────────────────────
         AnimatedVisibility(
             visible  = showMetadata,
             enter    = slideInVertically { it / 2 } + fadeIn(tween(240)),
             exit     = slideOutVertically { it / 2 } + fadeOut(tween(200)),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
+            modifier = Modifier.align(Alignment.BottomCenter)
                 .padding(bottom = 120.dp, start = 16.dp, end = 16.dp)
         ) {
             PhotoMetadataCard(photo = currentPhoto)
         }
 
-        // ── Bottom actions ───────────────────────────────────────────────────
+        // ── Bottom actions ─────────────────────────────────────────────────────
         AnimatedVisibility(
             visible  = showChrome,
             enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit     = slideOutVertically(targetOffsetY  = { it }) + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
         ) {
             DetailBottomBar(
                 isFavorite = isFavorite,
                 onFavorite = { onFavorite(currentPhoto?.id ?: return@DetailBottomBar) },
-                onShare    = { },
-                onDelete   = { },
-                onEdit     = { }
+                onShare    = {
+                    val shareIntent = android.content.Intent().apply {
+                        action = android.content.Intent.ACTION_SEND
+                        putExtra(android.content.Intent.EXTRA_STREAM, currentPhoto?.uri)
+                        type   = currentPhoto?.mimeType ?: "image/*"
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Media"))
+                },
+                onDelete = { },
+                onEdit   = { }
             )
         }
     }
@@ -329,31 +334,19 @@ private fun DetailTopBar(
             .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(68.dp)
-                .padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth().height(68.dp).padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment     = Alignment.CenterVertically
         ) {
-            // Back button
             Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White.copy(alpha = 0.08f))
-                    .clickable(onClick = onBack),
+                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.08f)).clickable(onClick = onBack),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint               = Color.White,
-                    modifier           = Modifier.size(20.dp)
-                )
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back",
+                    tint = Color.White, modifier = Modifier.size(20.dp))
             }
 
-            // File name
             photo?.name?.let { name ->
                 Text(
                     text       = name.substringBeforeLast('.'),
@@ -362,22 +355,16 @@ private fun DetailTopBar(
                     fontWeight = FontWeight.SemiBold,
                     maxLines   = 1,
                     textAlign  = TextAlign.Center,
-                    modifier   = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 10.dp)
+                    modifier   = Modifier.weight(1f).padding(horizontal = 10.dp)
                 )
             }
 
-            // Info button
             Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(16.dp))
                     .background(
                         if (showingInfo) Color(0xFF8B7FF5).copy(alpha = 0.2f)
                         else Color.White.copy(alpha = 0.08f)
-                    )
-                    .clickable(onClick = onInfo),
+                    ).clickable(onClick = onInfo),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -400,20 +387,15 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
     val dateText = photo?.effectiveDateMs?.takeIf { it > 0 }?.let {
         SimpleDateFormat("EEE, d MMM yyyy  •  h:mm a", Locale.getDefault()).format(Date(it))
     } ?: "Unknown date"
-
     val sizeText = photo?.size?.let { Formatter.formatFileSize(context, it) } ?: "—"
     val resText  = photo?.let {
-        if (it.width > 0 && it.height > 0) "${it.width} × ${it.height}"
-        else "—"
+        if (it.width > 0 && it.height > 0) "${it.width} × ${it.height}" else "—"
     } ?: "—"
     val locationText = if (photo?.latitude != null && photo.longitude != null)
         "%.4f°, %.4f°".format(photo.latitude, photo.longitude)
     else null
-    val format = photo?.mimeType
-        ?.takeIf { it.isNotBlank() }
-        ?.uppercase()
-        ?.replace("IMAGE/", "")
-        ?.replace("VIDEO/", "")
+    val format = photo?.mimeType?.takeIf { it.isNotBlank() }
+        ?.uppercase()?.replace("IMAGE/", "")?.replace("VIDEO/", "")
 
     Column(
         modifier = Modifier
@@ -424,40 +406,23 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        // Header row
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier          = Modifier.padding(bottom = 14.dp)
         ) {
             Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFF8B7FF5).copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Outlined.Info,
-                    null,
-                    tint     = Color(0xFF8B7FF5),
-                    modifier = Modifier.size(15.dp)
-                )
+                Icon(Icons.Outlined.Info, null, tint = Color(0xFF8B7FF5), modifier = Modifier.size(15.dp))
             }
             Spacer(Modifier.width(10.dp))
-            Text(
-                "Photo Details",
-                color         = Color.White.copy(alpha = 0.55f),
-                style         = MaterialTheme.typography.labelMedium,
-                fontWeight    = FontWeight.SemiBold,
-                letterSpacing = 0.8.sp
-            )
+            Text("Photo Details", color = Color.White.copy(alpha = 0.55f),
+                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.8.sp)
         }
-
-        HorizontalDivider(
-            color     = Color.White.copy(alpha = 0.08f),
-            modifier  = Modifier.padding(bottom = 14.dp)
-        )
-
+        HorizontalDivider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(bottom = 14.dp))
         MetaRow(Icons.Outlined.CalendarMonth, "Date",       dateText)
         Spacer(Modifier.height(12.dp))
         MetaRow(Icons.Outlined.SdStorage,     "File Size",  sizeText)
@@ -477,27 +442,13 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
 @Composable
 private fun MetaRow(icon: ImageVector, label: String, value: String) {
     Row(verticalAlignment = Alignment.Top) {
-        Icon(
-            imageVector        = icon,
-            contentDescription = null,
-            tint               = Color(0xFF8B7FF5).copy(alpha = 0.7f),
-            modifier           = Modifier
-                .size(18.dp)
-                .padding(top = 1.dp)
-        )
+        Icon(icon, null, tint = Color(0xFF8B7FF5).copy(alpha = 0.7f),
+            modifier = Modifier.size(18.dp).padding(top = 1.dp))
         Spacer(Modifier.width(12.dp))
         Column {
-            Text(
-                text  = label,
-                color = Color.White.copy(alpha = 0.38f),
-                style = MaterialTheme.typography.labelSmall
-            )
-            Text(
-                text       = value,
-                color      = Color.White.copy(alpha = 0.88f),
-                style      = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium
-            )
+            Text(label, color = Color.White.copy(alpha = 0.38f), style = MaterialTheme.typography.labelSmall)
+            Text(value, color = Color.White.copy(alpha = 0.88f),
+                style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -514,14 +465,9 @@ private fun DetailBottomBar(
 ) {
     val heartScale by animateFloatAsState(
         targetValue   = if (isFavorite) 1.28f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness    = Spring.StiffnessMedium
-        ),
-        label = "heart_scale"
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label         = "heart_scale"
     )
-
-    // Glassmorphism bar
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -533,19 +479,11 @@ private fun DetailBottomBar(
             .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
     ) {
         Row(
-            modifier              = Modifier
-                .fillMaxWidth()
-                .height(68.dp)
-                .padding(horizontal = 8.dp),
+            modifier              = Modifier.fillMaxWidth().height(68.dp).padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment     = Alignment.CenterVertically
         ) {
-            DetailAction(
-                icon    = Icons.Outlined.Share,
-                label   = "Share",
-                tint    = Color.White.copy(alpha = 0.85f),
-                onClick = onShare
-            )
+            DetailAction(Icons.Outlined.Share,  "Share",  Color.White.copy(alpha = 0.85f), onClick = onShare)
             DetailAction(
                 icon    = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                 label   = if (isFavorite) "Saved" else "Save",
@@ -553,18 +491,8 @@ private fun DetailBottomBar(
                 scale   = heartScale,
                 onClick = onFavorite
             )
-            DetailAction(
-                icon    = Icons.Outlined.Edit,
-                label   = "Edit",
-                tint    = Color.White.copy(alpha = 0.85f),
-                onClick = onEdit
-            )
-            DetailAction(
-                icon    = Icons.Outlined.DeleteOutline,
-                label   = "Delete",
-                tint    = Color(0xFFFF6B6B),
-                onClick = onDelete
-            )
+            DetailAction(Icons.Outlined.Edit,          "Edit",   Color.White.copy(alpha = 0.85f), onClick = onEdit)
+            DetailAction(Icons.Outlined.DeleteOutline,  "Delete", Color(0xFFFF6B6B),              onClick = onDelete)
         }
     }
 }
@@ -584,27 +512,13 @@ private fun DetailAction(
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        Icon(
-            imageVector        = icon,
-            contentDescription = label,
-            tint               = tint,
-            modifier           = Modifier.size(24.dp * scale)
-        )
+        Icon(icon, label, tint = tint, modifier = Modifier.size(24.dp * scale))
         Spacer(Modifier.height(4.dp))
-        Text(
-            text  = label,
-            color = tint.copy(alpha = 0.75f),
-            style = MaterialTheme.typography.labelSmall
-        )
+        Text(label, color = tint.copy(alpha = 0.75f), style = MaterialTheme.typography.labelSmall)
     }
 }
 
-// ── Shared element helpers ─────────────────────────────────────────────────────
-
 @OptIn(ExperimentalSharedTransitionApi::class)
 internal val photosBoundsTransform = BoundsTransform { _, _ ->
-    spring(
-        dampingRatio = Spring.DampingRatioLowBouncy,
-        stiffness    = Spring.StiffnessMediumLow
-    )
+    spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
 }

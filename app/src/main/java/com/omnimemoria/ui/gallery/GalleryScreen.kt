@@ -50,7 +50,6 @@ import com.omnimemoria.ui.detail.photosBoundsTransform
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 
-// Selection bar sits above bottom nav pill (80dp) + safe gap (12dp)
 private val SelectionBarBottomPadding = 92.dp
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -74,14 +73,12 @@ fun GalleryScreen(
     val gridState = rememberLazyGridState()
     var showSortFilterSheet by remember { mutableStateOf(false) }
 
-    // Track scroll to compact the top bar
     LaunchedEffect(gridState) {
         snapshotFlow {
             gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 100
         }.collect { compact -> viewModel.setCompactTopBar(compact) }
     }
 
-    // Pinch-to-zoom column switching
     var cumulativeZoom by remember { mutableFloatStateOf(1f) }
     val transformableState = rememberTransformableState { zoomChange, _, _ ->
         cumulativeZoom *= zoomChange
@@ -110,7 +107,6 @@ fun GalleryScreen(
                 .transformable(state = transformableState, lockRotationOnZoomPan = true)
         ) {
 
-            // ── Media count + sort/filter chip ───────────────────────────
             item(span = { GridItemSpan(maxLineSpan) }) {
                 OmniSectionHeader(
                     title = when (currentFilter) {
@@ -126,7 +122,6 @@ fun GalleryScreen(
                 )
             }
 
-            // ── Loading skeletons ────────────────────────────────────────
             if (groupedPhotos.loadState.refresh is LoadState.Loading) {
                 items(count = 30, span = { GridItemSpan(1) }) {
                     SkeletonPhotoCell()
@@ -141,7 +136,7 @@ fun GalleryScreen(
                             null                      -> "placeholder_$index"
                         }
                     },
-                    span  = { index ->
+                    span = { index ->
                         when (groupedPhotos[index]) {
                             is GalleryItem.DateHeader -> GridItemSpan(maxLineSpan)
                             else                      -> GridItemSpan(1)
@@ -164,9 +159,16 @@ fun GalleryScreen(
                                 isSelecting             = isSelecting,
                                 sharedTransitionScope   = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,
-                                onClick     = {
-                                    if (isSelecting) viewModel.toggleSelection(photo.id)
-                                    else onPhotoClick(photo.id)
+                                onClick = {
+                                    if (isSelecting) {
+                                        viewModel.toggleSelection(photo.id)
+                                    } else {
+                                        // ── FIX: cache photo + sync sort/filter BEFORE
+                                        // navigating so PhotoDetailViewModel starts
+                                        // with the correct seed and swipe window ─────
+                                        viewModel.prepareForNavigation(photo)
+                                        onPhotoClick(photo.id)
+                                    }
                                 },
                                 onLongClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -180,7 +182,6 @@ fun GalleryScreen(
             }
         }
 
-        // ── Multi-select bar — now uses shared OmniSelectionBar ──────────
         AnimatedVisibility(
             visible  = isSelecting,
             enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -200,7 +201,6 @@ fun GalleryScreen(
         }
     }
 
-    // ── Sort / filter bottom sheet ───────────────────────────────────────────
     if (showSortFilterSheet) {
         GallerySortFilterSheet(
             currentFilter = currentFilter,
@@ -237,15 +237,15 @@ private fun DateHeaderRow(label: String) {
 @OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 private fun PhotoCell(
-    uri:                    String,
-    photoId:                Long,
-    isVideo:                Boolean,
-    isSelected:             Boolean,
-    isSelecting:            Boolean,
-    sharedTransitionScope:  SharedTransitionScope?,
+    uri:                     String,
+    photoId:                 Long,
+    isVideo:                 Boolean,
+    isSelected:              Boolean,
+    isSelecting:             Boolean,
+    sharedTransitionScope:   SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
-    onClick:                () -> Unit,
-    onLongClick:            () -> Unit
+    onClick:                 () -> Unit,
+    onLongClick:             () -> Unit
 ) {
     val scale by animateFloatAsState(
         targetValue   = if (isSelected) 0.88f else 1f,
@@ -254,7 +254,7 @@ private fun PhotoCell(
     )
 
     val sharedModifier: Modifier = if (
-        sharedTransitionScope != null &&
+        sharedTransitionScope   != null &&
         animatedVisibilityScope != null &&
         !isSelecting
     ) {
@@ -281,7 +281,6 @@ private fun PhotoCell(
                 .then(sharedModifier)
         )
 
-        // Video badge
         if (isVideo) {
             Box(
                 modifier = Modifier
@@ -292,16 +291,11 @@ private fun PhotoCell(
                     .padding(horizontal = 6.dp, vertical = 3.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Filled.PlayArrow,
-                    "Video",
-                    tint     = Color.White,
-                    modifier = Modifier.size(14.dp)
-                )
+                Icon(Icons.Filled.PlayArrow, "Video",
+                    tint = Color.White, modifier = Modifier.size(14.dp))
             }
         }
 
-        // Selection overlay
         AnimatedVisibility(visible = isSelecting, enter = fadeIn(), exit = fadeOut()) {
             Box(
                 modifier = Modifier
@@ -313,13 +307,9 @@ private fun PhotoCell(
             ) {
                 if (isSelected) {
                     Icon(
-                        Icons.Filled.CheckCircle,
-                        "Selected",
+                        Icons.Filled.CheckCircle, "Selected",
                         tint     = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .size(22.dp)
+                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp)
                     )
                 } else {
                     Box(
@@ -361,7 +351,6 @@ private fun SkeletonPhotoCell() {
 }
 
 // ── Sort / filter bottom sheet ─────────────────────────────────────────────────
-// Unified with FolderDetailScreen's sort sheet — same visual language.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -385,35 +374,27 @@ private fun GallerySortFilterSheet(
             modifier            = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                // FIXED: Using valid start/end/top/bottom padding bounds instead of mixing horizontal with vertical components.
                 .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            // Handle
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .width(36.dp)
-                    .height(4.dp)
+                    .width(36.dp).height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(Color(0xFF3A3860))
             )
             Spacer(Modifier.height(20.dp))
 
-            Text(
-                "Filter & Sort",
-                style      = MaterialTheme.typography.titleMedium,
+            Text("Filter & Sort",
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color      = MaterialTheme.colorScheme.onBackground
-            )
+                color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(18.dp))
 
-            // ── Content type ───────────────────────────────────────────
-            Text(
-                "Show",
-                style  = MaterialTheme.typography.labelMedium,
-                color  = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text("Show",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MediaFilter.entries.forEach { target ->
@@ -421,13 +402,11 @@ private fun GallerySortFilterSheet(
                         selected = filterBy == target,
                         onClick  = { filterBy = target },
                         label    = {
-                            Text(
-                                when (target) {
-                                    MediaFilter.ALL         -> "All"
-                                    MediaFilter.PHOTOS_ONLY -> "Photos"
-                                    MediaFilter.VIDEOS_ONLY -> "Videos"
-                                }
-                            )
+                            Text(when (target) {
+                                MediaFilter.ALL         -> "All"
+                                MediaFilter.PHOTOS_ONLY -> "Photos"
+                                MediaFilter.VIDEOS_ONLY -> "Videos"
+                            })
                         },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
@@ -439,12 +418,9 @@ private fun GallerySortFilterSheet(
 
             Spacer(Modifier.height(20.dp))
 
-            // ── Sort by ────────────────────────────────────────────────
-            Text(
-                "Sort by",
-                style  = MaterialTheme.typography.labelMedium,
-                color  = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text("Sort by",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
 
             listOf(
@@ -469,26 +445,20 @@ private fun GallerySortFilterSheet(
                         selected = sortBy == candidate,
                         onClick  = { sortBy = candidate },
                         colors   = RadioButtonDefaults.colors(
-                            selectedColor = MaterialTheme.colorScheme.primary
-                        )
+                            selectedColor = MaterialTheme.colorScheme.primary)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        text  = label,
+                    Text(label,
                         color = MaterialTheme.colorScheme.onBackground,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                        style = MaterialTheme.typography.bodyMedium)
                 }
             }
 
             Spacer(Modifier.height(16.dp))
 
-            // ── Direction ──────────────────────────────────────────────
-            Text(
-                "Direction",
-                style  = MaterialTheme.typography.labelMedium,
-                color  = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text("Direction",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(
@@ -509,7 +479,6 @@ private fun GallerySortFilterSheet(
 
             Spacer(Modifier.height(28.dp))
 
-            // ── Apply button ───────────────────────────────────────────
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -519,12 +488,10 @@ private fun GallerySortFilterSheet(
                     .clickable { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder), filterBy) },
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    "Apply",
-                    color      = Color.White,
+                Text("Apply",
+                    color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    style      = MaterialTheme.typography.titleSmall
-                )
+                    style = MaterialTheme.typography.titleSmall)
             }
         }
     }
