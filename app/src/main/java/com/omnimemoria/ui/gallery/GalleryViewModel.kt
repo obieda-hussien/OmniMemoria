@@ -149,28 +149,30 @@ class GalleryViewModel @Inject constructor(
         _currentFilter
     ) { config, filter -> Pair(config, filter) }
         .flatMapLatest { (config, filter) ->
-            mediaStoreRepository.getPhotosPaged(config).combine(favoriteIds) { pagingData, favIds ->
-                val filteredData = when (filter) {
-                    MediaFilter.ALL         -> pagingData
-                    MediaFilter.PHOTOS_ONLY -> pagingData.filter { !it.mimeType.startsWith("video/", ignoreCase = true) }
-                    MediaFilter.VIDEOS_ONLY -> pagingData.filter {  it.mimeType.startsWith("video/", ignoreCase = true) }
-                }
-                filteredData
-                    .map { photo -> GalleryItem.Photo(photo, isFavorite = photo.id in favIds) as GalleryItem }
-                    .insertSeparators { before, after ->
-                        val bLabel = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
-                        val aLabel = (after  as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
-                        when {
-                            after == null || after !is GalleryItem.Photo -> null
-                            before == null || bLabel != aLabel ->
-                                GalleryItem.DateHeader(
-                                    label         = aLabel ?: "",
-                                    anchorPhotoId = after.photo.id
-                                )
-                            else -> null
-                        }
-                    }
+            mediaStoreRepository.getPhotosPaged(config)
+                .combine(favoriteIds) { pagingData, favIds -> Pair(pagingData, favIds) }
+                .map { (pagingData, favIds) -> Triple(pagingData, favIds, filter) }
+        }.map { (pagingData, favIds, filter) ->
+            val filteredData = when (filter) {
+                MediaFilter.ALL         -> pagingData
+                MediaFilter.PHOTOS_ONLY -> pagingData.filter { !it.mimeType.startsWith("video/", ignoreCase = true) }
+                MediaFilter.VIDEOS_ONLY -> pagingData.filter {  it.mimeType.startsWith("video/", ignoreCase = true) }
             }
+            filteredData
+                .map { photo -> GalleryItem.Photo(photo, isFavorite = photo.id in favIds) as GalleryItem }
+                .insertSeparators { before, after ->
+                    val bLabel = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
+                    val aLabel = (after  as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
+                    when {
+                        after == null || after !is GalleryItem.Photo -> null
+                        before == null || bLabel != aLabel ->
+                            GalleryItem.DateHeader(
+                                label         = aLabel ?: "",
+                                anchorPhotoId = after.photo.id
+                            )
+                        else -> null
+                    }
+                }
         }
         .cachedIn(viewModelScope)
 
