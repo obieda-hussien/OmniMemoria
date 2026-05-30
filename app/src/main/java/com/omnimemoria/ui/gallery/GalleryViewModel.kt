@@ -136,7 +136,7 @@ class GalleryViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, SortConfig())
 
     // ── Favorites ──────────────────────────────────────────────────────────────
-    val favoriteIds: StateFlow<Set<Long>> = favoritesRepository.getAllFavoriteIds()
+    val favoriteIds: StateFlow<Set<Long>> = favoritesRepository.getAllFavoriteIds().map { it.toSet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     // ── UI events channel (one-shot, no replay) ────────────────────────────────
@@ -206,6 +206,9 @@ class GalleryViewModel @Inject constructor(
         _currentFilter.value     = filter
         galleryStateHolder.activeSortConfig.value = config
         galleryStateHolder.activeFilter.value     = filter
+        viewModelScope.launch(Dispatchers.IO) {
+            sortPresetRepository.updateActive(config)
+        }
     }
 
     // ── Favorites ──────────────────────────────────────────────────────────────

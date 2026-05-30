@@ -10,6 +10,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -17,6 +18,12 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.SdStorage
+import androidx.compose.material.icons.outlined.Title
+import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,12 +42,14 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
+import com.omnimemoria.ui.gallery.components.QuickSortBar
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Size
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
 import com.omnimemoria.domain.model.SortOrder
+import com.omnimemoria.domain.model.GroupBy
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
 import com.omnimemoria.ui.photoSharedKey
@@ -123,6 +132,13 @@ fun GalleryScreen(
                     actionIcon  = Icons.Outlined.Tune,
                     onAction    = { showSortFilterSheet = true },
                     modifier    = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                QuickSortBar(
+                    currentSort = sortConfig,
+                    onSortChanged = { config -> viewModel.updateSortAndFilter(config, currentFilter) }
                 )
             }
 
@@ -392,6 +408,7 @@ internal fun GallerySortFilterSheet(
 ) {
     var sortBy    by remember { mutableStateOf(currentSort.sortBy) }
     var sortOrder by remember { mutableStateOf(currentSort.sortOrder) }
+    var groupBy   by remember { mutableStateOf(currentSort.groupBy) }
     var filterBy  by remember { mutableStateOf(currentFilter) }
 
     ModalBottomSheet(
@@ -455,8 +472,13 @@ internal fun GallerySortFilterSheet(
 
             listOf(
                 SortBy.DATE_TAKEN to "Date Taken",
+                SortBy.DATE_MODIFIED to "Date Modified",
+                SortBy.SIZE       to "Storage Size",
                 SortBy.NAME       to "File Name",
-                SortBy.SIZE       to "Storage Size"
+                SortBy.TYPE       to "File Type",
+                SortBy.RESOLUTION to "Resolution",
+                SortBy.DURATION   to "Duration",
+                SortBy.FAVORITES_FIRST to "Favorites First"
             ).forEach { (candidate, label) ->
                 Row(
                     modifier = Modifier
@@ -492,12 +514,38 @@ internal fun GallerySortFilterSheet(
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(
-                    SortOrder.DESCENDING to "Newest / Largest ↓",
-                    SortOrder.ASCENDING  to "Oldest / Smallest ↑"
+                    SortOrder.DESCENDING to "Descending ↓",
+                    SortOrder.ASCENDING  to "Ascending ↑"
                 ).forEach { (ord, lbl) ->
                     FilterChip(
                         selected = sortOrder == ord,
                         onClick  = { sortOrder = ord },
+                        label    = { Text(lbl) },
+                        colors   = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                            selectedLabelColor     = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Text("Group by",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())) {
+                listOf(
+                    null to "None",
+                    GroupBy.DAY to "Day",
+                    GroupBy.MONTH to "Month",
+                    GroupBy.YEAR to "Year",
+                    GroupBy.LOCATION to "Location (requires GPS data)"
+                ).forEach { (candidate, lbl) ->
+                    FilterChip(
+                        selected = groupBy == candidate,
+                        onClick  = { groupBy = candidate },
                         label    = { Text(lbl) },
                         colors   = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
@@ -515,7 +563,7 @@ internal fun GallerySortFilterSheet(
                     .height(52.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.primary)
-                    .clickable { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder), filterBy) },
+                    .clickable { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder, groupBy = groupBy), filterBy) },
                 contentAlignment = Alignment.Center
             ) {
                 Text("Apply",

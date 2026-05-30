@@ -25,7 +25,7 @@ interface FavoritesDao {
     fun isFavorite(photoId: Long): Flow<Boolean>
 
     @Query("SELECT id FROM favorites")
-    fun getAllFavoriteIds(): Flow<Set<Long>>
+    fun getAllFavoriteIds(): Flow<List<Long>>
 
     @Query("SELECT COUNT(*) FROM favorites")
     fun getFavoritesCount(): Flow<Int>

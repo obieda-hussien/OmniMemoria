@@ -76,7 +76,8 @@ enum class HomeTab(val route: String, val label: String, val icon: ImageVector) 
 fun HomeScreen(
     onPhotoClick: (Long) -> Unit,
     onFolderClick: (String) -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onFavoritesClick: () -> Unit
 ) {
     val galleryViewModel: GalleryViewModel = hiltViewModel()
     val mediaStats    by galleryViewModel.mediaStats.collectAsState()
@@ -189,9 +190,9 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier              = Modifier
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, bottom = 12.dp),
+                        .padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment     = Alignment.CenterVertically
                 ) {
@@ -459,7 +460,7 @@ private fun OnThisDayBanner(
         Column(modifier = Modifier.padding(16.dp)) {
             // Header
             Row(
-                modifier              = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment     = Alignment.CenterVertically
             ) {
@@ -594,7 +595,7 @@ private fun FavoritesChip(onClick: () -> Unit) {
         modifier         = Modifier.height(40.dp)
     ) {
         Row(
-            modifier              = Modifier.padding(horizontal = 14.dp, vertical = 0.dp),
+            modifier = Modifier.padding(horizontal = 14.dp),
             verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
