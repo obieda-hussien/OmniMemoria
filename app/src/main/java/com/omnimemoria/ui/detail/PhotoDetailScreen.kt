@@ -69,7 +69,6 @@ fun PhotoDetailScreen(
         viewModel.loadAllPhotos(photoId, bucketId, externalUriStr)
     }
 
-    // ── Loading state — only shown on cache miss (deep link / notification) ───
     if (photoList.isEmpty()) {
         Box(
             modifier         = Modifier.fillMaxSize().background(Color(0xFF090810)),
@@ -115,64 +114,81 @@ private fun PhotoPager(
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
     val context                 = LocalContext.current
 
-    // Always initialise at page 0 (the seed photo).
+    // PagerState always initializes at 0 (the seed photo)
     val pagerState = rememberPagerState(initialPage = 0) { photoList.size }
 
-    // ── VIRTUAL SHIFT FIX: Prevent black flash & layout mismatch during list growth ──
-    // If the full list is loaded but pager hasn't jumped to target index yet,
-    // temporarily replace the item at current page (0) with our clicked photo.
-    // This maintains visual continuity and protects the Shared Element Transition perfectly.
-    val displayList = remember(photoList, isFullListReady, startPage, pagerState.currentPage) {
-        if (isFullListReady && pagerState.currentPage != startPage) {
-            val clickedPhoto = photoList.getOrNull(startPage)
-            if (clickedPhoto != null) {
-                photoList.toMutableList().apply {
-                    val current = pagerState.currentPage.coerceIn(0, lastIndex)
-                    this[current] = clickedPhoto
+    // State to track if the silent jump to the target index has completed
+    var hasJumped by remember { mutableStateOf(false) }
+
+    // Reset jump state if the list empties (e.g., navigating away and back quickly)
+    LaunchedEffect(photoList.size) {
+        if (!isFullListReady) hasJumped = false
+    }
+
+    // ── The Silent Snap ──
+    // When the full list loads, we jump to the target index silently.
+    // We mark hasJumped = true ONLY after the jump is requested.
+    LaunchedEffect(isFullListReady, startPage, photoList.size) {
+        if (isFullListReady && photoList.isNotEmpty()) {
+            val target = startPage.coerceIn(0, photoList.lastIndex)
+            if (pagerState.currentPage != target && !pagerState.isScrollInProgress) {
+                pagerState.scrollToPage(target)
+            }
+            hasJumped = true
+        }
+    }
+
+    // ── The Magic Resolver (Core Fix) ──
+    // This function decides WHICH photo to show for ANY given page index.
+    // It prevents the black flash by performing a "Magic Swap" during the 1-frame gap
+    // before the `scrollToPage` executes, guaranteeing stable Shared Element Keys.
+    val resolvePhoto: (Int) -> MediaPhoto? = remember(photoList, isFullListReady, hasJumped, startPage) {
+        { page ->
+            if (photoList.isEmpty()) {
+                null
+            } else if (!isFullListReady) {
+                // Before full list loads, only page 0 is valid
+                if (page == 0) photoList.firstOrNull() else null
+            } else if (!hasJumped && startPage != 0) {
+                // GAP FRAME: Full list is loaded, but pager is still at page 0.
+                // We swap page 0 and startPage in memory so Compose finds the seed photo
+                // at page 0, and doesn't throw a Duplicate Key exception for startPage.
+                when (page) {
+                    0         -> photoList.getOrNull(startPage)
+                    startPage -> photoList.getOrNull(0)
+                    else      -> photoList.getOrNull(page)
                 }
             } else {
-                photoList
+                // Normal state after jump
+                photoList.getOrNull(page)
             }
-        } else {
-            photoList
         }
     }
 
-    // ── Silent snap to correct index when full list is ready ──────────────────
-    LaunchedEffect(isFullListReady, startPage, photoList.size) {
-        if (!isFullListReady || photoList.isEmpty()) return@LaunchedEffect
-        val target = startPage.coerceIn(0, photoList.lastIndex)
-        if (pagerState.currentPage != target && !pagerState.isScrollInProgress) {
-            pagerState.scrollToPage(target)
-        }
+    // Current photo derived safely without causing Pager recompositions
+    val currentPhoto by remember(isFullListReady, hasJumped, startPage, photoList) {
+        derivedStateOf { resolvePhoto(pagerState.currentPage) }
     }
 
-    // Safety: clamp page if photo was deleted or list shrank
-    LaunchedEffect(photoList.size) {
-        if (photoList.isEmpty()) return@LaunchedEffect
-        val last = photoList.lastIndex
-        if (pagerState.currentPage > last && !pagerState.isScrollInProgress)
-            pagerState.scrollToPage(last)
-    }
-
-    // Derive active photo from displayList to keep details cards beautifully synced
-    val currentPhoto by remember { derivedStateOf { displayList.getOrNull(pagerState.currentPage) } }
     var showChrome   by remember { mutableStateOf(true) }
     var showMetadata by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier.fillMaxSize().background(Color(0xFF090810))
     ) {
-
-        // ── Pager ──────────────────────────────────────────────────────────────
+        // ── Horizontal Pager ───────────────────────────────────────────────────
         HorizontalPager(
             state                   = pagerState,
             modifier                = Modifier.fillMaxSize(),
-            beyondViewportPageCount = 1
+            beyondViewportPageCount = 1,
+            key                     = { page -> 
+                // Stable keys are MANDATORY for Shared Elements to survive the list swap
+                resolvePhoto(page)?.id ?: "empty_$page" 
+            }
         ) { page ->
-            val photo = displayList.getOrNull(page) ?: return@HorizontalPager
+            val photo = resolvePhoto(page) ?: return@HorizontalPager
 
-            // Shared element matches key on the active page
+            // Shared element scope matching
             val sharedMod: Modifier = if (
                 sharedTransitionScope   != null &&
                 animatedVisibilityScope != null &&
@@ -187,46 +203,45 @@ private fun PhotoPager(
                 }
             } else Modifier
 
-            key(photo.id) {
-                val imageRequest = remember(photo.id, photo.uri) {
-                    ImageRequest.Builder(context).data(photo.uri).build()
-                }
-                val mediaMod = Modifier.fillMaxSize().then(sharedMod)
+            // No 'key' wrapper needed here, the Pager's 'key' parameter handles it cleanly
+            val imageRequest = remember(photo.id, photo.uri) {
+                ImageRequest.Builder(context).data(photo.uri).build()
+            }
+            val mediaMod = Modifier.fillMaxSize().then(sharedMod)
 
-                if (photo.mimeType.startsWith("video/", ignoreCase = true)) {
-                    Box(modifier = mediaMod.clickable {
-                        onOpenVideo(photo.id, if (photo.id == -1L) photo.uri.toString() else null)
-                    }) {
-                        AsyncImage(
-                            model              = imageRequest,
-                            contentDescription = photo.name,
-                            contentScale       = ContentScale.Fit,
-                            modifier           = Modifier.fillMaxSize()
-                        )
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(80.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.55f))
-                                .border(1.5.dp, Color.White.copy(alpha = 0.3f), CircleShape)
-                                .clickable {
-                                    onOpenVideo(photo.id, if (photo.id == -1L) photo.uri.toString() else null)
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Filled.PlayCircleFilled, "Play video",
-                                tint = Color.White, modifier = Modifier.size(48.dp))
-                        }
-                    }
-                } else {
-                    ZoomableAsyncImage(
+            if (photo.mimeType.startsWith("video/", ignoreCase = true)) {
+                Box(modifier = mediaMod.clickable {
+                    onOpenVideo(photo.id, if (photo.id == -1L) photo.uri.toString() else null)
+                }) {
+                    AsyncImage(
                         model              = imageRequest,
                         contentDescription = photo.name,
-                        modifier           = mediaMod,
-                        onClick            = { showChrome = !showChrome }
+                        contentScale       = ContentScale.Fit,
+                        modifier           = Modifier.fillMaxSize()
                     )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .border(1.5.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                            .clickable {
+                                onOpenVideo(photo.id, if (photo.id == -1L) photo.uri.toString() else null)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.PlayCircleFilled, "Play video",
+                            tint = Color.White, modifier = Modifier.size(48.dp))
+                    }
                 }
+            } else {
+                ZoomableAsyncImage(
+                    model              = imageRequest,
+                    contentDescription = photo.name,
+                    modifier           = mediaMod,
+                    onClick            = { showChrome = !showChrome }
+                )
             }
         }
 
