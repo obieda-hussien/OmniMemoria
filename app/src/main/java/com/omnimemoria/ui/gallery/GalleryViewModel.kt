@@ -148,11 +148,11 @@ class GalleryViewModel @Inject constructor(
         _localSortConfig.combine(activeSortConfig) { local, repo -> local ?: repo },
         _currentFilter
     ) { config, filter -> Pair(config, filter) }
-        .flatMapLatest { (config, filter) ->
-            mediaStoreRepository.getPhotosPaged(config)
-                .combine(favoriteIds) { pagingData, favIds -> Pair(pagingData, favIds) }
-                .map { (pagingData, favIds) -> Triple(pagingData, favIds, filter) }
-        }.map { (pagingData, favIds, filter) ->
+        .flatMapLatest { (config, _) ->
+            mediaStoreRepository.getPhotosPaged(config).cachedIn(viewModelScope)
+        }
+        .combine(favoriteIds) { pagingData, favIds -> Pair(pagingData, favIds) }
+        .combine(_currentFilter) { (pagingData, favIds), filter ->
             val filteredData = when (filter) {
                 MediaFilter.ALL         -> pagingData
                 MediaFilter.PHOTOS_ONLY -> pagingData.filter { !it.mimeType.startsWith("video/", ignoreCase = true) }
