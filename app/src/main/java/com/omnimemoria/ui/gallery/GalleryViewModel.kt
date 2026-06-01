@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -132,6 +133,8 @@ class GalleryViewModel @Inject constructor(
     val favoriteIds: StateFlow<Set<Long>> = favoritesRepository.getAllFavoriteIds().map { it.toSet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
+    private val mediaStoreVersion = MutableStateFlow(0)
+
     // ── UI events ──────────────────────────────────────────────────────────────
     private val _uiEvents = Channel<GalleryUiEvent>(Channel.BUFFERED)
     val uiEvents: Flow<GalleryUiEvent> = _uiEvents.receiveAsFlow()
@@ -139,8 +142,9 @@ class GalleryViewModel @Inject constructor(
     // ── Paging flow ────────────────────────────────────────────────────────────
     val groupedPhotos: Flow<PagingData<GalleryItem>> = combine(
         _localSortConfig.combine(activeSortConfig) { local, repo -> local ?: repo },
-        _currentFilter
-    ) { config, filter -> Pair(config, filter) }
+        _currentFilter,
+        mediaStoreVersion
+    ) { config, filter, _ -> Pair(config, filter) }
         .flatMapLatest { (config, _) ->
             mediaStoreRepository.getPhotosPaged(config).cachedIn(viewModelScope)
         }
@@ -170,21 +174,22 @@ class GalleryViewModel @Inject constructor(
         .cachedIn(viewModelScope)
 
     init {
-        viewModelScope.launch(Dispatchers.IO) {
-            _mediaStats.value = mediaStoreRepository.getMediaStats()
+        viewModelScope.launch {
+            refreshHomeSummary()
         }
         viewModelScope.launch {
             mediaStoreRepository.observeMediaStoreChanges().collectLatest {
-                _mediaStats.value = mediaStoreRepository.getMediaStats()
+                mediaStoreVersion.update { it + 1 }
+                refreshHomeSummary()
             }
         }
-        viewModelScope.launch(Dispatchers.IO) {
-            val uri = mediaStoreRepository.getMostRecentPhotoUri() ?: return@launch
-            _dynamicAccent.value = mediaStoreRepository.extractDominantColor(uri)
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            _onThisDayPhotos.value = mediaStoreRepository.getPhotosOnThisDay()
-        }
+    }
+
+    private suspend fun refreshHomeSummary() = withContext(Dispatchers.IO) {
+        _mediaStats.value = mediaStoreRepository.getMediaStats()
+        _onThisDayPhotos.value = mediaStoreRepository.getPhotosOnThisDay()
+        val uri = mediaStoreRepository.getMostRecentPhotoUri()
+        _dynamicAccent.value = uri?.let { mediaStoreRepository.extractDominantColor(it) }
     }
 
     // ── Navigation ─────────────────────────────────────────────────────────────
