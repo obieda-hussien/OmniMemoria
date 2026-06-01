@@ -107,6 +107,16 @@ class WorkManagerScheduler @Inject constructor(
         WorkManager.getInstance(context).cancelUniqueWork(TrashWorker.UNIQUE_WORK_NAME)
     }
 
+    // ── On This Day (daily at 9 AM) ───────────────────────────────────────────
+
+    fun scheduleOnThisDay() {
+        OnThisDayWorker.scheduleDaily(context)
+    }
+
+    fun cancelOnThisDay() {
+        OnThisDayWorker.cancel(context)
+    }
+
     companion object {
         const val UNIQUE_IMMEDIATE_WORK_NAME = "omnimemoria_index_immediate"
         const val UNIQUE_PERIODIC_WORK_NAME = "omnimemoria_index_periodic"
