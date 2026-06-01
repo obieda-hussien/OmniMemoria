@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -29,7 +28,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -46,7 +44,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import coil3.compose.AsyncImage
-import com.omnimemoria.data.repository.MediaStats
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.albums.AlbumsScreen
 import com.omnimemoria.ui.gallery.GalleryScreen
@@ -59,10 +56,10 @@ import java.util.Calendar
 // ── Tab definitions ──────────────────────────────────────────────────────────────
 
 enum class HomeTab(val route: String, val label: String, val icon: ImageVector) {
-    GALLERY("home/gallery", "Gallery",  Icons.Outlined.PhotoLibrary),
-    ALBUMS ("home/albums",  "Albums",   Icons.Outlined.GridView),
-    SEARCH ("home/search",  "Search",   Icons.Outlined.Search),
-    VAULT  ("home/vault",   "Vault",    Icons.Outlined.Lock);
+    GALLERY("home/gallery", "Gallery", Icons.Outlined.PhotoLibrary),
+    ALBUMS("home/albums", "Albums", Icons.Outlined.GridView),
+    SEARCH("home/search", "Search", Icons.Outlined.Search),
+    VAULT("home/vault", "Vault", Icons.Outlined.Lock);
 
     companion object {
         fun fromRoute(route: String?): HomeTab =
@@ -77,13 +74,14 @@ fun HomeScreen(
     onPhotoClick: (Long) -> Unit,
     onFolderClick: (String) -> Unit,
     onSettingsClick: () -> Unit,
-    onFavoritesClick: () -> Unit
+    onFavoritesClick: () -> Unit,
+    onTrashClick: () -> Unit // ← new
 ) {
     val galleryViewModel: GalleryViewModel = hiltViewModel()
-    val mediaStats    by galleryViewModel.mediaStats.collectAsState()
+    val mediaStats by galleryViewModel.mediaStats.collectAsState()
     val dynamicAccent by galleryViewModel.dynamicAccent.collectAsState()
     val compactTopBar by galleryViewModel.compactTopBar.collectAsState()
-    val context        = LocalContext.current
+    val context = LocalContext.current
 
     val totalFormattedSize = remember(mediaStats.totalSizeBytes) {
         Formatter.formatShortFileSize(context, mediaStats.totalSizeBytes)
@@ -95,13 +93,13 @@ fun HomeScreen(
         Formatter.formatShortFileSize(context, mediaStats.videoSizeBytes)
     }
 
-    val homeNavController  = rememberNavController()
-    val navBackStackEntry  by homeNavController.currentBackStackEntryAsState()
-    val currentDestination  = navBackStackEntry?.destination
-    val currentTab          = HomeTab.fromRoute(currentDestination?.route)
+    val homeNavController = rememberNavController()
+    val navBackStackEntry by homeNavController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+    val currentTab = HomeTab.fromRoute(currentDestination?.route)
 
-    var showSmartSheet    by rememberSaveable { mutableStateOf(false) }
-    var showOnThisDay     by rememberSaveable { mutableStateOf(true) }
+    var showSmartSheet by rememberSaveable { mutableStateOf(false) }
+    var showOnThisDay by rememberSaveable { mutableStateOf(true) }
 
     Box(
         modifier = Modifier
@@ -110,9 +108,9 @@ fun HomeScreen(
     ) {
         // ── Main content ─────────────────────────────────────────────────────
         NavHost(
-            navController    = homeNavController,
+            navController = homeNavController,
             startDestination = HomeTab.GALLERY.route,
-            modifier         = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize(),
             enterTransition = { fadeIn(tween(200)) },
             exitTransition = { fadeOut(tween(200)) },
             popEnterTransition = { fadeIn(tween(200)) },
@@ -145,22 +143,22 @@ fun HomeScreen(
 
         // ── Floating Top Bar ─────────────────────────────────────────────────
         OmniTopBar(
-            photoCount          = mediaStats.photoCount,
-            videoCount          = mediaStats.videoCount,
+            photoCount = mediaStats.photoCount,
+            videoCount = mediaStats.videoCount,
             photosFormattedSize = photosFormattedSize,
             videosFormattedSize = videosFormattedSize,
-            totalFormattedSize  = totalFormattedSize,
-            albumCount          = mediaStats.albumCount,
-            isLoading           = mediaStats.totalCount == 0 && mediaStats.totalSizeBytes == 0L,
-            dynamicAccent       = dynamicAccent,
-            compactMode         = compactTopBar || currentTab != HomeTab.GALLERY,
-            onSettingsClick     = onSettingsClick,
-            modifier            = Modifier.align(Alignment.TopCenter)
+            totalFormattedSize = totalFormattedSize,
+            albumCount = mediaStats.albumCount,
+            isLoading = mediaStats.totalCount == 0 && mediaStats.totalSizeBytes == 0L,
+            dynamicAccent = dynamicAccent,
+            compactMode = compactTopBar || currentTab != HomeTab.GALLERY,
+            onSettingsClick = onSettingsClick,
+            modifier = Modifier.align(Alignment.TopCenter)
         )
 
         // ── Bottom area ──────────────────────────────────────────────────────
         Column(
-            modifier           = Modifier
+            modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.End
@@ -168,15 +166,15 @@ fun HomeScreen(
             // On This Day
             AnimatedVisibility(
                 visible = showOnThisDay && currentTab == HomeTab.GALLERY,
-                enter   = slideInVertically { it } + fadeIn(),
-                exit    = slideOutVertically { it } + fadeOut(),
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 8.dp)
             ) {
                 OnThisDayBanner(
-                    memories  = galleryViewModel.onThisDayPhotos.collectAsState().value,
+                    memories = galleryViewModel.onThisDayPhotos.collectAsState().value,
                     onDismiss = { showOnThisDay = false },
                     onPhotoClick = onPhotoClick
                 )
@@ -184,9 +182,9 @@ fun HomeScreen(
 
             // Smart FAB + Favorites chip
             AnimatedVisibility(
-                visible  = currentTab == HomeTab.GALLERY,
-                enter    = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
-                exit     = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
+                visible = currentTab == HomeTab.GALLERY,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -194,11 +192,11 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment     = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     FavoritesChip(onClick = onFavoritesClick)
                     SmartFab(
-                        accent  = dynamicAccent,
+                        accent = dynamicAccent,
                         onClick = { showSmartSheet = true }
                     )
                 }
@@ -206,13 +204,13 @@ fun HomeScreen(
 
             OmniBottomNav(
                 currentDestination = currentDestination,
-                onTabSelected      = { tab ->
+                onTabSelected = { tab ->
                     homeNavController.navigate(tab.route) {
                         popUpTo(homeNavController.graph.findStartDestination().id) {
                             saveState = true
                         }
                         launchSingleTop = true
-                        restoreState    = true
+                        restoreState = true
                     }
                 }
             )
@@ -220,7 +218,13 @@ fun HomeScreen(
     }
 
     if (showSmartSheet) {
-        SmartActionsSheet(onDismiss = { showSmartSheet = false })
+        SmartActionsSheet(
+            onDismiss = { showSmartSheet = false },
+            onTrashClick = {
+                showSmartSheet = false
+                onTrashClick()
+            }
+        )
     }
 }
 
@@ -228,22 +232,22 @@ fun HomeScreen(
 
 @Composable
 private fun OmniTopBar(
-    photoCount:          Int,
-    videoCount:          Int,
+    photoCount: Int,
+    videoCount: Int,
     photosFormattedSize: String,
     videosFormattedSize: String,
-    totalFormattedSize:  String,
-    albumCount:          Int,
-    isLoading:           Boolean,
-    dynamicAccent:       Color?,
-    compactMode:         Boolean,
-    onSettingsClick:     () -> Unit,
-    modifier:            Modifier = Modifier
+    totalFormattedSize: String,
+    albumCount: Int,
+    isLoading: Boolean,
+    dynamicAccent: Color?,
+    compactMode: Boolean,
+    onSettingsClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val accentAlpha by animateFloatAsState(
-        targetValue   = if (dynamicAccent != null) 0.18f else 0f,
+        targetValue = if (dynamicAccent != null) 0.18f else 0f,
         animationSpec = tween(800),
-        label         = "accent_alpha"
+        label = "accent_alpha"
     )
 
     val gradientColors = buildList {
@@ -261,33 +265,33 @@ private fun OmniTopBar(
             .statusBarsPadding()
             .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment     = Alignment.Top
+        verticalAlignment = Alignment.Top
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text          = "OMNIMEMORIA",
-                style         = MaterialTheme.typography.labelSmall,
-                color         = dynamicAccent?.let {
+                text = "OMNIMEMORIA",
+                style = MaterialTheme.typography.labelSmall,
+                color = dynamicAccent?.let {
                     if (it.luminance() > 0.5f) it.copy(alpha = 0.8f)
                     else MaterialTheme.colorScheme.primary
                 } ?: MaterialTheme.colorScheme.primary,
-                fontWeight    = FontWeight.ExtraBold,
+                fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 3.sp
             )
             Spacer(modifier = Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector        = Icons.Outlined.AutoAwesome,
+                    imageVector = Icons.Outlined.AutoAwesome,
                     contentDescription = null,
-                    tint               = MaterialTheme.colorScheme.onBackground,
-                    modifier           = Modifier.size(20.dp)
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(7.dp))
                 Text(
-                    text       = dynamicGreeting(),
-                    style      = MaterialTheme.typography.titleLarge,
+                    text = dynamicGreeting(),
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color      = MaterialTheme.colorScheme.onBackground
+                    color = MaterialTheme.colorScheme.onBackground
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -295,7 +299,7 @@ private fun OmniTopBar(
             else {
                 AnimatedVisibility(
                     visible = !isLoading && !compactMode,
-                    enter   = fadeIn(tween(400)) + expandVertically()
+                    enter = fadeIn(tween(400)) + expandVertically()
                 ) {
                     StatsChipsRow(
                         photoCount = photoCount,
@@ -320,7 +324,7 @@ private fun OmniTopBar(
         Spacer(modifier = Modifier.width(12.dp))
 
         IconButton(
-            onClick  = onSettingsClick,
+            onClick = onSettingsClick,
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
                 .background(
@@ -330,10 +334,10 @@ private fun OmniTopBar(
                 .size(44.dp)
         ) {
             Icon(
-                imageVector        = Icons.Outlined.Settings,
+                imageVector = Icons.Outlined.Settings,
                 contentDescription = "Settings",
-                tint               = MaterialTheme.colorScheme.primary,
-                modifier           = Modifier.size(22.dp)
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
             )
         }
     }
@@ -343,17 +347,29 @@ private fun OmniTopBar(
 
 @Composable
 private fun StatsChipsRow(
-    photoCount:          Int,
-    videoCount:          Int,
+    photoCount: Int,
+    videoCount: Int,
     photosFormattedSize: String,
     videosFormattedSize: String,
-    totalFormattedSize:  String,
-    albumCount:          Int,
-    accent:              Color?
+    totalFormattedSize: String,
+    albumCount: Int,
+    accent: Color?
 ) {
-    val animatedPhotos by animateIntAsState(targetValue = photoCount, animationSpec = tween(600), label = "count_photos")
-    val animatedVideos by animateIntAsState(targetValue = videoCount, animationSpec = tween(600), label = "count_videos")
-    val animatedAlbums by animateIntAsState(targetValue = albumCount, animationSpec = tween(600), label = "count_albums")
+    val animatedPhotos by animateIntAsState(
+        targetValue = photoCount,
+        animationSpec = tween(600),
+        label = "count_photos"
+    )
+    val animatedVideos by animateIntAsState(
+        targetValue = videoCount,
+        animationSpec = tween(600),
+        label = "count_videos"
+    )
+    val animatedAlbums by animateIntAsState(
+        targetValue = albumCount,
+        animationSpec = tween(600),
+        label = "count_albums"
+    )
 
     val chipBg = accent?.copy(alpha = 0.15f)
         ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -363,20 +379,20 @@ private fun StatsChipsRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.horizontalScroll(rememberScrollState())
     ) {
-        StatChip(Icons.Outlined.Image,     "$animatedPhotos Photos",       chipBg, iconTint)
-        StatChip(Icons.Outlined.Videocam,  "$animatedVideos Videos",       chipBg, iconTint)
-        StatChip(Icons.Outlined.Image,     "Photos $photosFormattedSize",  chipBg, iconTint)
-        StatChip(Icons.Outlined.VideoFile, "Videos $videosFormattedSize",  chipBg, iconTint)
-        StatChip(Icons.Outlined.SdStorage, "Total $totalFormattedSize",    chipBg, iconTint)
-        StatChip(Icons.Outlined.GridView,  "$animatedAlbums Albums",       chipBg, iconTint)
+        StatChip(Icons.Outlined.Image, "$animatedPhotos Photos", chipBg, iconTint)
+        StatChip(Icons.Outlined.Videocam, "$animatedVideos Videos", chipBg, iconTint)
+        StatChip(Icons.Outlined.Image, "Photos $photosFormattedSize", chipBg, iconTint)
+        StatChip(Icons.Outlined.VideoFile, "Videos $videosFormattedSize", chipBg, iconTint)
+        StatChip(Icons.Outlined.SdStorage, "Total $totalFormattedSize", chipBg, iconTint)
+        StatChip(Icons.Outlined.GridView, "$animatedAlbums Albums", chipBg, iconTint)
     }
 }
 
 @Composable
 private fun StatChip(
-    icon:     ImageVector,
-    label:    String,
-    bg:       Color,
+    icon: ImageVector,
+    label: String,
+    bg: Color,
     iconTint: Color
 ) {
     Row(
@@ -389,9 +405,9 @@ private fun StatChip(
         Icon(icon, null, tint = iconTint, modifier = Modifier.size(13.dp))
         Spacer(modifier = Modifier.width(4.dp))
         Text(
-            text       = label,
-            style      = MaterialTheme.typography.labelSmall,
-            color      = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.Medium
         )
     }
@@ -403,10 +419,10 @@ private fun StatChip(
 private fun StatsShimmerRow() {
     val alpha by rememberInfiniteTransition(label = "shimmer")
         .animateFloat(
-            initialValue   = 0.2f,
-            targetValue    = 0.5f,
-            animationSpec  = infiniteRepeatable(
-                animation  = tween(900, easing = FastOutSlowInEasing),
+            initialValue = 0.2f,
+            targetValue = 0.5f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             ),
             label = "shimmer_a"
@@ -415,7 +431,8 @@ private fun StatsShimmerRow() {
         listOf(64.dp, 72.dp, 90.dp).forEach { w ->
             Box(
                 modifier = Modifier
-                    .width(w).height(24.dp)
+                    .width(w)
+                    .height(24.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha))
             )
@@ -427,8 +444,8 @@ private fun StatsShimmerRow() {
 
 @Composable
 private fun OnThisDayBanner(
-    memories:    List<MediaPhoto>,
-    onDismiss:   () -> Unit,
+    memories: List<MediaPhoto>,
+    onDismiss: () -> Unit,
     onPhotoClick: (Long) -> Unit
 ) {
     if (memories.isEmpty()) return
@@ -447,39 +464,39 @@ private fun OnThisDayBanner(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment     = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector        = Icons.Outlined.CalendarMonth,
+                        imageVector = Icons.Outlined.CalendarMonth,
                         contentDescription = null,
-                        tint               = Color.White.copy(alpha = 0.9f),
-                        modifier           = Modifier.size(18.dp)
+                        tint = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text       = "On This Day",
-                            style      = MaterialTheme.typography.titleSmall,
+                            text = "On This Day",
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color      = Color.White
+                            color = Color.White
                         )
                         Text(
-                            text  = "${memories.size} memor${if (memories.size > 1) "ies" else "y"} from the past",
+                            text = "${memories.size} memor${if (memories.size > 1) "ies" else "y"} from the past",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.7f)
                         )
                     }
                 }
                 IconButton(
-                    onClick  = onDismiss,
+                    onClick = onDismiss,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
-                        imageVector        = Icons.Outlined.Close,
+                        imageVector = Icons.Outlined.Close,
                         contentDescription = "Dismiss",
-                        tint               = Color.White.copy(alpha = 0.7f),
-                        modifier           = Modifier.size(18.dp)
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -512,10 +529,10 @@ private fun OnThisDayThumb(photo: MediaPhoto, onPhotoClick: (Long) -> Unit) {
             .clickable { onPhotoClick(photo.id) }
     ) {
         AsyncImage(
-            model              = photo.uri,
+            model = photo.uri,
             contentDescription = null,
-            contentScale       = ContentScale.Crop,
-            modifier           = Modifier.fillMaxSize()
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
         )
         Box(
             modifier = Modifier
@@ -530,9 +547,9 @@ private fun OnThisDayThumb(photo: MediaPhoto, onPhotoClick: (Long) -> Unit) {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text      = year,
-                style     = MaterialTheme.typography.labelSmall,
-                color     = Color.White,
+                text = year,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
@@ -548,11 +565,11 @@ private fun SmartFab(accent: Color?, onClick: () -> Unit) {
     val contentColor = if (fabColor.luminance() > 0.5f) Color(0xFF1A1A2E) else Color.White
 
     ExtendedFloatingActionButton(
-        onClick        = onClick,
+        onClick = onClick,
         containerColor = fabColor,
-        contentColor   = contentColor,
-        shape          = RoundedCornerShape(18.dp),
-        elevation      = FloatingActionButtonDefaults.elevation(6.dp, 2.dp)
+        contentColor = contentColor,
+        shape = RoundedCornerShape(18.dp),
+        elevation = FloatingActionButtonDefaults.elevation(6.dp, 2.dp)
     ) {
         Icon(Icons.Outlined.AutoAwesome, null, modifier = Modifier.size(20.dp))
         Spacer(modifier = Modifier.width(8.dp))
@@ -566,28 +583,28 @@ private fun SmartFab(accent: Color?, onClick: () -> Unit) {
 private fun FavoritesChip(onClick: () -> Unit) {
     val rose = Color(0xFFFF4B6E)
     Surface(
-        onClick          = onClick,
-        shape            = RoundedCornerShape(20.dp),
-        color            = rose.copy(alpha = 0.15f),
-        tonalElevation   = 0.dp,
-        shadowElevation  = 4.dp,
-        modifier         = Modifier.height(40.dp)
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = rose.copy(alpha = 0.15f),
+        tonalElevation = 0.dp,
+        shadowElevation = 4.dp,
+        modifier = Modifier.height(40.dp)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp),
-            verticalAlignment     = Alignment.CenterVertically,
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Icon(
-                imageVector        = Icons.Filled.Favorite,
+                imageVector = Icons.Filled.Favorite,
                 contentDescription = null,
-                tint               = rose,
-                modifier           = Modifier.size(15.dp)
+                tint = rose,
+                modifier = Modifier.size(15.dp)
             )
             Text(
-                text       = "Favorites",
-                style      = MaterialTheme.typography.labelLarge,
-                color      = rose,
+                text = "Favorites",
+                style = MaterialTheme.typography.labelLarge,
+                color = rose,
                 fontWeight = FontWeight.SemiBold
             )
         }
@@ -599,28 +616,28 @@ private fun FavoritesChip(onClick: () -> Unit) {
 @Composable
 private fun OmniBottomNav(
     currentDestination: NavDestination?,
-    onTabSelected:      (HomeTab) -> Unit
+    onTabSelected: (HomeTab) -> Unit
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
             .navigationBarsPadding()
-            .padding(bottom     = 12.dp)
+            .padding(bottom = 12.dp)
             .clip(RoundedCornerShape(32.dp))
             .background(NavigationSurfaceColor)
     ) {
         NavigationBar(
             containerColor = Color.Transparent,
             tonalElevation = 0.dp,
-            modifier       = Modifier.height(68.dp)
+            modifier = Modifier.height(68.dp)
         ) {
             HomeTab.entries.forEach { tab ->
                 val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
                 NavigationBarItem(
                     selected = selected,
-                    onClick  = { onTabSelected(tab) },
-                    icon     = {
+                    onClick = { onTabSelected(tab) },
+                    icon = {
                         val scale by animateFloatAsState(
                             targetValue = if (selected) 1.15f else 1f,
                             animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
@@ -629,14 +646,14 @@ private fun OmniBottomNav(
                         Icon(
                             imageVector = when (tab) {
                                 HomeTab.GALLERY -> if (selected) Icons.Filled.PhotoLibrary else Icons.Outlined.PhotoLibrary
-                                HomeTab.ALBUMS  -> if (selected) Icons.Filled.GridView     else Icons.Outlined.GridView
-                                HomeTab.SEARCH  -> if (selected) Icons.Filled.Search       else Icons.Outlined.Search
-                                HomeTab.VAULT   -> if (selected) Icons.Filled.Lock         else Icons.Outlined.Lock
+                                HomeTab.ALBUMS -> if (selected) Icons.Filled.GridView else Icons.Outlined.GridView
+                                HomeTab.SEARCH -> if (selected) Icons.Filled.Search else Icons.Outlined.Search
+                                HomeTab.VAULT -> if (selected) Icons.Filled.Lock else Icons.Outlined.Lock
                             },
                             contentDescription = tab.label,
                             modifier = Modifier.size(if (selected) 24.dp else 22.dp).scale(scale),
                             tint = if (selected) MaterialTheme.colorScheme.primary
-                                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                     },
                     label = {
@@ -646,8 +663,8 @@ private fun OmniBottomNav(
                     },
                     alwaysShowLabel = false,
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor   = MaterialTheme.colorScheme.primary,
-                        indicatorColor      = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
                         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 )
@@ -659,24 +676,40 @@ private fun OmniBottomNav(
 // ── Smart Actions Sheet ───────────────────────────────────────────────────────────
 
 private data class SmartActionItem(
-    val icon: ImageVector, val title: String, val subtitle: String, val color: Color
-)
-
-private val SmartActionItems = listOf(
-    SmartActionItem(Icons.Outlined.Compress,    "Smart Compress",  "Free up space intelligently",    Color(0xFF8B7FF5)),
-    SmartActionItem(Icons.Outlined.ContentCopy, "Photo DNA",       "Find & remove duplicates",       Color(0xFFFFB300)),
-    SmartActionItem(Icons.Outlined.Refresh,     "Re-Index",        "Rebuild photo intelligence",     Color(0xFFFF5252)),
-    SmartActionItem(Icons.Outlined.BarChart,    "Memoria Stats",   "Visualize your memory patterns", Color(0xFF7C4DFF))
+    val icon: ImageVector,
+    val title: String,
+    val subtitle: String,
+    val color: Color,
+    val dismissOnClick: Boolean = true, // ← new: easier than comparing lambdas
+    val onClick: () -> Unit = {} // ← new: callback لكل action
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SmartActionsSheet(onDismiss: () -> Unit) {
+private fun SmartActionsSheet(
+    onDismiss: () -> Unit,
+    onTrashClick: () -> Unit // ← new
+) {
+    val items = listOf(
+        SmartActionItem(
+            icon = Icons.Outlined.Delete,
+            title = "Recycle Bin",
+            subtitle = "Manage deleted photos",
+            color = Color(0xFFFF6B6B),
+            dismissOnClick = true,
+            onClick = onTrashClick
+        ),
+        SmartActionItem(Icons.Outlined.Compress, "Smart Compress", "Free up space intelligently", Color(0xFF8B7FF5)),
+        SmartActionItem(Icons.Outlined.ContentCopy, "Photo DNA", "Find & remove duplicates", Color(0xFFFFB300)),
+        SmartActionItem(Icons.Outlined.Refresh, "Re-Index", "Rebuild photo intelligence", Color(0xFFFF5252)),
+        SmartActionItem(Icons.Outlined.BarChart, "Memoria Stats", "Visualize your memory patterns", Color(0xFF7C4DFF))
+    )
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor   = MaterialTheme.colorScheme.surface,
-        shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
         Column(
             modifier = Modifier
@@ -697,7 +730,7 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
                 ) {
                     Icon(
                         Icons.Outlined.AutoAwesome, null,
-                        tint     = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -705,7 +738,7 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
                 Column {
                     Text(
                         "Smart Actions",
-                        style      = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
@@ -716,14 +749,17 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
                 }
             }
 
-            SmartActionItems.forEach { item ->
+            items.forEach { item ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 8.dp)
                         .clip(RoundedCornerShape(18.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-                        .clickable { onDismiss() }
+                        .clickable {
+                            item.onClick()
+                            if (item.dismissOnClick) onDismiss()
+                        }
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -742,12 +778,12 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
                         Text(
                             item.subtitle,
                             fontSize = 13.sp,
-                            color    = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Icon(
                         Icons.Outlined.ChevronRight, null,
-                        tint     = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -760,10 +796,10 @@ private fun SmartActionsSheet(onDismiss: () -> Unit) {
 
 private fun dynamicGreeting(): String {
     return when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
-        in 0..5   -> "Good Night 🌙"
-        in 6..11  -> "Good Morning ☀️"
+        in 0..5 -> "Good Night 🌙"
+        in 6..11 -> "Good Morning ☀️"
         in 12..16 -> "Good Afternoon 🌤"
         in 17..20 -> "Good Evening 🌆"
-        else      -> "Good Night 🌙"
+        else -> "Good Night 🌙"
     }
 }
