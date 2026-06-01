@@ -138,12 +138,12 @@ fun HomeScreen(
                     onOpenSettings = onSettingsClick
                 )
             }
-            composable(HomeTab.VAULT.route)   {
+            composable(HomeTab.VAULT.route) {
                 VaultTabScreen(onGoToSettings = onSettingsClick)
             }
         }
 
-        // ── Floating Top Bar (Dynamic accent tints the gradient) ─────────────
+        // ── Floating Top Bar ─────────────────────────────────────────────────
         OmniTopBar(
             photoCount          = mediaStats.photoCount,
             videoCount          = mediaStats.videoCount,
@@ -158,14 +158,14 @@ fun HomeScreen(
             modifier            = Modifier.align(Alignment.TopCenter)
         )
 
-        // ── Bottom area: On This Day card (dismissible) + FAB + BottomNav ────
+        // ── Bottom area ──────────────────────────────────────────────────────
         Column(
             modifier           = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.End
         ) {
-            // On This Day — بيظهر فوق الـ FAB
+            // On This Day
             AnimatedVisibility(
                 visible = showOnThisDay && currentTab == HomeTab.GALLERY,
                 enter   = slideInVertically { it } + fadeIn(),
@@ -182,7 +182,7 @@ fun HomeScreen(
                 )
             }
 
-            // Smart FAB + Favorites chip (same row, FAB end / chip start)
+            // Smart FAB + Favorites chip
             AnimatedVisibility(
                 visible  = currentTab == HomeTab.GALLERY,
                 enter    = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
@@ -196,10 +196,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment     = Alignment.CenterVertically
                 ) {
-                    // ── Favorites floating chip ──────────────────────────────
                     FavoritesChip(onClick = onFavoritesClick)
-
-                    // ── Smart FAB ────────────────────────────────────────────
                     SmartFab(
                         accent  = dynamicAccent,
                         onClick = { showSmartSheet = true }
@@ -223,17 +220,11 @@ fun HomeScreen(
     }
 
     if (showSmartSheet) {
-        SmartActionsSheet(
-            onDismiss        = { showSmartSheet = false },
-            onFavoritesClick = {
-                showSmartSheet = false
-                onFavoritesClick()
-            }
-        )
+        SmartActionsSheet(onDismiss = { showSmartSheet = false })
     }
 }
 
-// ── OmniTopBar — Dynamic accent gradient ─────────────────────────────────────────
+// ── OmniTopBar ────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun OmniTopBar(
@@ -249,7 +240,6 @@ private fun OmniTopBar(
     onSettingsClick:     () -> Unit,
     modifier:            Modifier = Modifier
 ) {
-    // اللون المتحرك بـ animation من الـ default للـ dynamic
     val accentAlpha by animateFloatAsState(
         targetValue   = if (dynamicAccent != null) 0.18f else 0f,
         animationSpec = tween(800),
@@ -274,7 +264,6 @@ private fun OmniTopBar(
         verticalAlignment     = Alignment.Top
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            // Brand
             Text(
                 text          = "OMNIMEMORIA",
                 style         = MaterialTheme.typography.labelSmall,
@@ -286,7 +275,6 @@ private fun OmniTopBar(
                 letterSpacing = 3.sp
             )
             Spacer(modifier = Modifier.height(3.dp))
-            // Greeting
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector        = Icons.Outlined.AutoAwesome,
@@ -303,7 +291,6 @@ private fun OmniTopBar(
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
-            // Stats chips
             if (isLoading) StatsShimmerRow()
             else {
                 AnimatedVisibility(
@@ -332,7 +319,6 @@ private fun OmniTopBar(
 
         Spacer(modifier = Modifier.width(12.dp))
 
-        // Settings
         IconButton(
             onClick  = onSettingsClick,
             modifier = Modifier
@@ -377,12 +363,12 @@ private fun StatsChipsRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.horizontalScroll(rememberScrollState())
     ) {
-        StatChip(Icons.Outlined.Image, "$animatedPhotos Photos", chipBg, iconTint)
-        StatChip(Icons.Outlined.Videocam, "$animatedVideos Videos", chipBg, iconTint)
-        StatChip(Icons.Outlined.Image, "Photos $photosFormattedSize", chipBg, iconTint)
-        StatChip(Icons.Outlined.VideoFile, "Videos $videosFormattedSize", chipBg, iconTint)
-        StatChip(Icons.Outlined.SdStorage, "Total $totalFormattedSize", chipBg, iconTint)
-        StatChip(Icons.Outlined.GridView, "$animatedAlbums Albums", chipBg, iconTint)
+        StatChip(Icons.Outlined.Image,     "$animatedPhotos Photos",       chipBg, iconTint)
+        StatChip(Icons.Outlined.Videocam,  "$animatedVideos Videos",       chipBg, iconTint)
+        StatChip(Icons.Outlined.Image,     "Photos $photosFormattedSize",  chipBg, iconTint)
+        StatChip(Icons.Outlined.VideoFile, "Videos $videosFormattedSize",  chipBg, iconTint)
+        StatChip(Icons.Outlined.SdStorage, "Total $totalFormattedSize",    chipBg, iconTint)
+        StatChip(Icons.Outlined.GridView,  "$animatedAlbums Albums",       chipBg, iconTint)
     }
 }
 
@@ -458,7 +444,6 @@ private fun OnThisDayBanner(
             )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -501,13 +486,9 @@ private fun OnThisDayBanner(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Photo thumbnails row
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(memories) { photo ->
-                    OnThisDayThumb(
-                        photo        = photo,
-                        onPhotoClick = onPhotoClick
-                    )
+                    OnThisDayThumb(photo = photo, onPhotoClick = onPhotoClick)
                 }
             }
         }
@@ -536,7 +517,6 @@ private fun OnThisDayThumb(photo: MediaPhoto, onPhotoClick: (Long) -> Unit) {
             contentScale       = ContentScale.Crop,
             modifier           = Modifier.fillMaxSize()
         )
-        // Year badge at bottom
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -565,7 +545,6 @@ private fun OnThisDayThumb(photo: MediaPhoto, onPhotoClick: (Long) -> Unit) {
 @Composable
 private fun SmartFab(accent: Color?, onClick: () -> Unit) {
     val fabColor = accent ?: MaterialTheme.colorScheme.primary
-    // اللون المعكوس — لو الـ accent فاتح يبقى النص داكن والعكس
     val contentColor = if (fabColor.luminance() > 0.5f) Color(0xFF1A1A2E) else Color.White
 
     ExtendedFloatingActionButton(
@@ -650,13 +629,14 @@ private fun OmniBottomNav(
                         Icon(
                             imageVector = when (tab) {
                                 HomeTab.GALLERY -> if (selected) Icons.Filled.PhotoLibrary else Icons.Outlined.PhotoLibrary
-                                HomeTab.ALBUMS -> if (selected) Icons.Filled.GridView else Icons.Outlined.GridView
-                                HomeTab.SEARCH -> if (selected) Icons.Filled.Search else Icons.Outlined.Search
-                                HomeTab.VAULT -> if (selected) Icons.Filled.Lock else Icons.Outlined.Lock
+                                HomeTab.ALBUMS  -> if (selected) Icons.Filled.GridView     else Icons.Outlined.GridView
+                                HomeTab.SEARCH  -> if (selected) Icons.Filled.Search       else Icons.Outlined.Search
+                                HomeTab.VAULT   -> if (selected) Icons.Filled.Lock         else Icons.Outlined.Lock
                             },
                             contentDescription = tab.label,
                             modifier = Modifier.size(if (selected) 24.dp else 22.dp).scale(scale),
-                            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            tint = if (selected) MaterialTheme.colorScheme.primary
+                                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                     },
                     label = {
@@ -691,10 +671,7 @@ private val SmartActionItems = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SmartActionsSheet(
-    onDismiss:        () -> Unit,
-    onFavoritesClick: () -> Unit = {}
-) {
+private fun SmartActionsSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -707,54 +684,36 @@ private fun SmartActionsSheet(
                 .padding(horizontal = 24.dp, vertical = 16.dp)
                 .padding(bottom = 32.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 20.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 20.dp)
+            ) {
                 Box(
-                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Outlined.AutoAwesome, null,
-                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Icon(
+                        Icons.Outlined.AutoAwesome, null,
+                        tint     = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
                 Spacer(modifier = Modifier.width(14.dp))
                 Column {
-                    Text("Smart Actions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("AI-powered tools for your memories",
+                    Text(
+                        "Smart Actions",
+                        style      = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "AI-powered tools for your memories",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-            }
-
-            // ── Favorites shortcut at the top of the sheet ────────────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFFFF4B6E).copy(alpha = 0.12f))
-                    .clickable { onFavoritesClick() }
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier.size(46.dp).clip(RoundedCornerShape(14.dp))
-                        .background(Color(0xFFFF4B6E).copy(alpha = 0.18f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Filled.Favorite, null,
-                        tint     = Color(0xFFFF4B6E),
-                        modifier = Modifier.size(22.dp))
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Favorites", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    Text("Your starred memories",
-                        fontSize = 13.sp,
-                        color    = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Icon(Icons.Outlined.ChevronRight, null,
-                    tint     = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.size(18.dp))
             }
 
             SmartActionItems.forEach { item ->
@@ -769,7 +728,9 @@ private fun SmartActionsSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
-                        modifier = Modifier.size(46.dp).clip(RoundedCornerShape(14.dp))
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(14.dp))
                             .background(item.color.copy(alpha = 0.18f)),
                         contentAlignment = Alignment.Center
                     ) {
@@ -778,11 +739,17 @@ private fun SmartActionsSheet(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(item.title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                        Text(item.subtitle, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            item.subtitle,
+                            fontSize = 13.sp,
+                            color    = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    Icon(Icons.Outlined.ChevronRight, null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Outlined.ChevronRight, null,
+                        tint     = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }
