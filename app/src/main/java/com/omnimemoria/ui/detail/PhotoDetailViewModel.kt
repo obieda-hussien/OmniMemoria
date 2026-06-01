@@ -1,5 +1,6 @@
 package com.omnimemoria.ui.detail
 
+import android.app.PendingIntent
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.provider.MediaStore
@@ -8,26 +9,44 @@ import androidx.lifecycle.viewModelScope
 import com.omnimemoria.data.repository.FavoritesRepository
 import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.data.repository.SortPresetRepository
+import com.omnimemoria.data.repository.TrashRepository
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.gallery.GalleryStateHolder
 import com.omnimemoria.ui.gallery.MediaFilter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+// ── UI Events ─────────────────────────────────────────────────────────────────
+
+sealed class PhotoDetailUiEvent {
+    data class RequestMediaPermission(
+        val pendingIntent: PendingIntent,
+        val onConfirmed: () -> Unit
+    ) : PhotoDetailUiEvent()
+
+    object NavigateBack : PhotoDetailUiEvent()
+}
+
+// ── ViewModel ─────────────────────────────────────────────────────────────────
+
 @HiltViewModel
 class PhotoDetailViewModel @Inject constructor(
-    private val mediaStoreRepository:  MediaStoreRepository,
-    private val favoritesRepository:   FavoritesRepository,
-    private val sortPresetRepository:  SortPresetRepository,
-    private val galleryStateHolder:    GalleryStateHolder,
+    private val mediaStoreRepository: MediaStoreRepository,
+    private val favoritesRepository:  FavoritesRepository,
+    private val sortPresetRepository: SortPresetRepository,
+    private val galleryStateHolder:   GalleryStateHolder,
+    private val trashRepository:      TrashRepository,          // جديد
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -40,35 +59,22 @@ class PhotoDetailViewModel @Inject constructor(
     private val _isFavorite      = MutableStateFlow(false)
     val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
 
-    /**
-     * false → full list still loading; pager stays on seed
-     * true  → full list ready; pager snaps to correct index via LaunchedEffect
-     */
     private val _isFullListReady = MutableStateFlow(false)
     val isFullListReady: StateFlow<Boolean> = _isFullListReady.asStateFlow()
 
-    // Current photo being viewed — updated as the pager scrolls
-    private var currentPhotoId: Long = -1L
+    private val _uiEvents        = Channel<PhotoDetailUiEvent>(Channel.BUFFERED)
+    val uiEvents: Flow<PhotoDetailUiEvent> = _uiEvents.receiveAsFlow()
 
-    // Job that observes DB favorite state for the current photo
+    private var currentPhotoId: Long = -1L
     private var favoriteObserverJob: kotlinx.coroutines.Job? = null
 
     init {
-        // ── Zero-IO seed: grab the photo the user just tapped ─────────────────
-        // GalleryViewModel / FolderDetailViewModel always call
-        // galleryStateHolder.cachePendingPhoto(photo) before navigating,
-        // so this runs before the first Compose frame → photoList is never
-        // empty on first render → shared-element transition has a target. ✓
         val cached = galleryStateHolder.consumePendingPhoto()
-        if (cached != null) {
-            _photoList.value = listOf(cached)
-        }
+        if (cached != null) _photoList.value = listOf(cached)
     }
 
     fun loadAllPhotos(photoId: Long, bucketId: String?, externalUriStr: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-
-            // ── External URI (share / view intent from outside the app) ────────
             if (externalUriStr != null) {
                 val single = getPhotoFromUri(externalUriStr)
                 if (single != null) {
@@ -79,29 +85,24 @@ class PhotoDetailViewModel @Inject constructor(
                 return@launch
             }
 
-            // ── Seed fallback (only if init() cache-miss: deep link / notification) ─
             if (_photoList.value.isEmpty()) {
                 mediaStoreRepository.getPhotoById(photoId)?.let { seed ->
-                    _photoList.value  = listOf(seed)
+                    _photoList.value   = listOf(seed)
                     _initialPage.value = 0
                 }
             }
 
-            // ── Full list — SAME sort + filter that produced the gallery grid ──
             val sortConfig = galleryStateHolder.activeSortConfig.value
                 .takeIf { it != com.omnimemoria.domain.model.SortConfig() }
                 ?: sortPresetRepository.getCurrentSort().first()
 
             val activeFilter = galleryStateHolder.activeFilter.value
 
-            val rawAll = if (bucketId.isNullOrBlank()) {
+            val rawAll = if (bucketId.isNullOrBlank())
                 mediaStoreRepository.getAllNonVaultPhotos(sortConfig)
-            } else {
+            else
                 mediaStoreRepository.getAllNonVaultPhotosByFolder(bucketId, sortConfig)
-            }
 
-            // Apply the same MediaFilter the gallery was using.
-            // Folder detail always uses ALL (folders show mixed media types).
             val all = rawAll.applyMediaFilter(
                 filter   = if (bucketId.isNullOrBlank()) activeFilter else MediaFilter.ALL,
                 isBucket = !bucketId.isNullOrBlank()
@@ -109,8 +110,6 @@ class PhotoDetailViewModel @Inject constructor(
 
             val targetIndex = all.indexOfFirst { it.id == photoId }
             if (targetIndex < 0) {
-                // Photo not in filtered list (vault, deleted, or filter mismatch) —
-                // keep showing seed.
                 _isFullListReady.value = true
                 return@launch
             }
@@ -119,15 +118,10 @@ class PhotoDetailViewModel @Inject constructor(
             _initialPage.value     = targetIndex
             _isFullListReady.value = true
 
-            // ── Observe DB-backed favorite state for this photo ───────────────
             observeFavoriteState(photoId)
         }
     }
 
-    /**
-     * Called by the UI when the pager scrolls to a new page, so the ❤️ button
-     * always reflects the DB state of the currently visible photo.
-     */
     fun onPhotoPageChanged(photoId: Long) {
         if (photoId == currentPhotoId) return
         observeFavoriteState(photoId)
@@ -137,63 +131,79 @@ class PhotoDetailViewModel @Inject constructor(
         currentPhotoId = photoId
         favoriteObserverJob?.cancel()
         favoriteObserverJob = viewModelScope.launch {
-            favoritesRepository.isFavorite(photoId).collect { fav ->
-                _isFavorite.value = fav
+            favoritesRepository.isFavorite(photoId).collect { _isFavorite.value = it }
+        }
+    }
+
+    fun toggleFavorite(photoId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            favoritesRepository.toggleFavorite(photoId)
+        }
+    }
+
+    // ── Delete ─────────────────────────────────────────────────────────────────
+
+    fun deleteCurrentPhoto(photoId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val photo = _photoList.value.find { it.id == photoId }
+                ?: mediaStoreRepository.getPhotoById(photoId)
+                ?: return@launch
+            val pi = trashRepository.moveToTrash(photo)
+            if (pi != null) {
+                _uiEvents.send(PhotoDetailUiEvent.RequestMediaPermission(pi) {
+                    viewModelScope.launch {
+                        _uiEvents.send(PhotoDetailUiEvent.NavigateBack)
+                    }
+                })
+            } else {
+                _uiEvents.send(PhotoDetailUiEvent.NavigateBack)
             }
         }
     }
 
-    /**
-     * Persists the toggle to Room via [FavoritesRepository].
-     * The [_isFavorite] StateFlow is updated reactively by the DB observer,
-     * so no manual flip is needed here.
-     */
-    fun toggleFavorite(photoId: Long) {
-        viewModelScope.launch(Dispatchers.IO) {
-            favoritesRepository.toggleFavorite(photoId)
-            // _isFavorite will be updated automatically by the Flow collector
-            // started in observeFavoriteState().
-        }
-    }
+    // ── Helpers ────────────────────────────────────────────────────────────────
 
     suspend fun getPhoto(photoId: Long): MediaPhoto? = withContext(Dispatchers.IO) {
         mediaStoreRepository.getPhotoById(photoId)
     }
 
-    /**
-     * Reads real metadata from ContentResolver for an external / shared URI.
-     * Steps: query → getType → statSize → BitmapFactory bounds → filename timestamp.
-     */
     suspend fun getPhotoFromUri(uriStr: String): MediaPhoto? = withContext(Dispatchers.IO) {
         try {
             val uri = android.net.Uri.parse(uriStr)
             val cr  = context.contentResolver
-            var displayName = "External Media"; var size = 0L; var mimeType = ""
+            var displayName = "External Media"
+            var size = 0L; var mimeType = ""
             var dateTaken = 0L; var dateModified = 0L; var dateAdded = 0L
             var width = 0; var height = 0
 
             runCatching {
-                cr.query(uri, arrayOf(
-                    MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE,
-                    MediaStore.MediaColumns.MIME_TYPE,    MediaStore.MediaColumns.DATE_TAKEN,
-                    MediaStore.MediaColumns.DATE_MODIFIED,MediaStore.MediaColumns.DATE_ADDED,
-                    MediaStore.MediaColumns.WIDTH,        MediaStore.MediaColumns.HEIGHT
-                ), null, null, null)?.use { c ->
+                cr.query(
+                    uri,
+                    arrayOf(
+                        MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE,
+                        MediaStore.MediaColumns.MIME_TYPE,    MediaStore.MediaColumns.DATE_TAKEN,
+                        MediaStore.MediaColumns.DATE_MODIFIED,MediaStore.MediaColumns.DATE_ADDED,
+                        MediaStore.MediaColumns.WIDTH,        MediaStore.MediaColumns.HEIGHT
+                    ),
+                    null, null, null
+                )?.use { c ->
                     if (c.moveToFirst()) {
                         fun ci(n: String) = c.getColumnIndex(n)
-                        ci(MediaStore.MediaColumns.DISPLAY_NAME).takeIf { it>=0 }?.let { displayName  = c.getString(it) ?: displayName }
-                        ci(MediaStore.MediaColumns.SIZE).takeIf         { it>=0 }?.let { size         = c.getLong(it) }
-                        ci(MediaStore.MediaColumns.MIME_TYPE).takeIf    { it>=0 }?.let { mimeType     = c.getString(it).orEmpty() }
-                        ci(MediaStore.MediaColumns.DATE_TAKEN).takeIf   { it>=0 }?.let { dateTaken    = c.getLong(it) }
-                        ci(MediaStore.MediaColumns.DATE_MODIFIED).takeIf{ it>=0 }?.let { dateModified = c.getLong(it) }
-                        ci(MediaStore.MediaColumns.DATE_ADDED).takeIf   { it>=0 }?.let { dateAdded    = c.getLong(it) }
-                        ci(MediaStore.MediaColumns.WIDTH).takeIf         { it>=0 }?.let { width        = c.getInt(it) }
-                        ci(MediaStore.MediaColumns.HEIGHT).takeIf        { it>=0 }?.let { height       = c.getInt(it) }
+                        ci(MediaStore.MediaColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let { displayName  = c.getString(it) ?: displayName }
+                        ci(MediaStore.MediaColumns.SIZE).takeIf         { it >= 0 }?.let { size         = c.getLong(it) }
+                        ci(MediaStore.MediaColumns.MIME_TYPE).takeIf    { it >= 0 }?.let { mimeType     = c.getString(it).orEmpty() }
+                        ci(MediaStore.MediaColumns.DATE_TAKEN).takeIf   { it >= 0 }?.let { dateTaken    = c.getLong(it) }
+                        ci(MediaStore.MediaColumns.DATE_MODIFIED).takeIf{ it >= 0 }?.let { dateModified = c.getLong(it) }
+                        ci(MediaStore.MediaColumns.DATE_ADDED).takeIf   { it >= 0 }?.let { dateAdded    = c.getLong(it) }
+                        ci(MediaStore.MediaColumns.WIDTH).takeIf         { it >= 0 }?.let { width        = c.getInt(it) }
+                        ci(MediaStore.MediaColumns.HEIGHT).takeIf        { it >= 0 }?.let { height       = c.getInt(it) }
                     }
                 }
             }
             if (mimeType.isBlank()) mimeType = cr.getType(uri).orEmpty()
-            if (size == 0L) runCatching { cr.openFileDescriptor(uri, "r")?.use { size = it.statSize.coerceAtLeast(0L) } }
+            if (size == 0L) runCatching {
+                cr.openFileDescriptor(uri, "r")?.use { size = it.statSize.coerceAtLeast(0L) }
+            }
             if ((width == 0 || height == 0) && !mimeType.startsWith("video/", ignoreCase = true)) {
                 runCatching {
                     val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -203,16 +213,29 @@ class PhotoDetailViewModel @Inject constructor(
                 }
             }
             if (dateTaken == 0L && dateModified == 0L) {
-                runCatching { Regex("""(\d{13})""").find(displayName)?.value?.toLongOrNull()?.let { dateTaken = it } }
+                runCatching {
+                    Regex("""(\d{13})""").find(displayName)?.value?.toLongOrNull()
+                        ?.let { dateTaken = it }
+                }
             }
-            MediaPhoto(id = -1L, uri = uri, name = displayName, size = size, mimeType = mimeType,
-                dateTaken = dateTaken, dateModified = dateModified, dateAdded = dateAdded,
-                width = width, height = height, latitude = null, longitude = null)
+            MediaPhoto(
+                id           = -1L,
+                uri          = uri,
+                name         = displayName,
+                size         = size,
+                mimeType     = mimeType,
+                dateTaken    = dateTaken,
+                dateModified = dateModified,
+                dateAdded    = dateAdded,
+                width        = width,
+                height       = height,
+                latitude     = null,
+                longitude    = null
+            )
         } catch (e: Exception) { null }
     }
 }
 
-// ── Extension: apply MediaFilter to List<MediaPhoto> ──────────────────────────
 internal fun List<MediaPhoto>.applyMediaFilter(
     filter:   MediaFilter,
     isBucket: Boolean = false
