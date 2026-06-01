@@ -41,14 +41,9 @@ import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
 
-// ── One-shot UI events emitted by the ViewModel ──────────────────────────────────
+// ── One-shot UI events ─────────────────────────────────────────────────────────
+
 sealed class GalleryUiEvent {
-    /**
-     * Signals the Activity to launch a [PendingIntent] via its
-     * `ActivityResultLauncher<IntentSenderRequest>`.
-     * [onConfirmed] is called back by the screen after the system dialog is
-     * accepted so the ViewModel can record the successful deletion.
-     */
     data class RequestMediaPermission(
         val pendingIntent: PendingIntent,
         val onConfirmed:   () -> Unit
@@ -71,11 +66,9 @@ enum class MediaFilter { ALL, PHOTOS_ONLY, VIDEOS_ONLY }
 private fun MediaPhoto.toDateGroupLabel(): String {
     val ms = this.effectiveDateMs
     if (ms <= 0L) return "Unknown Date"
-
     val today     = Calendar.getInstance()
     val yesterday = Calendar.getInstance().also { it.add(Calendar.DAY_OF_YEAR, -1) }
     val target    = Calendar.getInstance().also { it.timeInMillis = ms }
-
     return when {
         target.isSameDay(today)     -> "Today"
         target.isSameDay(yesterday) -> "Yesterday"
@@ -139,7 +132,7 @@ class GalleryViewModel @Inject constructor(
     val favoriteIds: StateFlow<Set<Long>> = favoritesRepository.getAllFavoriteIds().map { it.toSet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
-    // ── UI events channel (one-shot, no replay) ────────────────────────────────
+    // ── UI events ──────────────────────────────────────────────────────────────
     private val _uiEvents = Channel<GalleryUiEvent>(Channel.BUFFERED)
     val uiEvents: Flow<GalleryUiEvent> = _uiEvents.receiveAsFlow()
 
@@ -194,7 +187,7 @@ class GalleryViewModel @Inject constructor(
         }
     }
 
-    // ── Navigation helpers ─────────────────────────────────────────────────────
+    // ── Navigation ─────────────────────────────────────────────────────────────
 
     fun prepareForNavigation(photo: MediaPhoto) {
         galleryStateHolder.cachePendingPhoto(photo)
@@ -221,32 +214,28 @@ class GalleryViewModel @Inject constructor(
         }
     }
 
-    // ── Delete / Trash ─────────────────────────────────────────────────────────
+    // ── Delete ─────────────────────────────────────────────────────────────────
 
     /**
-     * Moves all currently-selected photos to the trash.
-     *
-     * Flow:
-     * 1. Snapshot [selectedIds] so we have a stable list for the async work.
-     * 2. Call [TrashRepository.moveAllToTrash] — inserts Room rows + builds PendingIntent.
-     * 3. On Android 11+: emit [GalleryUiEvent.RequestMediaPermission] so the screen
-     *    can launch the system dialog.  The [onConfirmed] callback runs if/when the
-     *    user taps "Allow" in the system prompt.
-     * 4. On Android < 11: the deletion already happened synchronously; skip the dialog.
-     * 5. Either path: clear selection and emit an Undo snackbar.
+     * يحوّل الصور المحددة إلى Trash — بيحل الـ IDs من MediaStore أولاً.
+     * جديد: بيتعامل مع الـ IntentSender على Android 11+.
      */
+    fun deleteSelected() {
+        val ids = _selectedIds.value.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val photos = ids.mapNotNull { mediaStoreRepository.getPhotoById(it) }
+            if (photos.isNotEmpty()) deleteSelectedPhotos(photos)
+        }
+    }
+
     fun deleteSelectedPhotos(selectedPhotos: List<MediaPhoto>) {
         if (selectedPhotos.isEmpty()) return
         val count = selectedPhotos.size
-
         viewModelScope.launch(Dispatchers.IO) {
             val pendingIntent = trashRepository.moveAllToTrash(selectedPhotos)
-
-            // IDs kept for the Undo action
-            val deletedIds = selectedPhotos.map { it.id }
-
+            val deletedIds    = selectedPhotos.map { it.id }
             if (pendingIntent != null) {
-                // Android 11+: ask user permission via system dialog
                 _uiEvents.send(
                     GalleryUiEvent.RequestMediaPermission(
                         pendingIntent = pendingIntent,
@@ -259,7 +248,6 @@ class GalleryViewModel @Inject constructor(
                     )
                 )
             } else {
-                // Android < 11: already deleted
                 clearSelection()
                 _uiEvents.send(buildUndoEvent(count, deletedIds))
             }
@@ -272,20 +260,18 @@ class GalleryViewModel @Inject constructor(
             actionLabel = "Undo",
             onAction    = {
                 viewModelScope.launch(Dispatchers.IO) {
-                    deletedIds.forEach { id ->
-                        trashRepository.restoreFromTrash(id)
-                    }
+                    deletedIds.forEach { id -> trashRepository.restoreFromTrash(id) }
                 }
             }
         )
 
-    // ── Selection helpers ──────────────────────────────────────────────────────
+    // ── Selection ──────────────────────────────────────────────────────────────
 
     fun toggleSelection(photoId: Long) {
         _selectedIds.update { if (photoId in it) it - photoId else it + photoId }
     }
-    fun clearSelection() { _selectedIds.value = emptySet() }
-    fun selectAll(ids: List<Long>) { _selectedIds.value = ids.toSet() }
+    fun clearSelection()               { _selectedIds.value = emptySet() }
+    fun selectAll(ids: List<Long>)     { _selectedIds.value = ids.toSet() }
 
     // ── Zoom ───────────────────────────────────────────────────────────────────
 
