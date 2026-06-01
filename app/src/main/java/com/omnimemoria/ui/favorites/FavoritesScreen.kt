@@ -26,7 +26,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
@@ -35,61 +34,56 @@ import com.omnimemoria.ui.gallery.PhotoCell
 // ── Rose color shared with the gallery badge ──────────────────────────────────
 private val FavoriteRose = Color(0xFFFF4B6E)
 
-// ── Top padding so the content sits below the floating top bar ──────────────
-private val ContentTopPadding = 80.dp
+// ── Top padding so the content sits below the top bar ────────────────────────
+private val ContentTopPadding = 110.dp
 
-// ── Floating top bar ──────────────────────────────────────────────────────────
+// ── Top bar ───────────────────────────────────────────────────────────────────
 
 @Composable
-private fun FavoritesTopBar(onBack: () -> Unit) {
-    Box(
-        modifier = Modifier
+private fun FavoritesTopBar(
+    count: Int,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier          = modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 10.dp)
-            .clip(RoundedCornerShape(32.dp))
-            .background(com.omnimemoria.ui.navigation.NavigationSurfaceColor)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp)
-                .padding(horizontal = 8.dp),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF1E1C30))
+                .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White.copy(alpha = 0.08f))
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack, "Back",
-                    tint     = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    Icons.Filled.Favorite, null,
-                    tint     = FavoriteRose,
-                    modifier = Modifier.size(20.dp)
-                )
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack, "Back",
+                tint     = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Favorites",
+                style      = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color      = MaterialTheme.colorScheme.onBackground
+            )
+            if (count > 0) {
                 Text(
-                    text       = "Favorites",
-                    style      = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color      = Color.White
+                    "$count item${if (count != 1) "s" else ""}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Spacer(Modifier.size(44.dp)) // balance back button
         }
     }
 }
@@ -120,7 +114,7 @@ fun FavoritesScreen(
                     columns           = GridCells.Fixed(3),
                     contentPadding    = PaddingValues(
                         top    = ContentTopPadding,
-                        bottom = 130.dp,
+                        bottom = 40.dp,
                         start  = 6.dp,
                         end    = 6.dp
                     ),
@@ -146,7 +140,7 @@ fun FavoritesScreen(
                 ) {
                     FavoritesHeader(count = 0, isLoading = false)
                     Spacer(Modifier.height(48.dp))
-                    EmptyFavoritesContent()
+                    EmptyFavoritesContent(modifier = Modifier)
                 }
             }
 
@@ -156,7 +150,7 @@ fun FavoritesScreen(
                     columns           = GridCells.Fixed(3),
                     contentPadding    = PaddingValues(
                         top    = ContentTopPadding,
-                        bottom = 130.dp,
+                        bottom = 40.dp,
                         start  = 6.dp,
                         end    = 6.dp
                     ),
@@ -192,60 +186,88 @@ fun FavoritesScreen(
             }
         }
 
-        // ── Floating top bar overlay ───────────────────────────────────────────
-        Box(modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
-            FavoritesTopBar(onBack = onBack)
-        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ContentTopPadding)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        0f to MaterialTheme.colorScheme.background,
+                        0.85f to MaterialTheme.colorScheme.background.copy(alpha = 0.9f),
+                        1f to Color.Transparent
+                    )
+                )
+        )
+
+        FavoritesTopBar(
+            count = count,
+            onBack = onBack,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 }
 
-// ── Header: "Favorites ♥" title + animated count chip ─────────────────────────
+@Composable
+private fun FavoritesInfoBanner() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 12.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF1E1C30))
+            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Filled.Favorite,
+            contentDescription = null,
+            tint = FavoriteRose.copy(alpha = 0.9f),
+            modifier = Modifier.size(17.dp)
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "Long-press a photo to remove it from favorites.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+// ── Header: section title + count ─────────────────────────────────────────────
 
 @Composable
 private fun FavoritesHeader(count: Int, isLoading: Boolean) {
-    val animatedCount by animateIntAsState(
-        targetValue   = count,
-        animationSpec = tween(500),
-        label         = "fav_count"
-    )
-
-    Row(
-        modifier            = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 12.dp),
-        verticalAlignment   = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector        = Icons.Filled.Favorite,
-                contentDescription = null,
-                tint               = FavoriteRose,
-                modifier           = Modifier.size(22.dp)
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text       = "Favorites",
-                style      = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color      = MaterialTheme.colorScheme.onBackground
-            )
-        }
-
-        // Count chip
+    Column {
+        FavoritesInfoBanner()
         if (!isLoading) {
-            Box(
+            Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(FavoriteRose.copy(alpha = 0.15f))
-                    .padding(horizontal = 12.dp, vertical = 5.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text       = "$animatedCount",
-                    style      = MaterialTheme.typography.labelLarge,
-                    color      = FavoriteRose,
-                    fontWeight = FontWeight.Bold
+                    text = "All favorites",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground
                 )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(FavoriteRose.copy(alpha = 0.15f))
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = "$count",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = FavoriteRose,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
@@ -254,13 +276,33 @@ private fun FavoritesHeader(count: Int, isLoading: Boolean) {
 // ── Empty-state ────────────────────────────────────────────────────────────────
 
 @Composable
-private fun EmptyFavoritesContent() {
+private fun EmptyFavoritesContent(modifier: Modifier = Modifier) {
+    val floatY by rememberInfiniteTransition(label = "float")
+        .animateFloat(
+            initialValue  = 0f,
+            targetValue   = -8f,
+            animationSpec = infiniteRepeatable(
+                tween(2200, easing = FastOutSlowInEasing),
+                RepeatMode.Reverse
+            ),
+            label = "float_y"
+        )
+
     Column(
+        modifier = modifier.padding(horizontal = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier            = Modifier.padding(horizontal = 40.dp)
     ) {
-        // SVG-style heart drawn with Compose
-        HeartSvgIcon(size = 80.dp, tint = FavoriteRose.copy(alpha = 0.35f))
+        Box(
+            modifier = Modifier
+                .offset(y = floatY.dp)
+                .size(88.dp)
+                .clip(RoundedCornerShape(26.dp))
+                .background(Color(0xFF1E1C30))
+                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(26.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            HeartSvgIcon(size = 42.dp, tint = FavoriteRose.copy(alpha = 0.65f))
+        }
 
         Spacer(Modifier.height(24.dp))
 
@@ -276,10 +318,9 @@ private fun EmptyFavoritesContent() {
 
         Text(
             text      = "Tap ♥ on any photo or long-press a tile to add it here",
-            style     = MaterialTheme.typography.bodySmall,
+            style     = MaterialTheme.typography.bodyMedium,
             color     = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            lineHeight = 20.sp
+            textAlign = TextAlign.Center
         )
     }
 }
