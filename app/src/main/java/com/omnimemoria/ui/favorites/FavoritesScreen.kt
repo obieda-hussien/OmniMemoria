@@ -33,6 +33,9 @@ import com.omnimemoria.ui.gallery.PhotoCell
 
 // ── Rose color shared with the gallery badge ──────────────────────────────────
 private val FavoriteRose = Color(0xFFFF4B6E)
+private val FavoritesSurfaceColor = Color(0xFF1E1C30)
+private const val TopScrimMidStop = 0.85f
+private const val TopScrimMidAlpha = 0.9f
 
 // ── Top padding so the content sits below the top bar ────────────────────────
 private val ContentTopPadding = 110.dp
@@ -56,7 +59,7 @@ private fun FavoritesTopBar(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF1E1C30))
+                .background(FavoritesSurfaceColor)
                 .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
                 .clickable(onClick = onBack),
             contentAlignment = Alignment.Center
@@ -123,7 +126,7 @@ fun FavoritesScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        FavoritesHeader(count = 0, isLoading = true)
+                        FavoritesHeader(isLoading = true)
                     }
                     items(12) { SkeletonCell() }
                 }
@@ -138,9 +141,9 @@ fun FavoritesScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    FavoritesHeader(count = 0, isLoading = false)
+                    FavoritesHeader(isLoading = false)
                     Spacer(Modifier.height(48.dp))
-                    EmptyFavoritesContent(modifier = Modifier)
+                    EmptyFavoritesContent()
                 }
             }
 
@@ -159,7 +162,7 @@ fun FavoritesScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        FavoritesHeader(count = count, isLoading = false)
+                        FavoritesHeader(isLoading = false)
                     }
 
                     items(
@@ -194,7 +197,7 @@ fun FavoritesScreen(
                 .background(
                     Brush.verticalGradient(
                         0f to MaterialTheme.colorScheme.background,
-                        0.85f to MaterialTheme.colorScheme.background.copy(alpha = 0.9f),
+                        TopScrimMidStop to MaterialTheme.colorScheme.background.copy(alpha = TopScrimMidAlpha),
                         1f to Color.Transparent
                     )
                 )
@@ -215,7 +218,7 @@ private fun FavoritesInfoBanner() {
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 12.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF1E1C30))
+            .background(FavoritesSurfaceColor)
             .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -238,7 +241,7 @@ private fun FavoritesInfoBanner() {
 // ── Header: section title + count ─────────────────────────────────────────────
 
 @Composable
-private fun FavoritesHeader(count: Int, isLoading: Boolean) {
+private fun FavoritesHeader(isLoading: Boolean) {
     Column {
         FavoritesInfoBanner()
         if (!isLoading) {
@@ -247,7 +250,7 @@ private fun FavoritesHeader(count: Int, isLoading: Boolean) {
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.Start
             ) {
                 Text(
                     text = "All favorites",
@@ -255,19 +258,6 @@ private fun FavoritesHeader(count: Int, isLoading: Boolean) {
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(FavoriteRose.copy(alpha = 0.15f))
-                        .padding(horizontal = 12.dp, vertical = 5.dp)
-                ) {
-                    Text(
-                        text = "$count",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = FavoriteRose,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
             }
         }
     }
@@ -297,7 +287,7 @@ private fun EmptyFavoritesContent(modifier: Modifier = Modifier) {
                 .offset(y = floatY.dp)
                 .size(88.dp)
                 .clip(RoundedCornerShape(26.dp))
-                .background(Color(0xFF1E1C30))
+                .background(FavoritesSurfaceColor)
                 .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(26.dp)),
             contentAlignment = Alignment.Center
         ) {
@@ -317,7 +307,7 @@ private fun EmptyFavoritesContent(modifier: Modifier = Modifier) {
         Spacer(Modifier.height(10.dp))
 
         Text(
-            text      = "Tap ♥ on any photo or long-press a tile to add it here",
+            text      = "Tap ♥ on any photo or long-press a photo to add it here",
             style     = MaterialTheme.typography.bodyMedium,
             color     = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
