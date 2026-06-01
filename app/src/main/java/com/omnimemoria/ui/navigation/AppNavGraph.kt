@@ -8,8 +8,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -23,6 +23,7 @@ import com.omnimemoria.ui.detail.VideoPlayerScreen
 import com.omnimemoria.ui.favorites.FavoritesScreen
 import com.omnimemoria.ui.home.HomeScreen
 import com.omnimemoria.ui.settings.SettingsScreen
+import com.omnimemoria.ui.trash.TrashScreen
 
 object AppRoutes {
     const val Home      = "home"
@@ -31,9 +32,13 @@ object AppRoutes {
     const val Video     = "video/{mediaId}?externalUri={externalUri}"
     const val Settings  = "settings"
     const val Favorites = "favorites"
+    const val Trash     = "trash"
 
     fun detail(photoId: Long, bucketId: String? = null, externalUri: String? = null): String {
-        val base = if (bucketId.isNullOrBlank()) "detail/$photoId" else "detail/$photoId?bucketId=${android.net.Uri.encode(bucketId)}"
+        val base =
+            if (bucketId.isNullOrBlank()) "detail/$photoId"
+            else "detail/$photoId?bucketId=${android.net.Uri.encode(bucketId)}"
+
         return if (externalUri != null) {
             val delim = if (base.contains("?")) "&" else "?"
             "$base${delim}externalUri=${android.net.Uri.encode(externalUri)}"
@@ -41,7 +46,9 @@ object AppRoutes {
             base
         }
     }
+
     fun folder(bucketId: String): String = "folder/${android.net.Uri.encode(bucketId)}"
+
     fun video(mediaId: Long, externalUri: String? = null): String {
         return if (externalUri != null) "video/$mediaId?externalUri=${android.net.Uri.encode(externalUri)}"
         else "video/$mediaId"
@@ -52,9 +59,6 @@ object AppRoutes {
 @Composable
 fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
     val navController = rememberNavController()
-
-    // SharedTransitionLayout creates the SharedTransitionScope that all
-    // shared-element participants (grid thumbnails ↔ detail viewer) reference.
 
     val startDestination = remember(externalUri, intentType) {
         if (externalUri != null) {
@@ -70,12 +74,9 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
     }
 
     SharedTransitionLayout {
-        // Provide SharedTransitionScope globally via CompositionLocal so that
-        // GalleryScreen / PhotoDetailScreen can access it without threading
-        // the scope through every intermediate composable.
         CompositionLocalProvider(LocalSharedTransitionScope provides this) {
             NavHost(
-                navController    = navController,
+                navController = navController,
                 startDestination = startDestination,
                 enterTransition = { fadeIn(tween(200)) },
                 exitTransition = { fadeOut(tween(200)) },
@@ -83,8 +84,6 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                 popExitTransition = { fadeOut(tween(200)) }
             ) {
                 // ── Home (Gallery + Albums + Search + Vault tabs) ─────────────
-                // `this` inside composable { } is AnimatedContentScope,
-                // which implements AnimatedVisibilityScope.
                 composable(AppRoutes.Home) {
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                         HomeScreen(
@@ -99,6 +98,9 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                             },
                             onFavoritesClick = {
                                 navController.navigate(AppRoutes.Favorites)
+                            },
+                            onTrashClick = {
+                                navController.navigate(AppRoutes.Trash)
                             }
                         )
                     }
@@ -106,7 +108,7 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
 
                 // ── Full-Screen Photo Detail ───────────────────────────────────
                 composable(
-                    route     = AppRoutes.Detail,
+                    route = AppRoutes.Detail,
                     arguments = listOf(
                         navArgument("photoId") { type = NavType.LongType },
                         navArgument("bucketId") {
@@ -137,15 +139,14 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                     val bucketId = backStackEntry.arguments?.getString("bucketId")
                     val extUri = backStackEntry.arguments?.getString("externalUri")
                     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                         PhotoDetailScreen(
                             photoId = photoId,
                             bucketId = bucketId,
                             externalUriStr = extUri,
-                            onBack  = {
-                                                                                                if (extUri != null) {
-                                    // if launched from outside, just finish activity?
-                                    // simpler to just pop and go back to launcher or close
+                            onBack = {
+                                if (extUri != null) {
                                     activity?.finish()
                                 } else {
                                     navController.popBackStack()
@@ -158,6 +159,7 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                     }
                 }
 
+                // ── Folder ────────────────────────────────────────────────────
                 composable(
                     route = AppRoutes.Folder,
                     arguments = listOf(navArgument("bucketId") { type = NavType.StringType })
@@ -173,6 +175,7 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                     }
                 }
 
+                // ── Video ─────────────────────────────────────────────────────
                 composable(
                     route = AppRoutes.Video,
                     arguments = listOf(
@@ -187,6 +190,7 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                     val mediaId = backStackEntry.arguments?.getLong("mediaId") ?: 0L
                     val extUri = backStackEntry.arguments?.getString("externalUri")
                     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                         VideoPlayerScreen(
                             mediaId = mediaId,
@@ -198,9 +202,9 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
 
                 // ── Favorites ─────────────────────────────────────────────────
                 composable(
-                    route           = AppRoutes.Favorites,
+                    route = AppRoutes.Favorites,
                     enterTransition = { scaleIn(tween(220), initialScale = 0.95f) + fadeIn(tween(220)) },
-                    exitTransition  = { scaleOut(tween(180), targetScale = 0.96f) + fadeOut(tween(180)) },
+                    exitTransition = { scaleOut(tween(180), targetScale = 0.96f) + fadeOut(tween(180)) },
                     popExitTransition = { scaleOut(tween(180), targetScale = 0.95f) + fadeOut(tween(180)) }
                 ) {
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
@@ -208,6 +212,20 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                             onPhotoClick = { photoId ->
                                 navController.navigate(AppRoutes.detail(photoId))
                             },
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                }
+
+                // ── Trash ─────────────────────────────────────────────────────
+                composable(
+                    route = AppRoutes.Trash,
+                    enterTransition = { scaleIn(tween(220), initialScale = 0.95f) + fadeIn(tween(220)) },
+                    exitTransition = { scaleOut(tween(180), targetScale = 0.96f) + fadeOut(tween(180)) },
+                    popExitTransition = { scaleOut(tween(180), targetScale = 0.95f) + fadeOut(tween(180)) }
+                ) {
+                    CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
+                        TrashScreen(
                             onBack = { navController.popBackStack() }
                         )
                     }
