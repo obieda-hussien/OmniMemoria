@@ -1,5 +1,9 @@
 package com.omnimemoria.ui.gallery
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -52,10 +56,9 @@ import com.omnimemoria.ui.detail.photosBoundsTransform
 import com.omnimemoria.ui.photoSharedKey
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import kotlinx.coroutines.launch
 
-// Rose/crimson color for the favorite heart badge
-private val FavoriteRose = Color(0xFFFF4B6E)
-
+private val FavoriteRose             = Color(0xFFFF4B6E)
 private val SelectionBarBottomPadding = 92.dp
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -76,8 +79,45 @@ fun GalleryScreen(
     val sharedTransitionScope   = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
 
-    val gridState = rememberLazyGridState()
+    val gridState          = rememberLazyGridState()
     var showSortFilterSheet by remember { mutableStateOf(false) }
+
+    // ── Delete / events wiring ─────────────────────────────────────────────────
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope             = rememberCoroutineScope()
+    var pendingOnConfirm  by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val intentSenderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) pendingOnConfirm?.invoke()
+        pendingOnConfirm = null
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.uiEvents.collect { event ->
+            when (event) {
+                is GalleryUiEvent.RequestMediaPermission -> {
+                    pendingOnConfirm = event.onConfirmed
+                    intentSenderLauncher.launch(
+                        IntentSenderRequest.Builder(event.pendingIntent.intentSender).build()
+                    )
+                }
+                is GalleryUiEvent.ShowSnackbar -> {
+                    scope.launch {
+                        val result = snackbarHostState.showSnackbar(
+                            message     = event.message,
+                            actionLabel = event.actionLabel,
+                            duration    = SnackbarDuration.Long
+                        )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            event.onAction?.invoke()
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(gridState) {
         snapshotFlow {
@@ -112,7 +152,6 @@ fun GalleryScreen(
                 .fillMaxSize()
                 .transformable(state = transformableState, lockRotationOnZoomPan = true)
         ) {
-
             item(span = { GridItemSpan(maxLineSpan) }) {
                 OmniSectionHeader(
                     title = when (currentFilter) {
@@ -150,13 +189,10 @@ fun GalleryScreen(
                     }
                 ) { index ->
                     when (val item = groupedPhotos[index]) {
-                        is GalleryItem.DateHeader -> {
-                            DateHeaderRow(label = item.label)
-                        }
+                        is GalleryItem.DateHeader -> DateHeaderRow(label = item.label)
                         is GalleryItem.Photo -> {
                             val photo      = item.photo
                             val isSelected = photo.id in selectedIds
-
                             PhotoCell(
                                 uri                     = photo.uri.toString(),
                                 photoId                 = photo.id,
@@ -167,12 +203,8 @@ fun GalleryScreen(
                                 sharedTransitionScope   = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,
                                 onClick = {
-                                    if (isSelecting) {
-                                        viewModel.toggleSelection(photo.id)
-                                    } else {
-                                        viewModel.prepareForNavigation(photo)
-                                        onPhotoClick(photo.id)
-                                    }
+                                    if (isSelecting) viewModel.toggleSelection(photo.id)
+                                    else { viewModel.prepareForNavigation(photo); onPhotoClick(photo.id) }
                                 },
                                 onLongClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -186,6 +218,7 @@ fun GalleryScreen(
             }
         }
 
+        // ── Selection bar ──────────────────────────────────────────────────────
         AnimatedVisibility(
             visible  = isSelecting,
             enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -199,10 +232,19 @@ fun GalleryScreen(
                 count    = selectedIds.size,
                 onClose  = viewModel::clearSelection,
                 onShare  = { /* TODO Phase 4 */ },
-                onDelete = { /* TODO Phase 4 */ },
+                onDelete = { viewModel.deleteSelected() },   // ← FIXED
                 onMore   = { /* TODO Phase 4 */ }
             )
         }
+
+        // ── Snackbar ───────────────────────────────────────────────────────────
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier  = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 145.dp)
+        )
     }
 
     if (showSortFilterSheet) {
@@ -222,11 +264,7 @@ fun GalleryScreen(
 
 @Composable
 private fun DateHeaderRow(label: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 10.dp)
-    ) {
+    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp)) {
         Text(
             text       = label,
             style      = MaterialTheme.typography.titleSmall,
@@ -257,7 +295,6 @@ internal fun PhotoCell(
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label         = "photo_scale"
     )
-
     val sharedModifier: Modifier = if (
         sharedTransitionScope   != null &&
         animatedVisibilityScope != null &&
@@ -279,14 +316,8 @@ internal fun PhotoCell(
             .clip(RoundedCornerShape(if (isSelected) 14.dp else 10.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
-        CachedThumbnail(
-            uri      = uri,
-            modifier = Modifier
-                .fillMaxSize()
-                .then(sharedModifier)
-        )
+        CachedThumbnail(uri = uri, modifier = Modifier.fillMaxSize().then(sharedModifier))
 
-        // ── Video badge ────────────────────────────────────────────────────────
         if (isVideo) {
             Box(
                 modifier = Modifier
@@ -302,14 +333,11 @@ internal fun PhotoCell(
             }
         }
 
-        // ── Favorite heart badge (bottom-right) ────────────────────────────────
         AnimatedVisibility(
             visible = isFavorite,
             enter   = fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.6f),
             exit    = fadeOut(tween(140)) + scaleOut(tween(140), targetScale = 0.6f),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(5.dp)
+            modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -318,16 +346,11 @@ internal fun PhotoCell(
                     .background(Color.Black.copy(alpha = 0.45f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector        = Icons.Filled.Favorite,
-                    contentDescription = "Favorite",
-                    tint               = FavoriteRose,
-                    modifier           = Modifier.size(14.dp)
-                )
+                Icon(Icons.Filled.Favorite, "Favorite",
+                    tint = FavoriteRose, modifier = Modifier.size(14.dp))
             }
         }
 
-        // ── Selection overlay ──────────────────────────────────────────────────
         AnimatedVisibility(visible = isSelecting, enter = fadeIn(), exit = fadeOut()) {
             Box(
                 modifier = Modifier
@@ -358,8 +381,6 @@ internal fun PhotoCell(
     }
 }
 
-// ── Cached thumbnail ───────────────────────────────────────────────────────────
-
 @Composable
 private fun CachedThumbnail(uri: String, modifier: Modifier) {
     val context = LocalContext.current
@@ -371,15 +392,9 @@ private fun CachedThumbnail(uri: String, modifier: Modifier) {
     )
 }
 
-// ── Skeleton cell ──────────────────────────────────────────────────────────────
-
 @Composable
 private fun SkeletonPhotoCell() {
-    ShimmerBox(
-        modifier = Modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(10.dp))
-    )
+    ShimmerBox(modifier = Modifier.aspectRatio(1f).clip(RoundedCornerShape(10.dp)))
 }
 
 // ── Sort / filter bottom sheet ─────────────────────────────────────────────────
@@ -392,10 +407,10 @@ internal fun GallerySortFilterSheet(
     onDismiss:     () -> Unit,
     onApply:       (SortConfig, MediaFilter) -> Unit
 ) {
-    var sortBy    by remember { mutableStateOf(currentSort.sortBy) }
+    var sortBy   by remember { mutableStateOf(currentSort.sortBy) }
     var sortOrder by remember { mutableStateOf(currentSort.sortOrder) }
-    var groupBy   by remember { mutableStateOf(currentSort.groupBy) }
-    var filterBy  by remember { mutableStateOf(currentFilter) }
+    var groupBy  by remember { mutableStateOf(currentSort.groupBy) }
+    var filterBy by remember { mutableStateOf(currentFilter) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -425,8 +440,7 @@ internal fun GallerySortFilterSheet(
                 color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(18.dp))
 
-            Text("Show",
-                style = MaterialTheme.typography.labelMedium,
+            Text("Show", style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -450,9 +464,7 @@ internal fun GallerySortFilterSheet(
             }
 
             Spacer(Modifier.height(20.dp))
-
-            Text("Sort by",
-                style = MaterialTheme.typography.labelMedium,
+            Text("Sort by", style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
 
@@ -486,39 +498,32 @@ internal fun GallerySortFilterSheet(
                             selectedColor = MaterialTheme.colorScheme.primary)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(label,
-                        color = MaterialTheme.colorScheme.onBackground,
+                    Text(label, color = MaterialTheme.colorScheme.onBackground,
                         style = MaterialTheme.typography.bodyMedium)
                 }
             }
 
             Spacer(Modifier.height(16.dp))
-
-            Text("Direction",
-                style = MaterialTheme.typography.labelMedium,
+            Text("Direction", style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(
-                    SortOrder.DESCENDING to "Descending ↓",
-                    SortOrder.ASCENDING  to "Ascending ↑"
-                ).forEach { (ord, lbl) ->
-                    FilterChip(
-                        selected = sortOrder == ord,
-                        onClick  = { sortOrder = ord },
-                        label    = { Text(lbl) },
-                        colors   = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                            selectedLabelColor     = MaterialTheme.colorScheme.primary
+                listOf(SortOrder.DESCENDING to "Descending ↓", SortOrder.ASCENDING to "Ascending ↑")
+                    .forEach { (ord, lbl) ->
+                        FilterChip(
+                            selected = sortOrder == ord,
+                            onClick  = { sortOrder = ord },
+                            label    = { Text(lbl) },
+                            colors   = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                                selectedLabelColor     = MaterialTheme.colorScheme.primary
+                            )
                         )
-                    )
-                }
+                    }
             }
 
             Spacer(Modifier.height(16.dp))
-
-            Text("Group by",
-                style = MaterialTheme.typography.labelMedium,
+            Text("Group by", style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
             Row(
@@ -526,11 +531,11 @@ internal fun GallerySortFilterSheet(
                 modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())
             ) {
                 listOf(
-                    null           to "None",
-                    GroupBy.DAY    to "Day",
-                    GroupBy.MONTH  to "Month",
-                    GroupBy.YEAR   to "Year",
-                    GroupBy.LOCATION to "Location (requires GPS data)"
+                    null             to "None",
+                    GroupBy.DAY      to "Day",
+                    GroupBy.MONTH    to "Month",
+                    GroupBy.YEAR     to "Year",
+                    GroupBy.LOCATION to "Location"
                 ).forEach { (candidate, lbl) ->
                     FilterChip(
                         selected = groupBy == candidate,
@@ -560,16 +565,13 @@ internal fun GallerySortFilterSheet(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text("Apply",
-                    color = Color.White,
+                Text("Apply", color = Color.White,
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleSmall)
             }
         }
     }
 }
-
-// ── Sort display label extension ───────────────────────────────────────────────
 
 private fun SortConfig.toDisplayLabel(): String {
     val by = when (sortBy) {
