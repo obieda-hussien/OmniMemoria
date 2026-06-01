@@ -18,12 +18,6 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.SdStorage
-import androidx.compose.material.icons.outlined.Title
-import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,21 +36,20 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
-import com.omnimemoria.ui.gallery.components.QuickSortBar
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Size
+import com.omnimemoria.domain.model.GroupBy
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
 import com.omnimemoria.domain.model.SortOrder
-import com.omnimemoria.domain.model.GroupBy
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
-import com.omnimemoria.ui.photoSharedKey
 import com.omnimemoria.ui.components.OmniSectionHeader
 import com.omnimemoria.ui.components.OmniSelectionBar
 import com.omnimemoria.ui.components.ShimmerBox
 import com.omnimemoria.ui.detail.photosBoundsTransform
+import com.omnimemoria.ui.photoSharedKey
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 
@@ -127,18 +120,11 @@ fun GalleryScreen(
                         MediaFilter.PHOTOS_ONLY -> "Photos"
                         MediaFilter.VIDEOS_ONLY -> "Videos"
                     },
-                    subtitle    = "${mediaStats.totalCount} items",
+                    subtitle    = "${mediaStats.totalCount} items  ·  ${sortConfig.toDisplayLabel()}",
                     actionLabel = "Filter & Sort",
                     actionIcon  = Icons.Outlined.Tune,
                     onAction    = { showSortFilterSheet = true },
                     modifier    = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-            }
-
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                QuickSortBar(
-                    currentSort = sortConfig,
-                    onSortChanged = { config -> viewModel.updateSortAndFilter(config, currentFilter) }
                 )
             }
 
@@ -471,13 +457,13 @@ internal fun GallerySortFilterSheet(
             Spacer(Modifier.height(8.dp))
 
             listOf(
-                SortBy.DATE_TAKEN to "Date Taken",
-                SortBy.DATE_MODIFIED to "Date Modified",
-                SortBy.SIZE       to "Storage Size",
-                SortBy.NAME       to "File Name",
-                SortBy.TYPE       to "File Type",
-                SortBy.RESOLUTION to "Resolution",
-                SortBy.DURATION   to "Duration",
+                SortBy.DATE_TAKEN      to "Date Taken",
+                SortBy.DATE_MODIFIED   to "Date Modified",
+                SortBy.SIZE            to "Storage Size",
+                SortBy.NAME            to "File Name",
+                SortBy.TYPE            to "File Type",
+                SortBy.RESOLUTION      to "Resolution",
+                SortBy.DURATION        to "Duration",
                 SortBy.FAVORITES_FIRST to "Favorites First"
             ).forEach { (candidate, label) ->
                 Row(
@@ -535,12 +521,15 @@ internal fun GallerySortFilterSheet(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())
+            ) {
                 listOf(
-                    null to "None",
-                    GroupBy.DAY to "Day",
-                    GroupBy.MONTH to "Month",
-                    GroupBy.YEAR to "Year",
+                    null           to "None",
+                    GroupBy.DAY    to "Day",
+                    GroupBy.MONTH  to "Month",
+                    GroupBy.YEAR   to "Year",
                     GroupBy.LOCATION to "Location (requires GPS data)"
                 ).forEach { (candidate, lbl) ->
                     FilterChip(
@@ -563,7 +552,12 @@ internal fun GallerySortFilterSheet(
                     .height(52.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.primary)
-                    .clickable { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder, groupBy = groupBy), filterBy) },
+                    .clickable {
+                        onApply(
+                            SortConfig(sortBy = sortBy, sortOrder = sortOrder, groupBy = groupBy),
+                            filterBy
+                        )
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text("Apply",
@@ -573,4 +567,20 @@ internal fun GallerySortFilterSheet(
             }
         }
     }
+}
+
+// ── Sort display label extension ───────────────────────────────────────────────
+
+private fun SortConfig.toDisplayLabel(): String {
+    val by = when (sortBy) {
+        SortBy.DATE_TAKEN      -> "Date"
+        SortBy.DATE_MODIFIED   -> "Modified"
+        SortBy.SIZE            -> "Size"
+        SortBy.NAME            -> "Name"
+        SortBy.TYPE            -> "Type"
+        SortBy.RESOLUTION      -> "Resolution"
+        SortBy.DURATION        -> "Duration"
+        SortBy.FAVORITES_FIRST -> "Favorites"
+    }
+    return "$by ${if (sortOrder == SortOrder.DESCENDING) "↓" else "↑"}"
 }
