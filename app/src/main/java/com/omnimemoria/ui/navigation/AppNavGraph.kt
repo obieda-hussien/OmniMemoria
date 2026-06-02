@@ -138,7 +138,7 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                     val photoId = backStackEntry.arguments?.getLong("photoId") ?: 0L
                     val bucketId = backStackEntry.arguments?.getString("bucketId")
                     val extUri = backStackEntry.arguments?.getString("externalUri")
-                    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+                    val activity = androidx.activity.compose.LocalActivity.current
 
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                         PhotoDetailScreen(
@@ -189,7 +189,7 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                 ) { backStackEntry ->
                     val mediaId = backStackEntry.arguments?.getLong("mediaId") ?: 0L
                     val extUri = backStackEntry.arguments?.getString("externalUri")
-                    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+                    val activity = androidx.activity.compose.LocalActivity.current
 
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                         VideoPlayerScreen(
