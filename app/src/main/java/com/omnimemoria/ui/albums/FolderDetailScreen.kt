@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -66,6 +67,13 @@ fun FolderDetailScreen(
     val isSelecting       = selectedIds.isNotEmpty()
     val sortConfig       by viewModel.sortConfig.collectAsState()
     var showSortSheet    by remember { mutableStateOf(false) }
+
+
+    if (isSelecting) {
+        BackHandler {
+            viewModel.clearSelection()
+        }
+    }
 
     val sharedTransitionScope   = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current

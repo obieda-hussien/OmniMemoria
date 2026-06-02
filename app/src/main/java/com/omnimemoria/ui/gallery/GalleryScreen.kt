@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,7 +63,7 @@ import androidx.compose.foundation.gestures.transformable
 import kotlinx.coroutines.launch
 
 private val FavoriteRose             = Color(0xFFFF4B6E)
-private val SelectionBarBottomPadding = 16.dp
+private val SelectionBarBottomPadding = 12.dp
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -81,6 +82,13 @@ fun GalleryScreen(
 
     val sharedTransitionScope   = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
+
+
+    if (isSelecting) {
+        BackHandler {
+            viewModel.clearSelection()
+        }
+    }
 
     val gridState          = rememberLazyGridState()
     var showSortFilterSheet by remember { mutableStateOf(false) }
