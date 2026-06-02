@@ -249,7 +249,7 @@ class GalleryViewModel @Inject constructor(
         if (selectedPhotos.isEmpty()) return
         val count = selectedPhotos.size
         viewModelScope.launch(Dispatchers.IO) {
-            val pendingIntent = trashRepository.moveAllToTrash(selectedPhotos)
+            val pendingIntent = trashRepository.moveToTrashIntent(selectedPhotos)
             val deletedIds    = selectedPhotos.map { it.id }
             if (pendingIntent != null) {
                 _uiEvents.send(
@@ -276,7 +276,23 @@ class GalleryViewModel @Inject constructor(
             actionLabel = "Undo",
             onAction    = {
                 viewModelScope.launch(Dispatchers.IO) {
-                    deletedIds.forEach { id -> trashRepository.restoreFromTrash(id) }
+                    val items = trashRepository.getTrashItemsByIds(deletedIds)
+                    val pendingIntent = trashRepository.restoreFromTrashIntent(items)
+
+                    if (pendingIntent != null) {
+                        _uiEvents.send(
+                            GalleryUiEvent.RequestMediaPermission(
+                                pendingIntent = pendingIntent,
+                                onConfirmed   = {
+                                    viewModelScope.launch(Dispatchers.IO) {
+                                        trashRepository.confirmRestoreFromTrash(items)
+                                    }
+                                }
+                            )
+                        )
+                    } else {
+                        trashRepository.confirmRestoreFromTrash(items)
+                    }
                 }
             }
         )

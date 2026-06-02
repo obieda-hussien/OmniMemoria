@@ -52,15 +52,17 @@ class TrashViewModel @Inject constructor(
 
     fun restore(item: TrashItem) {
         viewModelScope.launch(Dispatchers.IO) {
-            val pi = trashRepository.restoreFromTrash(item.id)
+            val pi = trashRepository.restoreFromTrashIntent(item)
             val name = item.originalPath.substringAfterLast('/').ifBlank { item.originalPath }
             if (pi != null) {
                 _uiEvents.send(TrashUiEvent.RequestMediaPermission(pi) {
-                    viewModelScope.launch {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        trashRepository.confirmRestoreFromTrash(item)
                         _uiEvents.send(TrashUiEvent.ShowSnackbar("\"$name\" restored"))
                     }
                 })
             } else {
+                trashRepository.confirmRestoreFromTrash(item)
                 _uiEvents.send(TrashUiEvent.ShowSnackbar("\"$name\" restored"))
             }
         }
@@ -70,14 +72,16 @@ class TrashViewModel @Inject constructor(
 
     fun permanentlyDelete(item: TrashItem) {
         viewModelScope.launch(Dispatchers.IO) {
-            val pi = trashRepository.permanentlyDeleteItem(item)
+            val pi = trashRepository.permanentlyDeleteIntent(item)
             if (pi != null) {
                 _uiEvents.send(TrashUiEvent.RequestMediaPermission(pi) {
-                    viewModelScope.launch {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        trashRepository.confirmPermanentlyDelete(item)
                         _uiEvents.send(TrashUiEvent.ShowSnackbar("Deleted permanently"))
                     }
                 })
             } else {
+                trashRepository.confirmPermanentlyDelete(item)
                 _uiEvents.send(TrashUiEvent.ShowSnackbar("Deleted permanently"))
             }
         }
@@ -88,15 +92,18 @@ class TrashViewModel @Inject constructor(
     fun emptyTrash() {
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
-            val pi = trashRepository.emptyTrash()
-            _isLoading.value = false
+            val pi = trashRepository.getEmptyTrashIntent()
             if (pi != null) {
                 _uiEvents.send(TrashUiEvent.RequestMediaPermission(pi) {
-                    viewModelScope.launch {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        trashRepository.confirmEmptyTrash()
+                        _isLoading.value = false
                         _uiEvents.send(TrashUiEvent.ShowSnackbar("Trash emptied"))
                     }
                 })
             } else {
+                trashRepository.confirmEmptyTrash()
+                _isLoading.value = false
                 _uiEvents.send(TrashUiEvent.ShowSnackbar("Trash emptied"))
             }
         }

@@ -1,6 +1,7 @@
 package com.omnimemoria.ui.trash
 
 import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,23 +17,24 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
-import androidx.compose.ui.unit.IntOffset
 import com.omnimemoria.data.local.db.TrashItem
 import kotlinx.coroutines.launch
+import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 
 @Composable
 fun TrashScreen(
@@ -47,6 +49,7 @@ fun TrashScreen(
     val scope              = rememberCoroutineScope()
     var showEmptyConfirm   by remember { mutableStateOf(false) }
     var itemToDelete       by remember { mutableStateOf<TrashItem?>(null) }
+    var previewItem        by remember { mutableStateOf<TrashItem?>(null) }
     var pendingOnConfirm   by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     val intentSenderLauncher = rememberLauncherForActivityResult(
@@ -77,131 +80,269 @@ fun TrashScreen(
         }
     }
 
+    BackHandler {
+        if (previewItem != null) {
+            previewItem = null
+        } else {
+            onBack()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        if (trashItems.isEmpty() && !isLoading) {
-            TrashEmptyState(modifier = Modifier.align(Alignment.Center))
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(
-                    top    = 110.dp,
-                    bottom = 40.dp,
-                    start  = 16.dp,
-                    end    = 16.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                item { TrashInfoBanner() }
+        Column(modifier = Modifier.fillMaxSize()) {
+            TrashTopBar(
+                count        = trashCount,
+                isLoading    = isLoading,
+                onBack       = onBack,
+                onEmptyTrash = { showEmptyConfirm = true }
+            )
 
-                items(trashItems, key = { it.id }) { item ->
-                    TrashItemCard(
-                        item      = item,
-                        onRestore = { viewModel.restore(item) },
-                        onDelete  = { itemToDelete = item }
-                    )
+            if (trashItems.isEmpty() && !isLoading) {
+                Box(
+                    modifier         = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    TrashEmptyState()
                 }
+            } else {
+                LazyColumn(
+                    modifier      = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item { TrashInfoBanner() }
 
-                item { Spacer(Modifier.height(20.dp)) }
+                    items(
+                        items = trashItems,
+                        key   = { it.id }
+                    ) { item ->
+                        TrashItemCard(
+                            item      = item,
+                            onClick   = { previewItem = item },
+                            onRestore = { viewModel.restore(item) },
+                            onDelete  = { itemToDelete = item }
+                        )
+                    }
+
+                    item { Spacer(Modifier.height(20.dp)) }
+                }
+            }
+        }
+
+        // Preview Overlay
+        AnimatedVisibility(
+            visible  = previewItem != null,
+            enter    = fadeIn() + scaleIn(initialScale = 0.95f),
+            exit     = fadeOut() + scaleOut(targetScale = 0.95f),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            previewItem?.let { item ->
+                TrashPreviewOverlay(
+                    item      = item,
+                    onClose   = { previewItem = null },
+                    onRestore = { viewModel.restore(item); previewItem = null },
+                    onDelete  = { itemToDelete = item; previewItem = null }
+                )
             }
         }
 
         // Scrim فوق المحتوى
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(110.dp)
-                .align(Alignment.TopCenter)
-                .background(
-                    Brush.verticalGradient(
-                        0f   to MaterialTheme.colorScheme.background,
-                        0.85f to MaterialTheme.colorScheme.background.copy(alpha = 0.9f),
-                        1f   to Color.Transparent
-                    )
-                )
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = if (showEmptyConfirm || itemToDelete != null) 0.6f else 0f))
+                .clickable(enabled = showEmptyConfirm || itemToDelete != null) {
+                    showEmptyConfirm = false
+                    itemToDelete = null
+                }
         )
 
-        TrashTopBar(
-            count        = trashCount,
-            isLoading    = isLoading,
-            onBack       = onBack,
-            onEmptyTrash = { showEmptyConfirm = true },
-            modifier     = Modifier.align(Alignment.TopCenter)
-        )
+        // Loading
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = Color(0xFF8B7FF5))
+            }
+        }
+
+        // Empty Confirm
+        AnimatedVisibility(
+            visible  = showEmptyConfirm,
+            enter    = slideInVertically { (it / 2f).toInt() } + fadeIn(),
+            exit     = slideOutVertically { (it / 2f).toInt() } + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            AlertDialog(
+                onDismissRequest = { showEmptyConfirm = false },
+                containerColor   = Color(0xFF1E1C30),
+                titleContentColor = MaterialTheme.colorScheme.onBackground,
+                textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                title = { Text("Empty Recycle Bin?", fontWeight = FontWeight.Bold) },
+                text = { Text("All items will be permanently deleted. This action cannot be undone.") },
+                confirmButton = {
+                    TextButton(onClick = { showEmptyConfirm = false; viewModel.emptyTrash() }) {
+                        Text("Empty", color = Color(0xFFFF6B6B), fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEmptyConfirm = false }) {
+                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            )
+        }
+
+        // Delete Item Confirm
+        AnimatedVisibility(
+            visible  = itemToDelete != null,
+            enter    = slideInVertically { (it / 2f).toInt() } + fadeIn(),
+            exit     = slideOutVertically { (it / 2f).toInt() } + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            itemToDelete?.let { item ->
+                AlertDialog(
+                    onDismissRequest = { itemToDelete = null },
+                    containerColor   = Color(0xFF1E1C30),
+                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    title = { Text("Delete permanently?", fontWeight = FontWeight.Bold) },
+                    text = { Text("This item will be permanently deleted and cannot be recovered.") },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.permanentlyDelete(item); itemToDelete = null }) {
+                            Text("Delete", color = Color(0xFFFF6B6B), fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { itemToDelete = null }) {
+                            Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                )
+            }
+        }
 
         SnackbarHost(
             hostState = snackbarHostState,
-            modifier  = Modifier
+            modifier  = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+        )
+    }
+}
+
+// ── Preview Overlay ────────────────────────────────────────────────────────────
+
+@Composable
+private fun TrashPreviewOverlay(
+    item: TrashItem,
+    onClose: () -> Unit,
+    onRestore: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val isVideo = item.mediaType.startsWith("video/", ignoreCase = true)
+
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        if (isVideo) {
+            // For video we just show a thumbnail and a message since we can't easily play it
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                AsyncImage(
+                    model              = item.contentUri,
+                    contentDescription = null,
+                    contentScale       = ContentScale.Fit,
+                    modifier           = Modifier.fillMaxSize()
+                )
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Outlined.PlayCircle, null,
+                            tint = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "Restore this video to play it",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        } else {
+            ZoomableAsyncImage(
+                model = item.contentUri,
+                contentDescription = "Preview",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit
+            )
+        }
+
+        // Top Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack, "Close",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+
+        // Bottom Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
                 .align(Alignment.BottomCenter)
+                .background(Color.Black.copy(alpha = 0.6f))
                 .navigationBarsPadding()
-                .padding(bottom = 16.dp)
-        )
-    }
-
-    // ── Dialog تفريغ الـ Trash ────────────────────────────────────────────────
-    if (showEmptyConfirm) {
-        AlertDialog(
-            onDismissRequest = { showEmptyConfirm = false },
-            containerColor   = Color(0xFF1E1C30),
-            title = {
-                Text(
-                    "Empty Recycle Bin?",
-                    color      = MaterialTheme.colorScheme.onBackground,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    "All $trashCount item${if (trashCount != 1) "s" else ""} will be permanently deleted and cannot be recovered.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showEmptyConfirm = false; viewModel.emptyTrash() }) {
-                    Text("Empty Trash", color = Color(0xFFFF6B6B), fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEmptyConfirm = false }) {
-                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onRestore)
+                    .padding(12.dp)
+            ) {
+                Icon(Icons.Outlined.Restore, "Restore", tint = Color(0xFF8B7FF5))
+                Spacer(Modifier.height(4.dp))
+                Text("Restore", color = Color(0xFF8B7FF5), style = MaterialTheme.typography.labelMedium)
             }
-        )
-    }
 
-    // ── Dialog حذف نهائي لعنصر واحد ──────────────────────────────────────────
-    itemToDelete?.let { item ->
-        val name = item.originalPath.substringAfterLast('/').ifBlank { item.originalPath }
-        AlertDialog(
-            onDismissRequest = { itemToDelete = null },
-            containerColor   = Color(0xFF1E1C30),
-            title = {
-                Text(
-                    "Delete Permanently?",
-                    color      = MaterialTheme.colorScheme.onBackground,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    "\"$name\" will be permanently deleted and cannot be recovered.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { viewModel.permanentlyDelete(item); itemToDelete = null }) {
-                    Text("Delete", color = Color(0xFFFF6B6B), fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { itemToDelete = null }) {
-                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onDelete)
+                    .padding(12.dp)
+            ) {
+                Icon(Icons.Outlined.DeleteForever, "Delete", tint = Color(0xFFFF6B6B))
+                Spacer(Modifier.height(4.dp))
+                Text("Delete", color = Color(0xFFFF6B6B), style = MaterialTheme.typography.labelMedium)
             }
-        )
+        }
     }
 }
 
@@ -315,6 +456,7 @@ private fun TrashInfoBanner() {
 @Composable
 private fun TrashItemCard(
     item:      TrashItem,
+    onClick:   () -> Unit,
     onRestore: () -> Unit,
     onDelete:  () -> Unit
 ) {
@@ -324,7 +466,7 @@ private fun TrashItemCard(
         else                      -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val isVideo = item.mediaType.startsWith("video/", ignoreCase = true)
-    val name    = item.originalPath.substringAfterLast('/').ifBlank { item.originalPath }
+    val name    = item.originalPath.substringAfterLast("/").ifBlank { item.originalPath }
 
     Row(
         modifier = Modifier
@@ -332,6 +474,7 @@ private fun TrashItemCard(
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFF1E1C30))
             .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
