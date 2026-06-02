@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
+    // 1. ضفنا مكوّن فحص ثغرات المكتبات هنا
+    id("org.owasp.dependencycheck") version "12.1.0"
 }
 
 apply(plugin = "io.objectbox")
@@ -60,6 +62,11 @@ android {
 
 configurations.matching { it.name.contains("debug", ignoreCase = true) }.all {
     exclude(group = "io.objectbox", module = "objectbox-android")
+}
+
+// 2. إعدادات اختيارية لتوليد التقرير بصيغة SARIF المتوافقة مع الـ Pipeline عندك
+dependencyCheck {
+    format = "SARIF"
 }
 
 dependencies {
