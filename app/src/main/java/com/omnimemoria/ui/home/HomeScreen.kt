@@ -183,7 +183,7 @@ fun HomeScreen(
 
             // Smart FAB + Favorites chip
             AnimatedVisibility(
-                visible = currentTab == HomeTab.GALLERY && !isSelecting,
+                visible = currentTab == HomeTab.GALLERY,
                 enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
                 exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
                 modifier = Modifier.fillMaxWidth()
@@ -203,13 +203,17 @@ fun HomeScreen(
                 }
             }
 
-            androidx.compose.animation.AnimatedVisibility(
-                visible = !isSelecting,
-                enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }) + androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
-            ) {
-                OmniBottomNav(
-                    currentDestination = currentDestination,
+            Spacer(modifier = Modifier.navigationBarsPadding().padding(bottom = 12.dp).height(68.dp))
+        }
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !isSelecting,
+            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }) + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            OmniBottomNav(
+                currentDestination = currentDestination,
                 onTabSelected = { tab ->
                     homeNavController.navigate(tab.route) {
                         popUpTo(homeNavController.graph.findStartDestination().id) {
@@ -220,7 +224,6 @@ fun HomeScreen(
                     }
                 }
             )
-            }
         }
     }
 
