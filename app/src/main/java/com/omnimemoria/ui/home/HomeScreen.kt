@@ -121,7 +121,7 @@ fun HomeScreen(
                 route = HomeTab.GALLERY.route,
                 enterTransition = { slideInHorizontally { -it / 4 } + fadeIn(tween(200)) },
                 exitTransition = { slideOutHorizontally { it / 4 } + fadeOut(tween(200)) }
-            ) { GalleryScreen(onPhotoClick = onPhotoClick) }
+            ) { GalleryScreen(onPhotoClick = onPhotoClick, viewModel = galleryViewModel) }
             composable(
                 route = HomeTab.ALBUMS.route,
                 enterTransition = { slideInHorizontally { it / 4 } + fadeIn(tween(200)) },
