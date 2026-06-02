@@ -10,6 +10,11 @@ import androidx.activity.enableEdgeToEdge
 
 import com.omnimemoria.ui.navigation.AppNavGraph
 import com.omnimemoria.ui.theme.OmniMemoriaTheme
+import com.omnimemoria.ui.components.PermissionsScreen
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -38,8 +43,15 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             OmniMemoriaTheme {
-                // تم إزالة isVaultUnlocked = false
-                AppNavGraph(externalUri = externalUri, intentType = intentType)
+                var permissionsGranted by remember { mutableStateOf(false) }
+
+                if (permissionsGranted) {
+                    AppNavGraph(externalUri = externalUri, intentType = intentType)
+                } else {
+                    PermissionsScreen(onPermissionsGranted = {
+                        permissionsGranted = true
+                    })
+                }
             }
         }
     }

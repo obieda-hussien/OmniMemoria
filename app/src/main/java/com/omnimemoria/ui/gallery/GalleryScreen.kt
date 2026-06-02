@@ -1,4 +1,6 @@
 package com.omnimemoria.ui.gallery
+import com.omnimemoria.domain.model.FilterConfig
+import com.omnimemoria.domain.model.MediaType
 
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -59,7 +62,7 @@ import androidx.compose.foundation.gestures.transformable
 import kotlinx.coroutines.launch
 
 private val FavoriteRose             = Color(0xFFFF4B6E)
-private val SelectionBarBottomPadding = 92.dp
+private val SelectionBarBottomPadding = 16.dp
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -153,14 +156,11 @@ fun GalleryScreen(
                 .transformable(state = transformableState, lockRotationOnZoomPan = true)
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
+                val activeFilterCount by viewModel.activeFilterCount.collectAsState()
                 OmniSectionHeader(
-                    title = when (currentFilter) {
-                        MediaFilter.ALL         -> "All Media"
-                        MediaFilter.PHOTOS_ONLY -> "Photos"
-                        MediaFilter.VIDEOS_ONLY -> "Videos"
-                    },
+                    title = if (activeFilterCount == 0) "All Media" else "Filtered Media",
                     subtitle    = "${mediaStats.totalCount} items  ·  ${sortConfig.toDisplayLabel()}",
-                    actionLabel = "Filter & Sort",
+                    actionLabel = if (activeFilterCount > 0) "Filters: $activeFilterCount" else "Filter & Sort",
                     actionIcon  = Icons.Outlined.Tune,
                     onAction    = { showSortFilterSheet = true },
                     modifier    = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -189,10 +189,18 @@ fun GalleryScreen(
                     }
                 ) { index ->
                     when (val item = groupedPhotos[index]) {
-                        is GalleryItem.DateHeader -> DateHeaderRow(label = item.label)
+                        is GalleryItem.DateHeader -> Box(modifier = Modifier.animateItem()) { DateHeaderRow(label = item.label) }
                         is GalleryItem.Photo -> {
                             val photo      = item.photo
                             val isSelected = photo.id in selectedIds
+                            Box(modifier = Modifier.animateItem(
+                                fadeInSpec = androidx.compose.animation.core.tween(250),
+                                fadeOutSpec = androidx.compose.animation.core.tween(250),
+                                placementSpec = androidx.compose.animation.core.spring(
+                                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                                    stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+                                )
+                            )) {
                             PhotoCell(
                                 uri                     = photo.uri.toString(),
                                 photoId                 = photo.id,
@@ -211,8 +219,9 @@ fun GalleryScreen(
                                     viewModel.toggleSelection(photo.id)
                                 }
                             )
+                            }
                         }
-                        null -> SkeletonPhotoCell()
+                        null -> Box(modifier = Modifier.animateItem()) { SkeletonPhotoCell() }
                     }
                 }
             }
@@ -402,10 +411,10 @@ private fun SkeletonPhotoCell() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun GallerySortFilterSheet(
-    currentFilter: MediaFilter,
+    currentFilter: FilterConfig,
     currentSort:   SortConfig,
     onDismiss:     () -> Unit,
-    onApply:       (SortConfig, MediaFilter) -> Unit
+    onApply:       (SortConfig, FilterConfig) -> Unit
 ) {
     var sortBy   by remember { mutableStateOf(currentSort.sortBy) }
     var sortOrder by remember { mutableStateOf(currentSort.sortOrder) }
@@ -421,6 +430,7 @@ internal fun GallerySortFilterSheet(
         Column(
             modifier            = Modifier
                 .fillMaxWidth()
+                .verticalScroll(androidx.compose.foundation.rememberScrollState())
                 .navigationBarsPadding()
                 .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
@@ -444,15 +454,23 @@ internal fun GallerySortFilterSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MediaFilter.entries.forEach { target ->
+                MediaType.entries.forEach { target ->
                     FilterChip(
-                        selected = filterBy == target,
-                        onClick  = { filterBy = target },
+                        selected = filterBy.mediaTypes.contains(target),
+                        onClick  = {
+                            val newTypes = if (filterBy.mediaTypes.contains(target)) {
+                                filterBy.mediaTypes - target
+                            } else {
+                                filterBy.mediaTypes + target
+                            }
+                            filterBy = filterBy.copy(mediaTypes = newTypes)
+                        },
                         label    = {
                             Text(when (target) {
-                                MediaFilter.ALL         -> "All"
-                                MediaFilter.PHOTOS_ONLY -> "Photos"
-                                MediaFilter.VIDEOS_ONLY -> "Videos"
+                                MediaType.IMAGE -> "Photos"
+                                MediaType.VIDEO -> "Videos"
+                                MediaType.GIF -> "GIFs"
+                                MediaType.RAW -> "RAW"
                             })
                         },
                         colors = FilterChipDefaults.filterChipColors(

@@ -16,6 +16,8 @@ import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.data.repository.SortPresetRepository
 import com.omnimemoria.data.repository.TrashRepository
 import com.omnimemoria.domain.model.MediaPhoto
+import com.omnimemoria.domain.model.FilterConfig
+import com.omnimemoria.domain.model.MediaType
 import com.omnimemoria.domain.model.SortConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -62,7 +64,6 @@ sealed class GalleryItem {
     data class Photo(val photo: MediaPhoto, val isFavorite: Boolean = false) : GalleryItem()
 }
 
-enum class MediaFilter { ALL, PHOTOS_ONLY, VIDEOS_ONLY }
 
 private fun MediaPhoto.toDateGroupLabel(): String {
     val ms = this.effectiveDateMs
@@ -121,8 +122,22 @@ class GalleryViewModel @Inject constructor(
     val compactTopBar: StateFlow<Boolean> = _compactTopBar.asStateFlow()
 
     // ── Filter / sort ──────────────────────────────────────────────────────────
-    private val _currentFilter = MutableStateFlow(MediaFilter.ALL)
-    val currentFilter: StateFlow<MediaFilter> = _currentFilter.asStateFlow()
+    private val _currentFilter = MutableStateFlow(FilterConfig())
+    val currentFilter: StateFlow<FilterConfig> = _currentFilter.asStateFlow()
+
+    val activeFilterCount: StateFlow<Int> = _currentFilter.map { config ->
+        var count = 0
+        if (config.mediaTypes != setOf(MediaType.IMAGE, MediaType.VIDEO)) count++
+        if (config.mimeFormats.isNotEmpty()) count++
+        if (config.minSizeBytes != null || config.maxSizeBytes != null) count++
+        if (config.dateRange != null) count++
+        if (config.minResolutionMp != null) count++
+        if (config.hasText != null) count++
+        if (config.hasFaces != null) count++
+        if (config.hasPhoneNumber != null) count++
+        if (config.isFavorite != null) count++
+        count
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     private val _localSortConfig = MutableStateFlow<SortConfig?>(null)
 
@@ -145,17 +160,13 @@ class GalleryViewModel @Inject constructor(
         _currentFilter,
         mediaStoreVersion
     ) { config, filter, _ -> Pair(config, filter) }
-        .flatMapLatest { (config, _) ->
-            mediaStoreRepository.getPhotosPaged(config).cachedIn(viewModelScope)
+        .flatMapLatest { (config, currentFilter) ->
+            mediaStoreRepository.getPhotosPaged(config, currentFilter).cachedIn(viewModelScope)
         }
         .combine(favoriteIds) { pagingData, favIds -> Pair(pagingData, favIds) }
         .combine(_currentFilter) { (pagingData, favIds), filter ->
-            val filteredData = when (filter) {
-                MediaFilter.ALL         -> pagingData
-                MediaFilter.PHOTOS_ONLY -> pagingData.filter { !it.mimeType.startsWith("video/", ignoreCase = true) }
-                MediaFilter.VIDEOS_ONLY -> pagingData.filter {  it.mimeType.startsWith("video/", ignoreCase = true) }
-            }
-            filteredData
+            // We let MediaStoreRepository do most of the filtering now, but we still map to GalleryItem
+            pagingData
                 .map { photo -> GalleryItem.Photo(photo, isFavorite = photo.id in favIds) as GalleryItem }
                 .insertSeparators { before, after ->
                     val bLabel = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
@@ -201,7 +212,7 @@ class GalleryViewModel @Inject constructor(
         galleryStateHolder.activeFilter.value = _currentFilter.value
     }
 
-    fun updateSortAndFilter(config: SortConfig, filter: MediaFilter) {
+    fun updateSortAndFilter(config: SortConfig, filter: FilterConfig) {
         _localSortConfig.value   = config
         _currentFilter.value     = filter
         galleryStateHolder.activeSortConfig.value = config

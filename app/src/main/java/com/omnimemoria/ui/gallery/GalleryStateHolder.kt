@@ -1,4 +1,6 @@
 package com.omnimemoria.ui.gallery
+import com.omnimemoria.domain.model.FilterConfig
+import com.omnimemoria.domain.model.MediaType
 
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.domain.model.SortConfig
@@ -38,5 +40,5 @@ class GalleryStateHolder @Inject constructor() {
     // ── Active sort + filter that produced the gallery list ───────────────────
     // Updated by GalleryViewModel / FolderDetailViewModel before navigating.
     val activeSortConfig = MutableStateFlow(SortConfig())
-    val activeFilter     = MutableStateFlow(MediaFilter.ALL)
+    val activeFilter     = MutableStateFlow(FilterConfig())
 }

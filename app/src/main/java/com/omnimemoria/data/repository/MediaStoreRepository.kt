@@ -21,6 +21,8 @@ import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.omnimemoria.data.local.db.PhotoIntelligenceDao
 import com.omnimemoria.domain.model.FolderSortBy
+import com.omnimemoria.domain.model.FilterConfig
+import com.omnimemoria.domain.model.MediaType
 import com.omnimemoria.domain.model.FolderSortConfig
 import com.omnimemoria.domain.model.MediaFolder
 import com.omnimemoria.domain.model.MediaPhoto
@@ -78,8 +80,8 @@ class MediaStoreRepository @Inject constructor(
                 MediaStore.MediaColumns.MIME_TYPE,
                 MediaStore.Files.FileColumns.MEDIA_TYPE
             ),
-            mediaSelection,
-            mediaSelectionArgs,
+            QueryBuilder(FilterConfig()).buildSelection().first,
+            QueryBuilder(FilterConfig()).buildSelection().second,
             null
         )?.use { cursor ->
             val si = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
@@ -186,8 +188,8 @@ class MediaStoreRepository @Inject constructor(
             contentResolver.query(
                 mediaCollection,
                 photoProjection,
-                "${MediaStore.MediaColumns.DATE_TAKEN} BETWEEN ? AND ? AND ($mediaSelection)",
-                arrayOf(start.toString(), end.toString(), *mediaSelectionArgs),
+                "${MediaStore.MediaColumns.DATE_TAKEN} BETWEEN ? AND ? AND (${QueryBuilder(FilterConfig()).buildSelection().first})",
+                arrayOf(start.toString(), end.toString(), *QueryBuilder(FilterConfig()).buildSelection().second),
                 "${MediaStore.MediaColumns.DATE_TAKEN} DESC"
             )?.use { cursor ->
                 if (cursor.moveToFirst()) results.add(cursor.toMediaPhoto())
@@ -204,7 +206,7 @@ class MediaStoreRepository @Inject constructor(
             contentResolver.query(
                 mediaCollection,
                 photoProjection,
-                buildQueryArgs(sortConfig, null, null),
+                buildQueryArgs(sortConfig, FilterConfig(), null, null, null),
                 null
             )
         } else {
@@ -212,8 +214,8 @@ class MediaStoreRepository @Inject constructor(
             contentResolver.query(
                 mediaCollection,
                 photoProjection,
-                mediaSelection,
-                mediaSelectionArgs,
+                QueryBuilder(FilterConfig()).buildSelection().first,
+                QueryBuilder(FilterConfig()).buildSelection().second,
                 sortOrderStr
             )
         }?.use { cursor ->
@@ -237,10 +239,10 @@ class MediaStoreRepository @Inject constructor(
 
     // ══ Paging ══════════════════════════════════════════════════════════════════
 
-    fun getPhotosPaged(sortConfig: SortConfig): Flow<PagingData<MediaPhoto>> = Pager(
+    fun getPhotosPaged(sortConfig: SortConfig, filterConfig: FilterConfig = FilterConfig()): Flow<PagingData<MediaPhoto>> = Pager(
         config              = PagingConfig(pageSize = PAGE_SIZE),
         pagingSourceFactory = {
-            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, sortConfig, null, favoritesRepository)
+            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, sortConfig, filterConfig, null, favoritesRepository)
         }
     ).flow
 
@@ -252,7 +254,7 @@ class MediaStoreRepository @Inject constructor(
     fun getPhotosByFolder(bucketId: String, sortConfig: SortConfig): Flow<PagingData<MediaPhoto>> = Pager(
         config              = PagingConfig(pageSize = PAGE_SIZE),
         pagingSourceFactory = {
-            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, sortConfig, bucketId, favoritesRepository)
+            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, sortConfig, FilterConfig(), bucketId, favoritesRepository)
         }
     ).flow
 
@@ -268,7 +270,7 @@ class MediaStoreRepository @Inject constructor(
             contentResolver.query(
                 mediaCollection,
                 photoProjection,
-                buildQueryArgs(sortConfig, null, null, bucketId),
+                buildQueryArgs(sortConfig, FilterConfig(), null, null, bucketId),
                 null
             )
         } else {
@@ -276,8 +278,8 @@ class MediaStoreRepository @Inject constructor(
             contentResolver.query(
                 mediaCollection,
                 photoProjection,
-                "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($mediaSelection)",
-                arrayOf(bucketId, *mediaSelectionArgs),
+                "${MediaStore.MediaColumns.BUCKET_ID} = ? AND (${QueryBuilder(FilterConfig()).buildSelection().first})",
+                arrayOf(bucketId, *QueryBuilder(FilterConfig()).buildSelection().second),
                 sortOrderStr
             )
         }?.use { cursor ->
@@ -298,8 +300,8 @@ class MediaStoreRepository @Inject constructor(
     fun searchPhotosByDisplayName(query: String, limit: Int = 100): List<MediaPhoto> {
         if (query.isBlank()) return emptyList()
         val escaped = query.replace("%", "\\%").replace("_", "\\_")
-        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? ESCAPE '\\' AND ($mediaSelection)"
-        val args = arrayOf("%$escaped%", *mediaSelectionArgs)
+        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? ESCAPE '\\' AND (${QueryBuilder(FilterConfig()).buildSelection().first})"
+        val args = arrayOf("%$escaped%", *QueryBuilder(FilterConfig()).buildSelection().second)
         val out = mutableListOf<MediaPhoto>()
         contentResolver.query(
             mediaCollection,
@@ -317,8 +319,8 @@ class MediaStoreRepository @Inject constructor(
         contentResolver.query(
             mediaCollection,
             photoProjection,
-            "${MediaStore.MediaColumns._ID} = ? AND ($mediaSelection)",
-            arrayOf(id.toString(), *mediaSelectionArgs),
+            "${MediaStore.MediaColumns._ID} = ? AND (${QueryBuilder(FilterConfig()).buildSelection().first})",
+            arrayOf(id.toString(), *QueryBuilder(FilterConfig()).buildSelection().second),
             null
         )?.use { cursor ->
             if (cursor.moveToFirst()) return cursor.toMediaPhoto()
@@ -345,6 +347,7 @@ class MediaStoreRepository @Inject constructor(
         private val contentResolver:      ContentResolver,
         private val photoIntelligenceDao: PhotoIntelligenceDao,
         private val sortConfig:           SortConfig,
+        private val filterConfig:         FilterConfig,
         private val bucketId:             String? = null,
         private val favoritesRepository:  FavoritesRepository? = null
     ) : PagingSource<Int, MediaPhoto>() {
@@ -362,11 +365,21 @@ class MediaStoreRepository @Inject constructor(
                 val chunkSize  = params.loadSize * 2
 
                 while (pageData.size < params.loadSize && !endReached) {
-                    val chunk = queryPhotos(contentResolver, sortConfig, chunkSize, offset, bucketId)
+                    val chunk = queryPhotos(contentResolver, sortConfig, filterConfig, chunkSize, offset, bucketId)
                     if (chunk.isEmpty()) {
                         endReached = true
                     } else {
                         var processedChunk = chunk.filterNot { it.id in vaultedIds }
+
+                        if (filterConfig.minResolutionMp != null) {
+                            processedChunk = processedChunk.filter { (it.width * it.height) / 1000000f >= filterConfig.minResolutionMp }
+                        }
+
+                        if (filterConfig.isFavorite != null && favoritesRepository != null) {
+                            val favoriteIds = kotlinx.coroutines.runBlocking { favoritesRepository.getAllFavoriteIds().first() }
+                            processedChunk = processedChunk.filter { (it.id in favoriteIds) == filterConfig.isFavorite }
+                        }
+
                         if (sortConfig.sortBy == SortBy.RESOLUTION) {
                             processedChunk = if (sortConfig.sortOrder == SortOrder.ASCENDING) {
                                 processedChunk.sortedBy { it.width * it.height }
@@ -434,6 +447,69 @@ class MediaStoreRepository @Inject constructor(
     companion object {
         private const val PAGE_SIZE = 60
 
+        class QueryBuilder(private val filter: FilterConfig) {
+            fun buildSelection(): Pair<String, Array<String>> {
+                val clauses = mutableListOf<String>()
+                val args = mutableListOf<String>()
+
+                // Media Types
+                if (filter.mediaTypes.isNotEmpty()) {
+                    val typeParams = filter.mediaTypes.mapNotNull {
+                        when (it) {
+                            MediaType.IMAGE -> MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString()
+                            MediaType.VIDEO -> MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
+                            else -> null
+                        }
+                    }
+                    if (typeParams.isNotEmpty()) {
+                        val placeholders = typeParams.joinToString(", ") { "?" }
+                        clauses.add("${MediaStore.Files.FileColumns.MEDIA_TYPE} IN ($placeholders)")
+                        args.addAll(typeParams)
+                    }
+                } else {
+                    // Fallback to defaults
+                    clauses.add("(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?)")
+                    args.add(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString())
+                    args.add(MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
+                }
+
+                // Mime Formats
+                if (filter.mimeFormats.isNotEmpty()) {
+                    val placeholders = filter.mimeFormats.joinToString(", ") { "?" }
+                    clauses.add("${MediaStore.MediaColumns.MIME_TYPE} IN ($placeholders)")
+                    args.addAll(filter.mimeFormats)
+                }
+
+                // Size
+                if (filter.minSizeBytes != null) {
+                    clauses.add("${MediaStore.MediaColumns.SIZE} >= ?")
+                    args.add(filter.minSizeBytes.toString())
+                }
+                if (filter.maxSizeBytes != null) {
+                    clauses.add("${MediaStore.MediaColumns.SIZE} <= ?")
+                    args.add(filter.maxSizeBytes.toString())
+                }
+
+                // Date Range
+                if (filter.dateRange != null) {
+                    clauses.add("${MediaStore.MediaColumns.DATE_TAKEN} >= ? AND ${MediaStore.MediaColumns.DATE_TAKEN} <= ?")
+                    args.add(filter.dateRange.first.toString())
+                    args.add(filter.dateRange.last.toString())
+                }
+
+                // Exclude trash/pending items
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    clauses.add("${MediaStore.MediaColumns.IS_TRASHED} = 0")
+                    clauses.add("${MediaStore.MediaColumns.IS_PENDING} = 0")
+                }
+
+                val selection = if (clauses.isEmpty()) null else clauses.joinToString(" AND ")
+                val selectionArgs = if (args.isEmpty()) null else args.toTypedArray()
+
+                return Pair(selection ?: "", selectionArgs ?: emptyArray())
+            }
+        }
+
         private fun getSortOrderStr(sc: SortConfig): String {
             val (col, fallback) = when (sc.sortBy) {
                 SortBy.DATE_TAKEN      -> MediaStore.MediaColumns.DATE_TAKEN    to MediaStore.MediaColumns.DATE_ADDED
@@ -479,6 +555,7 @@ class MediaStoreRepository @Inject constructor(
         private fun queryPhotos(
             cr: ContentResolver,
             sortConfig: SortConfig,
+            filterConfig: FilterConfig,
             limit: Int,
             offset: Int,
             bucketId: String? = null
@@ -487,21 +564,23 @@ class MediaStoreRepository @Inject constructor(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 cr.query(
                     MediaStore.Files.getContentUri("external"),
-                    photoProjection, buildQueryArgs(sortConfig, limit, offset, bucketId), null
+                    photoProjection, buildQueryArgs(sortConfig, filterConfig, limit, offset, bucketId), null
                 )
             } else {
                 val sortOrderStr = getSortOrderStr(sortConfig)
+                val (mediaSelection, mediaSelectionArgs) = QueryBuilder(filterConfig).buildSelection()
                 if (bucketId.isNullOrBlank()) {
                     cr.query(
                         MediaStore.Files.getContentUri("external"),
-                        photoProjection, mediaSelection, mediaSelectionArgs, "$sortOrderStr LIMIT $limit OFFSET $offset"
+                        photoProjection, QueryBuilder(FilterConfig()).buildSelection().first, QueryBuilder(FilterConfig()).buildSelection().second, "$sortOrderStr LIMIT $limit OFFSET $offset"
                     )
                 } else {
+                    val combinedArgs = arrayOf(bucketId, *QueryBuilder(FilterConfig()).buildSelection().second)
                     cr.query(
                         MediaStore.Files.getContentUri("external"),
                         photoProjection,
-                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($mediaSelection)",
-                        arrayOf(bucketId, *mediaSelectionArgs),
+                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND (${QueryBuilder(FilterConfig()).buildSelection().first})",
+                        combinedArgs,
                         "$sortOrderStr LIMIT $limit OFFSET $offset"
                     )
                 }
@@ -518,6 +597,7 @@ class MediaStoreRepository @Inject constructor(
         @RequiresApi(Build.VERSION_CODES.O)
         private fun buildQueryArgs(
             sc: SortConfig,
+            filterConfig: FilterConfig,
             limit: Int?,
             offset: Int?,
             bucketId: String? = null
@@ -569,17 +649,18 @@ class MediaStoreRepository @Inject constructor(
                 if (limit != null) putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
                 if (offset != null) putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
                 
+                val (mediaSelection, mediaSelectionArgs) = QueryBuilder(filterConfig).buildSelection()
                 if (bucketId.isNullOrBlank()) {
-                    putString(ContentResolver.QUERY_ARG_SQL_SELECTION, mediaSelection)
-                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, mediaSelectionArgs)
+                    putString(ContentResolver.QUERY_ARG_SQL_SELECTION, QueryBuilder(FilterConfig()).buildSelection().first)
+                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, QueryBuilder(FilterConfig()).buildSelection().second)
                 } else {
                     putString(
                         ContentResolver.QUERY_ARG_SQL_SELECTION,
-                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($mediaSelection)"
+                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND (${QueryBuilder(FilterConfig()).buildSelection().first})"
                     )
                     putStringArray(
                         ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
-                        arrayOf(bucketId, *mediaSelectionArgs)
+                        arrayOf(bucketId, *QueryBuilder(FilterConfig()).buildSelection().second)
                     )
                 }
             }
@@ -601,8 +682,8 @@ class MediaStoreRepository @Inject constructor(
                 MediaStore.Files.getContentUri("external"),
                 photoProjection,
                 Bundle(args).apply {
-                    putString(ContentResolver.QUERY_ARG_SQL_SELECTION, mediaSelection)
-                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, mediaSelectionArgs)
+                    putString(ContentResolver.QUERY_ARG_SQL_SELECTION, QueryBuilder(FilterConfig()).buildSelection().first)
+                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, QueryBuilder(FilterConfig()).buildSelection().second)
                 },
                 null
             )
@@ -676,12 +757,7 @@ class MediaStoreRepository @Inject constructor(
             return ContentUris.withAppendedId(base, id)
         }
 
-        private val mediaSelection =
-            "(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?)"
-        private val mediaSelectionArgs = arrayOf(
-            MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
-            MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
-        )
+
 
         private fun android.database.Cursor.getStringOrEmpty(c: String) =
             getColumnIndex(c).let { if (it >= 0) getString(it).orEmpty() else "" }
