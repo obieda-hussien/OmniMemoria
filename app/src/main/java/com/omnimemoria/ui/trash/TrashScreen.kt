@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import androidx.compose.ui.unit.IntOffset
 import com.omnimemoria.data.local.db.TrashItem
 import kotlinx.coroutines.launch
 
@@ -453,7 +454,7 @@ private fun TrashEmptyState(modifier: Modifier = Modifier) {
     ) {
         Box(
             modifier = Modifier
-                .offset(y = floatY.dp)
+                .offset { IntOffset(0, floatY.dp.roundToPx()) }
                 .size(88.dp)
                 .clip(RoundedCornerShape(26.dp))
                 .background(Color(0xFF1E1C30))

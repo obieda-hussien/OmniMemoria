@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.unit.IntOffset
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
 import com.omnimemoria.ui.gallery.PhotoCell
@@ -284,7 +285,7 @@ private fun EmptyFavoritesContent(modifier: Modifier = Modifier) {
     ) {
         Box(
             modifier = Modifier
-                .offset(y = floatY.dp)
+                .offset { IntOffset(0, floatY.dp.roundToPx()) }
                 .size(88.dp)
                 .clip(RoundedCornerShape(26.dp))
                 .background(FavoritesSurfaceColor)
