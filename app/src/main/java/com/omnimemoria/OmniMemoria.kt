@@ -52,7 +52,11 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
     // singleton for the lifetime of the process.
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(context)
-
+            .components {
+                add(coil3.svg.SvgDecoder.Factory())
+                add(coil3.video.VideoFrameDecoder.Factory())
+                add(coil3.gif.AnimatedImageDecoder.Factory())
+            }
             // ── Memory cache ────────────────────────────────────────────────────
             // 25% of available heap — keeps decoded Bitmaps warm while the user
             // scrolls. When the process is low on RAM, Android evicts entries

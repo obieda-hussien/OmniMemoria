@@ -53,6 +53,7 @@ androidx-navigation-compose = { group = "androidx.navigation", name = "navigatio
 androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycleViewmodelCompose" }
 
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil3" }
+coil-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil3" }
 coil-gif = { group = "io.coil-kt.coil3", name = "coil-gif", version.ref = "coil3" }
 coil-video = { group = "io.coil-kt.coil3", name = "coil-video", version.ref = "coil3" }
 avif-coder-coil = { group = "com.github.awxkee", name = "avif-coder-coil", version.ref = "avifCoderCoil" }
