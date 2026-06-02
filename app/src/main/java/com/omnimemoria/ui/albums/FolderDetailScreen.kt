@@ -217,7 +217,7 @@ fun FolderDetailScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 92.dp)
+                .padding(bottom = 16.dp)
         ) {
             OmniSelectionBar(
                 count    = selectedIds.size,

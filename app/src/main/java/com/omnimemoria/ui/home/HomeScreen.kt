@@ -79,6 +79,7 @@ fun HomeScreen(
 ) {
     val galleryViewModel: GalleryViewModel = hiltViewModel()
     val mediaStats by galleryViewModel.mediaStats.collectAsState()
+    val isSelecting by galleryViewModel.isInSelectionMode.collectAsState()
     val dynamicAccent by galleryViewModel.dynamicAccent.collectAsState()
     val compactTopBar by galleryViewModel.compactTopBar.collectAsState()
     val context = LocalContext.current
@@ -182,7 +183,7 @@ fun HomeScreen(
 
             // Smart FAB + Favorites chip
             AnimatedVisibility(
-                visible = currentTab == HomeTab.GALLERY,
+                visible = currentTab == HomeTab.GALLERY && !isSelecting,
                 enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
                 exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
                 modifier = Modifier.fillMaxWidth()
@@ -202,8 +203,13 @@ fun HomeScreen(
                 }
             }
 
-            OmniBottomNav(
-                currentDestination = currentDestination,
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !isSelecting,
+                enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }) + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
+            ) {
+                OmniBottomNav(
+                    currentDestination = currentDestination,
                 onTabSelected = { tab ->
                     homeNavController.navigate(tab.route) {
                         popUpTo(homeNavController.graph.findStartDestination().id) {
@@ -214,6 +220,7 @@ fun HomeScreen(
                     }
                 }
             )
+            }
         }
     }
 

@@ -12,7 +12,7 @@ import com.omnimemoria.data.repository.SortPresetRepository
 import com.omnimemoria.data.repository.TrashRepository
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.gallery.GalleryStateHolder
-import com.omnimemoria.ui.gallery.MediaFilter
+import com.omnimemoria.domain.model.FilterConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -103,8 +103,8 @@ class PhotoDetailViewModel @Inject constructor(
             else
                 mediaStoreRepository.getAllNonVaultPhotosByFolder(bucketId, sortConfig)
 
-            val all = rawAll.applyMediaFilter(
-                filter   = if (bucketId.isNullOrBlank()) activeFilter else MediaFilter.ALL,
+            val all = rawAll.applyFilterConfig(
+                filter   = if (bucketId.isNullOrBlank()) activeFilter else FilterConfig(),
                 isBucket = !bucketId.isNullOrBlank()
             )
 
@@ -236,14 +236,9 @@ class PhotoDetailViewModel @Inject constructor(
     }
 }
 
-internal fun List<MediaPhoto>.applyMediaFilter(
-    filter:   MediaFilter,
+internal fun List<MediaPhoto>.applyFilterConfig(
+    filter:   FilterConfig,
     isBucket: Boolean = false
 ): List<MediaPhoto> {
-    if (isBucket || filter == MediaFilter.ALL) return this
-    return when (filter) {
-        MediaFilter.PHOTOS_ONLY -> filter { !it.mimeType.startsWith("video/", ignoreCase = true) }
-        MediaFilter.VIDEOS_ONLY -> filter {  it.mimeType.startsWith("video/", ignoreCase = true) }
-        MediaFilter.ALL         -> this
-    }
+    return this // Now handled by MediaStoreRepository directly
 }

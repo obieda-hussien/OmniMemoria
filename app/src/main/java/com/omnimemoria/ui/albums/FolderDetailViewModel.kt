@@ -12,7 +12,7 @@ import com.omnimemoria.domain.model.MediaFolder
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.domain.model.SortConfig
 import com.omnimemoria.ui.gallery.GalleryStateHolder
-import com.omnimemoria.ui.gallery.MediaFilter
+import com.omnimemoria.domain.model.FilterConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -77,7 +77,7 @@ class FolderDetailViewModel @Inject constructor(
     fun prepareForNavigation(photo: MediaPhoto) {
         galleryStateHolder.cachePendingPhoto(photo)
         galleryStateHolder.activeSortConfig.value = _sortConfig.value
-        galleryStateHolder.activeFilter.value     = MediaFilter.ALL
+        galleryStateHolder.activeFilter.value     = FilterConfig()
     }
 
     // ── Delete ─────────────────────────────────────────────────────────────────
