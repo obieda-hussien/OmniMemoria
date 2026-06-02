@@ -400,7 +400,7 @@ class MediaStoreRepository @Inject constructor(
                     }
                 }
                 LoadResult.Page(
-                    data    = pageData.take(params.loadSize),
+                    data    = pageData,
                     prevKey = if (startOffset == 0) null
                               else (startOffset - params.loadSize).coerceAtLeast(0),
                     nextKey = if (endReached) null else offset
@@ -454,23 +454,19 @@ class MediaStoreRepository @Inject constructor(
 
                 // Media Types
                 if (filter.mediaTypes.isNotEmpty()) {
-                    val typeParams = filter.mediaTypes.mapNotNull {
-                        when (it) {
-                            MediaType.IMAGE -> MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString()
-                            MediaType.VIDEO -> MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
-                            else -> null
-                        }
+                    val typeClauses = mutableListOf<String>()
+                    if (filter.mediaTypes.contains(MediaType.IMAGE)) {
+                        typeClauses.add("(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ${MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE} OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'image/%')")
                     }
-                    if (typeParams.isNotEmpty()) {
-                        val placeholders = typeParams.joinToString(", ") { "?" }
-                        clauses.add("${MediaStore.Files.FileColumns.MEDIA_TYPE} IN ($placeholders)")
-                        args.addAll(typeParams)
+                    if (filter.mediaTypes.contains(MediaType.VIDEO)) {
+                        typeClauses.add("(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ${MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO} OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'video/%')")
+                    }
+                    if (typeClauses.isNotEmpty()) {
+                        clauses.add("(" + typeClauses.joinToString(" OR ") + ")")
                     }
                 } else {
                     // Fallback to defaults
-                    clauses.add("(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?)")
-                    args.add(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString())
-                    args.add(MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
+                    clauses.add("(${MediaStore.Files.FileColumns.MEDIA_TYPE} IN (${MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE}, ${MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO}) OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'image/%' OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'video/%')")
                 }
 
                 // Mime Formats

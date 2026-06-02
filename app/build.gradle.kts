@@ -97,6 +97,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     implementation(libs.coil.compose)
+    implementation(libs.coil.svg)
     implementation(libs.coil.gif)
     implementation(libs.coil.video)
     implementation(libs.avif.coder.coil)
