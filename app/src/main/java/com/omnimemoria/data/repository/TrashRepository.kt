@@ -28,114 +28,101 @@ class TrashRepository @Inject constructor(
     fun getCount(): Flow<Int> = trashDao.getCount()
     fun getTotalItems(): Flow<Int> = trashDao.getTotalItems()
 
+    suspend fun getTrashItemsByIds(ids: List<Long>): List<TrashItem> = withContext(Dispatchers.IO) {
+        ids.mapNotNull { trashDao.getById(it) }
+    }
+
+    suspend fun getTrashItemById(id: Long): TrashItem? = withContext(Dispatchers.IO) {
+        trashDao.getById(id)
+    }
+
     // ── Move to trash ────────────────────────────────────────────────────────
 
-    suspend fun moveToTrash(photo: MediaPhoto): PendingIntent? = withContext(Dispatchers.IO) {
-        trashDao.upsert(
-            TrashItem(
-                id           = photo.id,
-                originalPath = photo.name,
-                mediaStoreId = photo.id,
-                deletedAt    = System.currentTimeMillis(),
-                mediaType    = photo.mimeType
+    suspend fun moveToTrashIntent(photos: List<MediaPhoto>): PendingIntent? =
+        withContext(Dispatchers.IO) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && photos.isNotEmpty()) {
+                runCatching {
+                    MediaStore.createTrashRequest(contentResolver, photos.map { it.uri }, true)
+                }.getOrNull()
+            } else null
+        }
+
+    suspend fun moveToTrashIntent(photo: MediaPhoto): PendingIntent? = moveToTrashIntent(listOf(photo))
+
+    suspend fun confirmMoveToTrash(photos: List<MediaPhoto>) = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        photos.forEach { photo ->
+            trashDao.upsert(
+                TrashItem(
+                    id           = photo.id,
+                    originalPath = photo.name,
+                    mediaStoreId = photo.id,
+                    deletedAt    = now,
+                    mediaType    = photo.mimeType
+                )
             )
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            MediaStore.createTrashRequest(contentResolver, listOf(photo.uri), true)
-        } else {
-            runCatching { contentResolver.delete(photo.uri, null, null) }
-            null
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                runCatching { contentResolver.delete(photo.uri, null, null) }
+            }
         }
     }
 
-    suspend fun moveAllToTrash(photos: List<MediaPhoto>): PendingIntent? =
-        withContext(Dispatchers.IO) {
-            val now = System.currentTimeMillis()
-            photos.forEach { photo ->
-                trashDao.upsert(
-                    TrashItem(
-                        id           = photo.id,
-                        originalPath = photo.name,
-                        mediaStoreId = photo.id,
-                        deletedAt    = now,
-                        mediaType    = photo.mimeType
-                    )
-                )
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                MediaStore.createTrashRequest(contentResolver, photos.map { it.uri }, true)
-            } else {
-                photos.forEach { photo ->
-                    runCatching { contentResolver.delete(photo.uri, null, null) }
-                }
-                null
-            }
-        }
+    suspend fun confirmMoveToTrash(photo: MediaPhoto) = confirmMoveToTrash(listOf(photo))
 
     // ── Restore ──────────────────────────────────────────────────────────────
 
-    suspend fun restoreFromTrash(trashItemId: Long): PendingIntent? =
+    suspend fun restoreFromTrashIntent(items: List<TrashItem>): PendingIntent? =
         withContext(Dispatchers.IO) {
-            // FIX: جلب الـ item الكامل عشان نبني الـ URI الصح بالـ mediaType الحقيقي
-            val item = trashDao.getById(trashItemId)
-            val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && item != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && items.isNotEmpty()) {
                 runCatching {
-                    MediaStore.createTrashRequest(
-                        contentResolver,
-                        listOf(buildUriForItem(item)),
-                        false
-                    )
+                    MediaStore.createTrashRequest(contentResolver, items.map { buildUriForItem(it) }, false)
                 }.getOrNull()
             } else null
-
-            trashDao.delete(trashItemId)
-            pendingIntent
         }
+
+    suspend fun restoreFromTrashIntent(item: TrashItem): PendingIntent? = restoreFromTrashIntent(listOf(item))
+
+    suspend fun confirmRestoreFromTrash(items: List<TrashItem>) = withContext(Dispatchers.IO) {
+        items.forEach { item ->
+            trashDao.delete(item.id)
+            // Note: On API < 30, it was permanently deleted during moveToTrash, we can't fully restore it.
+        }
+    }
+
+    suspend fun confirmRestoreFromTrash(item: TrashItem) = confirmRestoreFromTrash(listOf(item))
 
     // ── Permanent delete ─────────────────────────────────────────────────────
 
-    suspend fun permanentlyDelete(trashItemId: Long): PendingIntent? =
+    suspend fun permanentlyDeleteIntent(items: List<TrashItem>): PendingIntent? =
         withContext(Dispatchers.IO) {
-            val item = trashDao.getById(trashItemId)
-            val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && item != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && items.isNotEmpty()) {
                 runCatching {
-                    MediaStore.createDeleteRequest(contentResolver, listOf(buildUriForItem(item)))
+                    MediaStore.createDeleteRequest(contentResolver, items.map { buildUriForItem(it) })
                 }.getOrNull()
             } else null
-
-            trashDao.delete(trashItemId)
-            pendingIntent
         }
 
-    suspend fun permanentlyDeleteItem(item: TrashItem): PendingIntent? =
-        withContext(Dispatchers.IO) {
-            val uri = buildUriForItem(item)
-            val pi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                runCatching {
-                    MediaStore.createDeleteRequest(contentResolver, listOf(uri))
-                }.getOrNull()
-            } else {
-                runCatching { contentResolver.delete(uri, null, null) }
-                null
+    suspend fun permanentlyDeleteIntent(item: TrashItem): PendingIntent? = permanentlyDeleteIntent(listOf(item))
+
+    suspend fun confirmPermanentlyDelete(items: List<TrashItem>) = withContext(Dispatchers.IO) {
+        items.forEach { item ->
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                runCatching { contentResolver.delete(buildUriForItem(item), null, null) }
             }
             trashDao.delete(item.id)
-            pi
         }
+    }
+
+    suspend fun confirmPermanentlyDelete(item: TrashItem) = confirmPermanentlyDelete(listOf(item))
 
     // ── Empty trash ──────────────────────────────────────────────────────────
 
-    suspend fun emptyTrash(): PendingIntent? = withContext(Dispatchers.IO) {
-        val allItems = trashDao.getAll()
-        // FIX: نستخدم buildUriForItem مباشرة بدل uriForTrashItem المكسور
-        val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && allItems.isNotEmpty()) {
-            val uris = allItems.map { buildUriForItem(it) }
-            runCatching {
-                MediaStore.createDeleteRequest(contentResolver, uris)
-            }.getOrNull()
-        } else null
+    suspend fun getEmptyTrashIntent(): PendingIntent? = withContext(Dispatchers.IO) {
+        permanentlyDeleteIntent(trashDao.getAll())
+    }
 
-        trashDao.clearAll()
-        pendingIntent
+    suspend fun confirmEmptyTrash() = withContext(Dispatchers.IO) {
+        confirmPermanentlyDelete(trashDao.getAll())
     }
 
     // ── Cleanup expired ──────────────────────────────────────────────────────
@@ -145,7 +132,6 @@ class TrashRepository @Inject constructor(
         val expired = trashDao.getExpiredItems(cutoff)
         expired.forEach { item ->
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                // FIX: نستخدم buildUriForItem مباشرة لأن لدينا الـ item الكامل
                 runCatching { contentResolver.delete(buildUriForItem(item), null, null) }
             }
             trashDao.delete(item.id)
