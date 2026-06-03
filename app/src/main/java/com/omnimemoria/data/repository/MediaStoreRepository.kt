@@ -316,11 +316,19 @@ class MediaStoreRepository @Inject constructor(
     }
 
     fun getPhotoById(id: Long): MediaPhoto? {
+        // We use a basic query without TRASH filtering to ensure we can retrieve the photo
+        // even if it was just selected or moved.
+        val selection = "${MediaStore.MediaColumns._ID} = ?"
+        val args = arrayOf(id.toString())
+
+        // Use the query directly on the contentResolver
+        // Using a bundle allows us to query trashed items on API 30+ if needed, but for now basic query works
+        // for non-trashed items, which is what we need for deleteSelected.
         contentResolver.query(
             mediaCollection,
             photoProjection,
-            "${MediaStore.MediaColumns._ID} = ? AND (${QueryBuilder(FilterConfig()).buildSelection().first})",
-            arrayOf(id.toString(), *QueryBuilder(FilterConfig()).buildSelection().second),
+            selection,
+            args,
             null
         )?.use { cursor ->
             if (cursor.moveToFirst()) return cursor.toMediaPhoto()

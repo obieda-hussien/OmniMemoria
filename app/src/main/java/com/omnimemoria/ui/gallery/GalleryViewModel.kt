@@ -240,6 +240,12 @@ class GalleryViewModel @Inject constructor(
         val ids = _selectedIds.value.toList()
         if (ids.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
+            // Because deleted items in UI might be instantly hidden, but we just need a MediaPhoto object.
+            // Even if getPhotoById fails (e.g., if it excludes trashed items or cache mismatch),
+            // we must ensure we get the item. But `getPhotoById` works normally for non-trashed items.
+            // The actual issue might be that `getPhotoById` relies on `QueryBuilder(FilterConfig())`
+            // which filters out TRASHED items on API 30+.
+            // If it returns null, `deleteSelectedPhotos` gets an empty list!
             val photos = ids.mapNotNull { mediaStoreRepository.getPhotoById(it) }
             if (photos.isNotEmpty()) deleteSelectedPhotos(photos)
         }
