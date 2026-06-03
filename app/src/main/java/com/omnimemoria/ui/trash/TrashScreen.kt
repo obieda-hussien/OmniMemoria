@@ -151,15 +151,17 @@ fun TrashScreen(
         }
 
         // Scrim فوق المحتوى
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = if (showEmptyConfirm || itemToDelete != null) 0.6f else 0f))
-                .clickable(enabled = showEmptyConfirm || itemToDelete != null) {
-                    showEmptyConfirm = false
-                    itemToDelete = null
-                }
-        )
+        if (showEmptyConfirm || itemToDelete != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .clickable {
+                        showEmptyConfirm = false
+                        itemToDelete = null
+                    }
+            )
+        }
 
         // Loading
         if (isLoading) {
