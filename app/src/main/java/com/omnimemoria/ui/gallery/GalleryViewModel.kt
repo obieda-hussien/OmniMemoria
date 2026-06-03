@@ -256,7 +256,8 @@ class GalleryViewModel @Inject constructor(
                     GalleryUiEvent.RequestMediaPermission(
                         pendingIntent = pendingIntent,
                         onConfirmed   = {
-                            viewModelScope.launch {
+                            viewModelScope.launch(Dispatchers.IO) {
+                                trashRepository.confirmMoveToTrash(selectedPhotos)
                                 clearSelection()
                                 _uiEvents.send(buildUndoEvent(count, deletedIds))
                             }
@@ -264,6 +265,7 @@ class GalleryViewModel @Inject constructor(
                     )
                 )
             } else {
+                trashRepository.confirmMoveToTrash(selectedPhotos)
                 clearSelection()
                 _uiEvents.send(buildUndoEvent(count, deletedIds))
             }
