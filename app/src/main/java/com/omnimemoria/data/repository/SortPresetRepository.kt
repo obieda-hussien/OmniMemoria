@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -40,6 +41,20 @@ class SortPresetRepository @Inject constructor(
     suspend fun delete(id: Int) = sortPresetDao.delete(id)
 
     suspend fun setDefault(id: Int) = sortPresetDao.setDefault(id)
+
+    suspend fun updateActive(config: SortConfig) {
+        val defaultPreset = sortPresetDao.getDefault().firstOrNull()
+        if (defaultPreset != null) {
+            val updatedPreset = defaultPreset.copy(
+                name = "Custom", // Overwrite name to Custom since user customized it
+                sortBy = config.sortBy.name,
+                sortOrder = config.sortOrder.name,
+                groupBy = config.groupBy?.name,
+                isDefault = true
+            )
+            sortPresetDao.insert(updatedPreset)
+        }
+    }
 
     private suspend fun ensureDefaultsSeeded() {
         seedMutex.withLock {

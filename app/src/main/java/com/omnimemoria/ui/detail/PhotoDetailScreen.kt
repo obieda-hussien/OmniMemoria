@@ -1,7 +1,11 @@
 package com.omnimemoria.ui.detail
 
+import android.app.Activity
 import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -45,8 +49,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun PhotoDetailScreen(
@@ -63,6 +65,30 @@ fun PhotoDetailScreen(
     val photoList       by viewModel.photoList.collectAsState()
     val isFavorite      by viewModel.isFavorite.collectAsState()
     val isFullListReady by viewModel.isFullListReady.collectAsState()
+
+    // ── Delete / events wiring ─────────────────────────────────────────────────
+    var pendingOnConfirm by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val intentSenderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) pendingOnConfirm?.invoke()
+        pendingOnConfirm = null
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.uiEvents.collect { event ->
+            when (event) {
+                is PhotoDetailUiEvent.RequestMediaPermission -> {
+                    pendingOnConfirm = event.onConfirmed
+                    intentSenderLauncher.launch(
+                        IntentSenderRequest.Builder(event.pendingIntent.intentSender).build()
+                    )
+                }
+                is PhotoDetailUiEvent.NavigateBack -> onBack()
+            }
+        }
+    }
 
     LaunchedEffect(photoId, bucketId, externalUriStr) {
         viewModel.loadAllPhotos(photoId, bucketId, externalUriStr)
@@ -88,14 +114,16 @@ fun PhotoDetailScreen(
         isFavorite      = isFavorite,
         onBack          = onBack,
         onOpenVideo     = onOpenVideo,
+        onPageChanged   = { newPhotoId -> viewModel.onPhotoPageChanged(newPhotoId) },
         onFavorite      = { id ->
+            val willBeFavorite = !isFavorite
             viewModel.toggleFavorite(id)
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        }
+            if (willBeFavorite) haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+            else haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        },
+        onDelete        = { id -> viewModel.deleteCurrentPhoto(id) }  // ← FIXED
     )
 }
-
-// ── Pager ─────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -105,31 +133,24 @@ private fun PhotoPager(
     isFavorite:      Boolean,
     onBack:          () -> Unit,
     onOpenVideo:     (mediaId: Long, externalUri: String?) -> Unit,
-    onFavorite:      (Long) -> Unit
+    onPageChanged:   (Long) -> Unit = {},
+    onFavorite:      (Long) -> Unit,
+    onDelete:        (Long) -> Unit                                   // ← جديد
 ) {
     val sharedTransitionScope   = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
     val context                 = LocalContext.current
 
-    // 1. التقاط الصورة الأصلية التي تم الضغط عليها (تعمل كمرجع ثابت)
-    val seedPhoto = remember { photoList.firstOrNull() }
-
-    // 2. الجدار المنيع للـ Race Condition (لن نثق بمتغير واحد، يجب اكتمال الاثنين معاً)
+    val seedPhoto   = remember { photoList.firstOrNull() }
     val isTrulyReady = isFullListReady && photoList.size > 1
 
-    // 3. حساب الفهرس فور وصول القائمة الفعلية الكاملة
     val targetIndex = remember(photoList, isTrulyReady, seedPhoto) {
         if (isTrulyReady && seedPhoto != null) {
             val idx = photoList.indexOfFirst { it.id == seedPhoto.id }
             if (idx >= 0) idx else 0
-        } else {
-            0
-        }
+        } else 0
     }
 
-    // 4. السحر البرمجي (The Keyed Pager Swap):
-    // استخدام دالة key يخبر Compose بتدمير الـ PagerState القديم بالكامل بمجرد أن تصبح isTrulyReady = true
-    // وبناء واحد جديد يبدأ فوراً وبدون أي أنيميشن أو أوامر قفز (scrollToPage) عند الفهرس الحقيقي.
     val pagerState = key(isTrulyReady) {
         rememberPagerState(
             initialPage = if (isTrulyReady) targetIndex else 0,
@@ -141,12 +162,15 @@ private fun PhotoPager(
         derivedStateOf { photoList.getOrNull(pagerState.currentPage) }
     }
 
+    LaunchedEffect(pagerState.currentPage) {
+        photoList.getOrNull(pagerState.currentPage)?.id?.let { onPageChanged(it) }
+    }
+
     var showChrome   by remember { mutableStateOf(true) }
     var showMetadata by remember { mutableStateOf(false) }
 
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF090810))
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF090810))) {
+
         HorizontalPager(
             state                   = pagerState,
             modifier                = Modifier.fillMaxSize(),
@@ -154,8 +178,6 @@ private fun PhotoPager(
             key                     = { page -> photoList.getOrNull(page)?.id ?: "empty_$page" }
         ) { page ->
             val photo = photoList.getOrNull(page) ?: return@HorizontalPager
-
-            // الـ Shared Element يعمل فقط على الصفحة النشطة
             val sharedMod: Modifier = if (
                 sharedTransitionScope   != null &&
                 animatedVisibilityScope != null &&
@@ -211,7 +233,7 @@ private fun PhotoPager(
             }
         }
 
-        // ── Gradient overlays ──────────────────────────────────────────────────
+        // Gradient overlays
         AnimatedVisibility(
             visible  = showChrome,
             enter    = fadeIn(tween(180)),
@@ -226,7 +248,7 @@ private fun PhotoPager(
             }
         }
 
-        // ── Top bar ────────────────────────────────────────────────────────────
+        // Top bar
         AnimatedVisibility(
             visible  = showChrome,
             enter    = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
@@ -241,7 +263,7 @@ private fun PhotoPager(
             )
         }
 
-        // ── Page counter ───────────────────────────────────────────────────────
+        // Page counter
         AnimatedVisibility(
             visible  = showChrome && photoList.size > 1,
             enter    = fadeIn(),
@@ -256,7 +278,7 @@ private fun PhotoPager(
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text       = "${pagerState.currentPage + 1} / ${photoList.size}",
+                    "${pagerState.currentPage + 1} / ${photoList.size}",
                     color      = Color.White.copy(alpha = 0.9f),
                     style      = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Medium
@@ -264,7 +286,7 @@ private fun PhotoPager(
             }
         }
 
-        // ── Subtle loading bar ─────────────────────────────────────────────────
+        // Loading bar
         AnimatedVisibility(
             visible  = !isTrulyReady && photoList.size == 1,
             enter    = fadeIn(tween(200)),
@@ -278,7 +300,7 @@ private fun PhotoPager(
             )
         }
 
-        // ── Metadata card ──────────────────────────────────────────────────────
+        // Metadata card
         AnimatedVisibility(
             visible  = showMetadata,
             enter    = slideInVertically { it / 2 } + fadeIn(tween(240)),
@@ -289,7 +311,7 @@ private fun PhotoPager(
             PhotoMetadataCard(photo = currentPhoto)
         }
 
-        // ── Bottom actions ─────────────────────────────────────────────────────
+        // Bottom actions
         AnimatedVisibility(
             visible  = showChrome,
             enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -308,14 +330,12 @@ private fun PhotoPager(
                     }
                     context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Media"))
                 },
-                onDelete = { },
-                onEdit   = { }
+                onDelete   = { onDelete(currentPhoto?.id ?: return@DetailBottomBar) }, // ← FIXED
+                onEdit     = { }
             )
         }
     }
 }
-
-// ── Top bar ────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun DetailTopBar(
@@ -378,12 +398,9 @@ private fun DetailTopBar(
     }
 }
 
-// ── Metadata card ──────────────────────────────────────────────────────────────
-
 @Composable
 private fun PhotoMetadataCard(photo: MediaPhoto?) {
     val context = LocalContext.current
-
     val dateText = photo?.effectiveDateMs?.takeIf { it > 0 }?.let {
         SimpleDateFormat("EEE, d MMM yyyy  •  h:mm a", Locale.getDefault()).format(Date(it))
     } ?: "Unknown date"
@@ -392,8 +409,7 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
         if (it.width > 0 && it.height > 0) "${it.width} × ${it.height}" else "—"
     } ?: "—"
     val locationText = if (photo?.latitude != null && photo.longitude != null)
-        "%.4f°, %.4f°".format(photo.latitude, photo.longitude)
-    else null
+        "%.4f°, %.4f°".format(photo.latitude, photo.longitude) else null
     val format = photo?.mimeType?.takeIf { it.isNotBlank() }
         ?.uppercase()?.replace("IMAGE/", "")?.replace("VIDEO/", "")
 
@@ -453,8 +469,6 @@ private fun MetaRow(icon: ImageVector, label: String, value: String) {
     }
 }
 
-// ── Bottom action bar ──────────────────────────────────────────────────────────
-
 @Composable
 private fun DetailBottomBar(
     isFavorite: Boolean,
@@ -491,8 +505,8 @@ private fun DetailBottomBar(
                 scale   = heartScale,
                 onClick = onFavorite
             )
-            DetailAction(Icons.Outlined.Edit,          "Edit",   Color.White.copy(alpha = 0.85f), onClick = onEdit)
-            DetailAction(Icons.Outlined.DeleteOutline,  "Delete", Color(0xFFFF6B6B),              onClick = onDelete)
+            DetailAction(Icons.Outlined.Edit,           "Edit",   Color.White.copy(alpha = 0.85f), onClick = onEdit)
+            DetailAction(Icons.Outlined.DeleteOutline,  "Delete", Color(0xFFFF6B6B),               onClick = onDelete)
         }
     }
 }

@@ -22,20 +22,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import okio.Path.Companion.toOkioPath
 
 /**
- * دالة إضافية (Extension Function) عشان نحل مشكلة الكومبايلر 
+ * دالة إضافية (Extension Function) عشان نحل مشكلة الكومبايلر
  * ونخليك تحتفظ بالسطر بتاع respectCacheHeaders زي ما طلبت من غير ما يتمسح.
  * في Coil 3، المكتبة بقت بتعمل كاش للصور تلقائياً بدون ما تهتم بالـ Headers،
  * فالدالة دي بتخلي الكود يشتغل بدون مشاكل.
  */
-fun ImageLoader.Builder.respectCacheHeaders(enable: Boolean): ImageLoader.Builder {
-    return this
-}
+fun ImageLoader.Builder.respectCacheHeaders(enable: Boolean): ImageLoader.Builder = this
 
 // ── FIX: implement SingletonImageLoader.Factory ──────────────────────────────────
 // Coil 3 picks up this interface automatically from the Application class.
@@ -43,9 +41,9 @@ fun ImageLoader.Builder.respectCacheHeaders(enable: Boolean): ImageLoader.Builde
 @HiltAndroidApp
 class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.Factory {
 
-    @Inject lateinit var workerFactory:       HiltWorkerFactory
+    @Inject lateinit var workerFactory:        HiltWorkerFactory
     @Inject lateinit var workManagerScheduler: WorkManagerScheduler
-    @Inject lateinit var featureFlagManager:  FeatureFlagManager
+    @Inject lateinit var featureFlagManager:   FeatureFlagManager
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -54,7 +52,11 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
     // singleton for the lifetime of the process.
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(context)
-
+            .components {
+                add(coil3.svg.SvgDecoder.Factory())
+                add(coil3.video.VideoFrameDecoder.Factory())
+                add(coil3.gif.AnimatedImageDecoder.Factory())
+            }
             // ── Memory cache ────────────────────────────────────────────────────
             // 25% of available heap — keeps decoded Bitmaps warm while the user
             // scrolls. When the process is low on RAM, Android evicts entries
@@ -76,9 +78,7 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
             // The OS clears this automatically — no manual cleanup needed.
             .diskCache {
                 DiskCache.Builder()
-                    .directory(
-                        cacheDir.resolve("coil_image_cache").toOkioPath()
-                    )
+                    .directory(cacheDir.resolve("coil_image_cache").toOkioPath())
                     .maxSizeBytes(256L * 1024 * 1024)   // 256 MB
                     .build()
             }
@@ -89,7 +89,7 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
             // disk cache for every MediaStore URI on each app launch.
             .respectCacheHeaders(false)
 
-            // ── UX ──────────────────────────────────────────────────────────────
+            // ── UX ─────────────────────────────────────────────────────────────
             // 300ms crossfade makes the transition from shimmer → image feel smooth
             // without being slow.
             .crossfade(durationMillis = 300)
@@ -124,6 +124,12 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
                 Log.e("OmniMemoria", "Failed to initialize periodic indexing scheduler", throwable)
             }
         }
+
+        // Schedule daily trash-expiry cleanup (battery-not-low constraint)
+        workManagerScheduler.scheduleTrashCleanup()
+
+        // On This Day — FIX: كانت ناسية تتجدول
+        workManagerScheduler.scheduleOnThisDay()
     }
 
     companion object {
