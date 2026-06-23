@@ -360,6 +360,10 @@ class MediaStoreRepository @Inject constructor(
         private val favoritesRepository:  FavoritesRepository? = null
     ) : PagingSource<Int, MediaPhoto>() {
         private var cachedVaultedIds: Set<Long>? = null
+        // No cached field for favorites: the favorite id set is computed once per
+        // load() call (see below) rather than once per PagingSource instance, because
+        // favorites can change between page loads and must not go stale for the
+        // lifetime of the PagingSource.
 
         override suspend fun load(params: LoadParams<Int>): LoadResult<Int, MediaPhoto> {
             return try {
@@ -371,6 +375,19 @@ class MediaStoreRepository @Inject constructor(
                 var offset     = startOffset
                 var endReached = false
                 val chunkSize  = params.loadSize * 2
+
+                // Fetch the favorite id set ONCE per load() call, before the while
+                // loop. load() is already suspend, so this is a plain suspend call.
+                // Previously this was fetched via a blocking Flow collection inside an
+                // already-suspending function, re-executed on every chunk inside the
+                // loop, which synchronously parked the paging dispatcher and was a real
+                // source of dropped frames while fling-scrolling with the Favorites
+                // filter or Favorites-first sort active on a large library.
+                val needsFavoriteIds = (filterConfig.isFavorite != null ||
+                    sortConfig.sortBy == SortBy.FAVORITES_FIRST) && favoritesRepository != null
+                val favoriteIds: Set<Long> = if (needsFavoriteIds) {
+                    favoritesRepository!!.getAllFavoriteIds().first()
+                } else emptySet()
 
                 while (pageData.size < params.loadSize && !endReached) {
                     val chunk = queryPhotos(contentResolver, sortConfig, filterConfig, chunkSize, offset, bucketId)
@@ -384,7 +401,6 @@ class MediaStoreRepository @Inject constructor(
                         }
 
                         if (filterConfig.isFavorite != null && favoritesRepository != null) {
-                            val favoriteIds = kotlinx.coroutines.runBlocking { favoritesRepository.getAllFavoriteIds().first() }
                             processedChunk = processedChunk.filter { (it.id in favoriteIds) == filterConfig.isFavorite }
                         }
 
@@ -395,7 +411,6 @@ class MediaStoreRepository @Inject constructor(
                                 processedChunk.sortedByDescending { it.width * it.height }
                             }
                         } else if (sortConfig.sortBy == SortBy.FAVORITES_FIRST && favoritesRepository != null) {
-                            val favoriteIds = kotlinx.coroutines.runBlocking { favoritesRepository.getAllFavoriteIds().first() }
                             processedChunk = if (sortConfig.sortOrder == SortOrder.ASCENDING) {
                                 processedChunk.sortedBy { if (it.id in favoriteIds) 1 else 0 }
                             } else {
