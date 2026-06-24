@@ -117,6 +117,37 @@ class WorkManagerScheduler @Inject constructor(
         OnThisDayWorker.cancel(context)
     }
 
+    // ── Media integrity (every 48 h, battery-not-low + device-idle) ─────────────
+
+    fun scheduleMediaIntegrityCheck() {
+        val constraints = Constraints.Builder()
+            .setRequiresBatteryNotLow(true)
+            .setRequiresDeviceIdle(true)
+            .build()
+        val request = PeriodicWorkRequestBuilder<MediaIntegrityWorker>(48, TimeUnit.HOURS)
+            .setConstraints(constraints)
+            .build()
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            MediaIntegrityWorker.UNIQUE_PERIODIC_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
+
+    fun scheduleTargetedIntegrityCheck(photoIds: List<Long>) {
+        val inputData = Data.Builder()
+            .putLongArray(MediaIntegrityWorker.WORK_INPUT_PHOTO_IDS, photoIds.toLongArray())
+            .build()
+        val request = OneTimeWorkRequestBuilder<MediaIntegrityWorker>()
+            .setInputData(inputData)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            MediaIntegrityWorker.UNIQUE_TARGETED_WORK_NAME,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            request
+        )
+    }
+
     companion object {
         const val UNIQUE_IMMEDIATE_WORK_NAME = "omnimemoria_index_immediate"
         const val UNIQUE_PERIODIC_WORK_NAME = "omnimemoria_index_periodic"
