@@ -34,6 +34,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.omnimemoria.data.local.db.TrashItem
 import kotlinx.coroutines.launch
+import coil3.request.ImageRequest
+import coil3.size.Size
+import com.omnimemoria.ui.components.OmniDetailTopBar
+import com.omnimemoria.ui.components.OmniEmptyState
+import com.omnimemoria.ui.components.OmniInfoBanner
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 
 @Composable
@@ -94,11 +99,19 @@ fun TrashScreen(
             .background(MaterialTheme.colorScheme.background)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            TrashTopBar(
-                count        = trashCount,
-                isLoading    = isLoading,
-                onBack       = onBack,
-                onEmptyTrash = { showEmptyConfirm = true }
+            OmniDetailTopBar(
+                title    = "Recycle Bin",
+                subtitle = if (trashCount > 0) "$trashCount item${if (trashCount != 1) "s" else ""} · auto-deleted after 30 days" else null,
+                onBack   = onBack,
+                actions  = {
+                    if (trashCount > 0 && !isLoading) {
+                        com.omnimemoria.ui.components.OmniActionChip(
+                            label   = "Empty",
+                            icon    = Icons.Outlined.DeleteSweep,
+                            onClick = { showEmptyConfirm = true }
+                        )
+                    }
+                }
             )
 
             if (trashItems.isEmpty() && !isLoading) {
@@ -106,7 +119,12 @@ fun TrashScreen(
                     modifier         = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    TrashEmptyState()
+                    OmniEmptyState(
+                        icon     = Icons.Outlined.DeleteOutline,
+                        title    = "Recycle Bin is empty",
+                        subtitle = "Deleted photos and videos appear here for 30 days before being permanently removed.",
+                        floating = true
+                    )
                 }
             } else {
                 LazyColumn(
@@ -114,7 +132,9 @@ fun TrashScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    item { TrashInfoBanner() }
+                    item {
+                        OmniInfoBanner(icon = Icons.Outlined.Info, text = "Items are automatically deleted after 30 days.")
+                    }
 
                     items(
                         items = trashItems,
@@ -348,110 +368,7 @@ private fun TrashPreviewOverlay(
     }
 }
 
-// ── Top Bar ────────────────────────────────────────────────────────────────────
 
-@Composable
-private fun TrashTopBar(
-    count:        Int,
-    isLoading:    Boolean,
-    onBack:       () -> Unit,
-    onEmptyTrash: () -> Unit,
-    modifier:     Modifier = Modifier
-) {
-    Row(
-        modifier          = modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF1E1C30))
-                .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
-                .clickable(onClick = onBack),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack, "Back",
-                tint     = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        Spacer(Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                "Recycle Bin",
-                style      = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color      = MaterialTheme.colorScheme.onBackground
-            )
-            if (count > 0) {
-                Text(
-                    "$count item${if (count != 1) "s" else ""} · auto-deleted after 30 days",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        AnimatedVisibility(visible = count > 0 && !isLoading) {
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFFF6B6B).copy(alpha = 0.13f))
-                    .border(1.dp, Color(0xFFFF6B6B).copy(alpha = 0.28f), RoundedCornerShape(12.dp))
-                    .clickable(onClick = onEmptyTrash)
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Outlined.DeleteSweep, null,
-                    tint     = Color(0xFFFF6B6B),
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(5.dp))
-                Text(
-                    "Empty",
-                    style      = MaterialTheme.typography.labelMedium,
-                    color      = Color(0xFFFF6B6B),
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-    }
-}
-
-// ── Info Banner ────────────────────────────────────────────────────────────────
-
-@Composable
-private fun TrashInfoBanner() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF1E1C30))
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            Icons.Outlined.Info, null,
-            tint     = Color(0xFF8B7FF5).copy(alpha = 0.7f),
-            modifier = Modifier.size(17.dp)
-        )
-        Spacer(Modifier.width(10.dp))
-        Text(
-            "Items are automatically deleted after 30 days.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
 
 // ── Trash Item Card ────────────────────────────────────────────────────────────
 
@@ -487,7 +404,8 @@ private fun TrashItemCard(
                 .clip(RoundedCornerShape(10.dp))
         ) {
             AsyncImage(
-                model              = item.contentUri,
+                model              = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                    .data(item.contentUri).size(Size(256, 256)).build(),
                 contentDescription = name,
                 contentScale       = ContentScale.Crop,
                 modifier           = Modifier.fillMaxSize()
@@ -578,58 +496,3 @@ private fun TrashItemCard(
     }
 }
 
-// ── Empty State ────────────────────────────────────────────────────────────────
-
-@Composable
-private fun TrashEmptyState(modifier: Modifier = Modifier) {
-    val floatY by rememberInfiniteTransition(label = "float")
-        .animateFloat(
-            initialValue  = 0f,
-            targetValue   = -8f,
-            animationSpec = infiniteRepeatable(
-                tween(2200, easing = FastOutSlowInEasing),
-                RepeatMode.Reverse
-            ),
-            label = "float_y"
-        )
-
-    Column(
-        modifier            = modifier.padding(horizontal = 40.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .offset { IntOffset(0, floatY.dp.roundToPx()) }
-                .size(88.dp)
-                .clip(RoundedCornerShape(26.dp))
-                .background(Color(0xFF1E1C30))
-                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(26.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Outlined.DeleteOutline, null,
-                tint     = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(42.dp)
-            )
-        }
-
-        Spacer(Modifier.height(24.dp))
-
-        Text(
-            "Recycle Bin is empty",
-            style      = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color      = MaterialTheme.colorScheme.onBackground,
-            textAlign  = TextAlign.Center
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        Text(
-            "Deleted photos and videos will appear here for 30 days before being permanently removed.",
-            style     = MaterialTheme.typography.bodyMedium,
-            color     = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-    }
-}

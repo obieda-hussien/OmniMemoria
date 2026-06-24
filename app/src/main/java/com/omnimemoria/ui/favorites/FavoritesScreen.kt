@@ -27,70 +27,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.compose.ui.unit.IntOffset
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
+import com.omnimemoria.ui.components.OmniDetailTopBar
+import com.omnimemoria.ui.components.OmniEmptyState
+import com.omnimemoria.ui.components.OmniInfoBanner
 import com.omnimemoria.ui.gallery.PhotoCell
 
 // ── Rose color shared with the gallery badge ──────────────────────────────────
 private val FavoriteRose = Color(0xFFFF4B6E)
-private val FavoritesSurfaceColor = Color(0xFF1E1C30)
 private const val TopScrimMidStop = 0.85f
 private const val TopScrimMidAlpha = 0.9f
 
 // ── Top padding so the content sits below the top bar ────────────────────────
 private val ContentTopPadding = 110.dp
 
-// ── Top bar ───────────────────────────────────────────────────────────────────
-
-@Composable
-private fun FavoritesTopBar(
-    count: Int,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier          = modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(FavoritesSurfaceColor)
-                .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
-                .clickable(onClick = onBack),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack, "Back",
-                tint     = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        Spacer(Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                "Favorites",
-                style      = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color      = MaterialTheme.colorScheme.onBackground
-            )
-            if (count > 0) {
-                Text(
-                    "$count item${if (count != 1) "s" else ""}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -144,7 +95,12 @@ fun FavoritesScreen(
                 ) {
                     FavoritesHeader(isLoading = false)
                     Spacer(Modifier.height(48.dp))
-                    EmptyFavoritesContent()
+                    OmniEmptyState(
+                        icon     = Icons.Outlined.FavoriteBorder,
+                        title    = "No favorites yet",
+                        subtitle = "Tap the heart on any photo, or long-press a photo, to add it here",
+                        floating = true
+                    )
                 }
             }
 
@@ -204,37 +160,11 @@ fun FavoritesScreen(
                 )
         )
 
-        FavoritesTopBar(
-            count = count,
-            onBack = onBack,
+        OmniDetailTopBar(
+            title    = "Favorites",
+            subtitle = if (count > 0) "$count item${if (count != 1) "s" else ""}" else null,
+            onBack   = onBack,
             modifier = Modifier.align(Alignment.TopCenter)
-        )
-    }
-}
-
-@Composable
-private fun FavoritesInfoBanner() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 12.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(FavoritesSurfaceColor)
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            Icons.Filled.Favorite,
-            contentDescription = null,
-            tint = FavoriteRose.copy(alpha = 0.9f),
-            modifier = Modifier.size(17.dp)
-        )
-        Spacer(Modifier.width(10.dp))
-        Text(
-            "Long-press a photo to remove it from favorites.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -244,7 +174,12 @@ private fun FavoritesInfoBanner() {
 @Composable
 private fun FavoritesHeader(isLoading: Boolean) {
     Column {
-        FavoritesInfoBanner()
+        OmniInfoBanner(
+            icon = Icons.Filled.Favorite,
+            text = "Long-press a photo to remove it from favorites.",
+            tint = FavoriteRose,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)
+        )
         if (!isLoading) {
             Row(
                 modifier = Modifier
@@ -262,69 +197,6 @@ private fun FavoritesHeader(isLoading: Boolean) {
             }
         }
     }
-}
-
-// ── Empty-state ────────────────────────────────────────────────────────────────
-
-@Composable
-private fun EmptyFavoritesContent(modifier: Modifier = Modifier) {
-    val floatY by rememberInfiniteTransition(label = "float")
-        .animateFloat(
-            initialValue  = 0f,
-            targetValue   = -8f,
-            animationSpec = infiniteRepeatable(
-                tween(2200, easing = FastOutSlowInEasing),
-                RepeatMode.Reverse
-            ),
-            label = "float_y"
-        )
-
-    Column(
-        modifier = modifier.padding(horizontal = 40.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier
-                .offset { IntOffset(0, floatY.dp.roundToPx()) }
-                .size(88.dp)
-                .clip(RoundedCornerShape(26.dp))
-                .background(FavoritesSurfaceColor)
-                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(26.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            HeartSvgIcon(size = 42.dp, tint = FavoriteRose.copy(alpha = 0.65f))
-        }
-
-        Spacer(Modifier.height(24.dp))
-
-        Text(
-            text       = "No favorites yet",
-            style      = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color      = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
-            textAlign  = TextAlign.Center
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        Text(
-            text      = "Tap ♥ on any photo or long-press a photo to add it here",
-            style     = MaterialTheme.typography.bodyMedium,
-            color     = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-/** Large outlined heart drawn purely with Compose primitives (no SVG asset needed). */
-@Composable
-private fun HeartSvgIcon(size: androidx.compose.ui.unit.Dp, tint: Color) {
-    Icon(
-        imageVector        = Icons.Outlined.FavoriteBorder,
-        contentDescription = null,
-        tint               = tint,
-        modifier           = Modifier.size(size)
-    )
 }
 
 // ── Skeleton placeholder ───────────────────────────────────────────────────────

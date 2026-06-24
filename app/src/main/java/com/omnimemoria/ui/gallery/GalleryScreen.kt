@@ -58,6 +58,7 @@ import com.omnimemoria.ui.components.OmniSelectionBar
 import com.omnimemoria.ui.components.ShimmerBox
 import com.omnimemoria.ui.detail.photosBoundsTransform
 import com.omnimemoria.ui.photoSharedKey
+import com.omnimemoria.ui.theme.OmniSheetContainerColor
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import kotlinx.coroutines.launch
@@ -399,7 +400,7 @@ internal fun PhotoCell(
 }
 
 @Composable
-private fun CachedThumbnail(uri: String, modifier: Modifier) {
+internal fun CachedThumbnail(uri: String, modifier: Modifier) {
     val context = LocalContext.current
     AsyncImage(
         model              = ImageRequest.Builder(context).data(uri).size(Size(512, 512)).build(),
@@ -432,7 +433,7 @@ internal fun GallerySortFilterSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor   = Color(0xFF141220),
+        containerColor   = OmniSheetContainerColor,
         shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
         Column(

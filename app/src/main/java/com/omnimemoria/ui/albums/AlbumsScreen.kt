@@ -36,6 +36,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.size.Size
 import com.omnimemoria.domain.model.FolderSortBy
 import com.omnimemoria.domain.model.FolderSortConfig
 import com.omnimemoria.domain.model.MediaFolder
@@ -45,6 +47,7 @@ import com.omnimemoria.ui.components.OmniEmptyState
 import com.omnimemoria.ui.components.OmniSectionHeader
 import com.omnimemoria.ui.components.ShimmerBox
 import com.omnimemoria.ui.theme.AmberVibe
+import com.omnimemoria.ui.theme.OmniSheetContainerColor
 import com.omnimemoria.ui.theme.RoseMemory
 import kotlinx.coroutines.delay
 
@@ -155,7 +158,7 @@ fun AlbumsScreen(
         ModalBottomSheet(
             onDismissRequest = { showSheet = false },
             sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor   = Color(0xFF141220),
+            containerColor   = OmniSheetContainerColor,
             shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) {
             AlbumSortSheet(
@@ -234,6 +237,7 @@ private fun VibeCard(vibe: VibeEntry) {
 @Composable
 private fun AlbumCard(folder: MediaFolder, index: Int, onClick: () -> Unit) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     // Staggered entrance
     val offsetY = remember { Animatable(28f) }
@@ -252,15 +256,15 @@ private fun AlbumCard(folder: MediaFolder, index: Int, onClick: () -> Unit) {
             .fillMaxWidth()
             .aspectRatio(1f)
             .graphicsLayer { translationY = offsetY.value; scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(20.dp))  // ← unified 20dp everywhere
+            .clip(RoundedCornerShape(20.dp))  // <- unified 20dp everywhere
             .combinedClickable(
                 onClick     = onClick,
                 onLongClick = { menuExpanded = true }
             )
     ) {
-        // Cover image
+        // Cover image -- bound decode to 2x cell size (~200dp * 2 = 400dp)
         AsyncImage(
-            model              = folder.coverUri,
+            model              = ImageRequest.Builder(context).data(folder.coverUri).size(Size(400, 400)).build(),
             contentDescription = folder.name,
             contentScale       = ContentScale.Crop,
             modifier           = Modifier.fillMaxSize()
