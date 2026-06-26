@@ -148,18 +148,17 @@ class PhotoDetailViewModel @Inject constructor(
             val photo = _photoList.value.find { it.id == photoId }
                 ?: mediaStoreRepository.getPhotoById(photoId)
                 ?: return@launch
-            val pi = trashRepository.moveToTrashIntent(photo)
-            if (pi != null) {
-                _uiEvents.send(PhotoDetailUiEvent.RequestMediaPermission(pi) {
-                    viewModelScope.launch(Dispatchers.IO) {
-                        trashRepository.confirmMoveToTrash(photo)
-                        _uiEvents.send(PhotoDetailUiEvent.NavigateBack)
-                    }
-                })
-            } else {
-                trashRepository.confirmMoveToTrash(photo)
-                _uiEvents.send(PhotoDetailUiEvent.NavigateBack)
-            }
+            trashRepository.moveToTrashWithFallback(
+                photo             = photo,
+                onNeedsPermission = { pi, onConfirmed ->
+                    _uiEvents.send(PhotoDetailUiEvent.RequestMediaPermission(pi) {
+                        viewModelScope.launch(Dispatchers.IO) { onConfirmed() }
+                    })
+                },
+                onDone = {
+                    _uiEvents.send(PhotoDetailUiEvent.NavigateBack)
+                }
+            )
         }
     }
 

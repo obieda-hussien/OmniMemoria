@@ -89,28 +89,22 @@ class FolderDetailViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val photos = ids.mapNotNull { mediaStoreRepository.getPhotoById(it) }
             if (photos.isEmpty()) return@launch
-            val pi = trashRepository.moveToTrashIntent(photos)
-            if (pi != null) {
-                _uiEvents.send(FolderDetailUiEvent.RequestMediaPermission(pi) {
-                    viewModelScope.launch(Dispatchers.IO) {
-                        trashRepository.confirmMoveToTrash(photos)
-                        clearSelection()
-                        _uiEvents.send(
-                            FolderDetailUiEvent.ShowSnackbar(
-                                "$count item${if (count > 1) "s" else ""} moved to Trash"
-                            )
+            trashRepository.moveToTrashWithFallback(
+                photos            = photos,
+                onNeedsPermission = { pi, onConfirmed ->
+                    _uiEvents.send(FolderDetailUiEvent.RequestMediaPermission(pi) {
+                        viewModelScope.launch(Dispatchers.IO) { onConfirmed() }
+                    })
+                },
+                onDone = {
+                    clearSelection()
+                    _uiEvents.send(
+                        FolderDetailUiEvent.ShowSnackbar(
+                            "$count item${if (count > 1) "s" else ""} moved to Trash"
                         )
-                    }
-                })
-            } else {
-                trashRepository.confirmMoveToTrash(photos)
-                clearSelection()
-                _uiEvents.send(
-                    FolderDetailUiEvent.ShowSnackbar(
-                        "$count item${if (count > 1) "s" else ""} moved to Trash"
                     )
-                )
-            }
+                }
+            )
         }
     }
 
