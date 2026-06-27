@@ -375,10 +375,10 @@ private fun PhotoPager(
                     label   = if (isFavorite) "Saved" else "Save",
                     tint    = if (isFavorite) Color(0xFFFF4B6E) else Color.White.copy(alpha = 0.85f),
                     scale   = heartScale,
-                    onClick = { onFavorite(currentPhoto?.id ?: return@OmniMediaBottomBar) }
+                    onClick = { currentPhoto?.id?.let { onFavorite(it) } }
                 )
                 DetailAction(Icons.Outlined.Edit,          "Edit",   Color.White.copy(alpha = 0.85f), onClick = { })
-                DetailAction(Icons.Outlined.DeleteOutline, "Delete", Color(0xFFFF6B6B),               onClick = { onDelete(currentPhoto?.id ?: return@OmniMediaBottomBar) })
+                DetailAction(Icons.Outlined.DeleteOutline, "Delete", Color(0xFFFF6B6B),               onClick = { currentPhoto?.id?.let { onDelete(it) } })
             }
         }
     }
