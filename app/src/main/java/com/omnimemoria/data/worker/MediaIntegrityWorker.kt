@@ -14,7 +14,6 @@ import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.domain.model.SortConfig
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
@@ -25,8 +24,7 @@ class MediaIntegrityWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val mediaStoreRepository: MediaStoreRepository,
     private val corruptedMediaDao: CorruptedMediaDao,
-    private val checkedDao: MediaIntegrityCheckedDao,
-    @ApplicationContext private val context: Context
+    private val checkedDao: MediaIntegrityCheckedDao
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -53,7 +51,7 @@ class MediaIntegrityWorker @AssistedInject constructor(
                 val broken = if (!isVideo) {
                     runCatching {
                         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        context.contentResolver.openInputStream(photo.uri)?.use {
+                        applicationContext.contentResolver.openInputStream(photo.uri)?.use {
                             BitmapFactory.decodeStream(it, null, opts)
                         }
                         opts.outWidth <= 0 || opts.outHeight <= 0
@@ -62,7 +60,7 @@ class MediaIntegrityWorker @AssistedInject constructor(
                     runCatching {
                         val retriever = MediaMetadataRetriever()
                         try {
-                            retriever.setDataSource(context, photo.uri)
+                            retriever.setDataSource(applicationContext, photo.uri)
                             retriever.extractMetadata(
                                 MediaMetadataRetriever.METADATA_KEY_DURATION
                             ) == null
