@@ -668,6 +668,7 @@ fun VideoPlayerScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
+                    .statusBarsPadding()
             ) {
                 OmniMediaTopBar(
                     leading = {
@@ -675,7 +676,6 @@ fun VideoPlayerScreen(
                     },
                     center = {
                         Column(
-                            modifier            = Modifier.weight(1f),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
@@ -700,6 +700,10 @@ fun VideoPlayerScreen(
                         }
                     },
                     trailing = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                         if (playbackSpeed != 1f) {
                             Box(
                                 modifier = Modifier
@@ -716,7 +720,6 @@ fun VideoPlayerScreen(
                                     fontWeight = FontWeight.ExtraBold
                                 )
                             }
-                            Spacer(Modifier.width(2.dp))
                         }
                         if (castState == CastState.CONNECTED)
                             TopBarButton(icon = Icons.Filled.Cast, desc = "Casting", tint = Color(0xFF8B7FF5), onClick = { showSpeedPanel = !showSpeedPanel; showInfoCard = false })
@@ -732,6 +735,7 @@ fun VideoPlayerScreen(
                         })
                         TopBarButton(icon = Icons.Outlined.Info,    desc = "Video info",  onClick = { showInfoCard = !showInfoCard; showSpeedPanel = false })
                         TopBarButton(icon = Icons.Filled.MoreVert,  desc = "Options",     onClick = { showSpeedPanel = !showSpeedPanel; showInfoCard = false })
+                        }
                     }
                 )
             }

@@ -511,7 +511,8 @@ class MediaStoreRepository @Inject constructor(
 
                 // Zero-byte filter — catches placeholder/empty files immediately
                 // with no worker needed. Applies everywhere QueryBuilder is used.
-                clauses.add("${MediaStore.MediaColumns.SIZE} > 0")
+                // Added strict metadata dimension validation constraint
+                clauses.add("${MediaStore.MediaColumns.SIZE} > 0 AND ${MediaStore.MediaColumns.WIDTH} > 0 AND ${MediaStore.MediaColumns.HEIGHT} > 0")
 
                 // Media Types
                 if (filter.mediaTypes.isNotEmpty()) {
