@@ -159,7 +159,7 @@ private fun PhotoPager(
         )
     }
 
-    val currentPhoto by remember {
+    val currentPhoto by remember(photoList) {
         derivedStateOf { photoList.getOrNull(pagerState.currentPage) }
     }
 
