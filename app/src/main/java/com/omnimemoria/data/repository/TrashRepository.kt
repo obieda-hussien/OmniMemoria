@@ -36,6 +36,55 @@ class TrashRepository @Inject constructor(
         trashDao.getById(id)
     }
 
+    // ── Move to trash (with API-level fallback) ──────────────────────────────
+
+    /**
+     * Unified "move to trash" helper that handles the Android 11+ permission
+     * dialog split internally.
+     *
+     * On **API 30+**: obtains a [PendingIntent] from MediaStore and delegates
+     * to [onNeedsPermission] so the caller can launch the system dialog.
+     * [onConfirmed] is supplied to [onNeedsPermission] as the callback to call
+     * once the user accepts; it then runs [confirmMoveToTrash] + [onDone].
+     *
+     * On **API < 30**: deletes directly via [confirmMoveToTrash] and then
+     * calls [onDone] immediately — no permission dialog is required.
+     *
+     * Both branches guarantee [onDone] is invoked exactly once on success.
+     *
+     * @param photos           Items to move to trash.
+     * @param onNeedsPermission Called with the [PendingIntent] and an `onConfirmed`
+     *                         suspend lambda when the system dialog is required.
+     *                         The caller must launch the intent and invoke the
+     *                         lambda when the user confirms.
+     * @param onDone           Called on the IO thread after the trash operation
+     *                         completes successfully (post-confirm or direct).
+     */
+    suspend fun moveToTrashWithFallback(
+        photos: List<MediaPhoto>,
+        onNeedsPermission: suspend (pendingIntent: PendingIntent, onConfirmed: suspend () -> Unit) -> Unit,
+        onDone: suspend () -> Unit = {}
+    ) {
+        if (photos.isEmpty()) return
+        val pi = moveToTrashIntent(photos)
+        if (pi != null) {
+            onNeedsPermission(pi) {
+                confirmMoveToTrash(photos)
+                onDone()
+            }
+        } else {
+            confirmMoveToTrash(photos)
+            onDone()
+        }
+    }
+
+    /** Single-photo convenience overload. */
+    suspend fun moveToTrashWithFallback(
+        photo: MediaPhoto,
+        onNeedsPermission: suspend (pendingIntent: PendingIntent, onConfirmed: suspend () -> Unit) -> Unit,
+        onDone: suspend () -> Unit = {}
+    ) = moveToTrashWithFallback(listOf(photo), onNeedsPermission, onDone)
+
     // ── Move to trash ────────────────────────────────────────────────────────
 
     suspend fun moveToTrashIntent(photos: List<MediaPhoto>): PendingIntent? =

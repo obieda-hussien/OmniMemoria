@@ -39,7 +39,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.size.Size
 import com.omnimemoria.domain.model.MediaPhoto
+import com.omnimemoria.ui.components.OmniEmptyState
 import com.omnimemoria.ui.components.ShimmerBox
 import com.omnimemoria.ui.home.HomeTopOverlaySpacing
 import kotlinx.coroutines.delay
@@ -641,7 +644,8 @@ private fun ResultsState(
                     .clickable { onPhotoClick(photo.id) }
             ) {
                 AsyncImage(
-                    model              = photo.uri,
+                    model              = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                        .data(photo.uri).size(Size(256, 256)).build(),
                     contentDescription = photo.name,
                     contentScale       = ContentScale.Crop,
                     modifier           = Modifier.fillMaxSize()
@@ -655,54 +659,18 @@ private fun ResultsState(
     }
 }
 
-// ── Empty state ────────────────────────────────────────────────────────────────
+// ── Empty state ──────────────────────────────────────────────────────────────────
 
 @Composable
 private fun EmptyState(query: String) {
-    val floatY by rememberInfiniteTransition(label = "float")
-        .animateFloat(
-            initialValue  = 0f,
-            targetValue   = -8f,
-            animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label         = "float_y"
-        )
-
-    Column(
-        modifier            = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 36.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .offset(y = floatY.dp)
-                .size(88.dp)
-                .clip(RoundedCornerShape(26.dp))
-                .background(Color(0xFF1E1C30))
-                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(26.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("🔍", fontSize = 38.sp)
-        }
-        Spacer(Modifier.height(22.dp))
-        Text(
-            "No results for",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            "\"$query\"",
-            style      = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color      = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "Try different keywords, or enable AI indexing in Settings for smarter results.",
-            style     = MaterialTheme.typography.bodyMedium,
-            color     = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        OmniEmptyState(
+            icon     = Icons.Outlined.SearchOff,
+            title    = "No results for \"$query\"",
+            subtitle = "Try different keywords, or enable AI indexing in Settings for smarter results."
         )
     }
 }

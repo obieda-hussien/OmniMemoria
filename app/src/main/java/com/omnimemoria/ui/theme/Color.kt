@@ -47,6 +47,11 @@ val SurfaceVariantDark   = Color(0xFF1E1C30)
 val OnSurfaceVariantDark = Color(0xFFC8C5D8)
 
 // ─── Semantic / Feature Colors ────────────────────────────────────────────────
-val AmberVibe   = Color(0xFFD97706)   // Vibe Albums — golden hour
+val AmberVibe   = Color(0xFFD97706)   // Vibe Albums -- golden hour
 val RoseMemory  = Color(0xFFBE4B8A)  // Favorites / emotional
 val IndigoDeep  = Color(0xFF2D26A0)  // Surface accents
+
+// ─── Sheet / Modal tokens ──────────────────────────────────────────────────────
+// Shared by AlbumsScreen, GalleryScreen, FolderDetailScreen bottom sheets.
+// Previously each hardcoded Color(0xFF141220) independently.
+val OmniSheetContainerColor = Color(0xFF141220)

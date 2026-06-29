@@ -50,8 +50,11 @@ class FavoritesViewModel @Inject constructor(
      * MediaStore. Rows whose IDs are no longer present in MediaStore are
      * silently skipped (photo was deleted from device).
      * Order is preserved (addedAt DESC from the DAO query).
+     *
+     * Must be suspend because [MediaStoreRepository.getPhotoById] is suspend
+     * (it queries the corrupted-IDs DAO on the IO dispatcher).
      */
-    private fun resolvePhotos(rows: List<FavoritePhoto>): List<MediaPhoto> =
+    private suspend fun resolvePhotos(rows: List<FavoritePhoto>): List<MediaPhoto> =
         rows.mapNotNull { row -> mediaStoreRepository.getPhotoById(row.id) }
 
     /** Remove a photo from favorites (called by long-press in the grid). */

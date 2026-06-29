@@ -97,6 +97,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.omnimemoria.ui.components.MediaChromeCorner
+import com.omnimemoria.ui.components.OmniMediaTopBar
 import com.omnimemoria.ui.navigation.NavigationSurfaceColor
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -667,28 +669,73 @@ fun VideoPlayerScreen(
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
-                VideoTopBar(
-                    title            = item.name.substringBeforeLast('.'),
-                    subtitle         = buildString {
-                        if (durationMs > 0) append(formatTime(durationMs))
-                        if (item.width > 0 && item.height > 0) append(" · ${item.width}×${item.height}")
+                OmniMediaTopBar(
+                    leading = {
+                        TopBarButton(icon = Icons.AutoMirrored.Filled.ArrowBack, desc = "Back", onClick = onBack)
                     },
-                    currentSpeed     = playbackSpeed,
-                    supportsPiP      = supportsPiP,
-                    castState        = castState,
-                    onBack           = onBack,
-                    onPiP            = { enterPiP() },
-                    onToggleInfo     = { showInfoCard = !showInfoCard; showSpeedPanel = false },
-                    onOpenSpeedPanel = { showSpeedPanel = !showSpeedPanel; showInfoCard = false },
-                    onShare          = {
-                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = item.mimeType.ifBlank { "video/*" }
-                            putExtra(Intent.EXTRA_STREAM, item.uri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    center = {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                item.name.substringBeforeLast('.'),
+                                color      = Color.White.copy(alpha = 0.94f),
+                                style      = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines   = 1,
+                                textAlign  = TextAlign.Center
+                            )
+                            val subtitle = buildString {
+                                if (durationMs > 0) append(formatTime(durationMs))
+                                if (item.width > 0 && item.height > 0) append(" · ${item.width}×${item.height}")
+                            }
+                            if (subtitle.isNotBlank()) {
+                                Text(
+                                    subtitle,
+                                    color = Color.White.copy(alpha = 0.40f),
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
                         }
-                        context.startActivity(Intent.createChooser(shareIntent, "Share Video"))
+                    },
+                    trailing = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                        if (playbackSpeed != 1f) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(Color(0xFF2D26A0))
+                                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.42f), RoundedCornerShape(9.dp))
+                                    .clickable { showSpeedPanel = !showSpeedPanel; showInfoCard = false }
+                                    .padding(horizontal = 9.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    playbackSpeed.toSpeedLabel(),
+                                    color      = Color.White,
+                                    style      = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
+                        if (castState == CastState.CONNECTED)
+                            TopBarButton(icon = Icons.Filled.Cast, desc = "Casting", tint = Color(0xFF8B7FF5), onClick = { showSpeedPanel = !showSpeedPanel; showInfoCard = false })
+                        if (supportsPiP)
+                            TopBarButton(icon = Icons.Filled.PictureInPicture, desc = "Picture in picture", onClick = { enterPiP() })
+                        TopBarButton(icon = Icons.Outlined.Share, desc = "Share", onClick = {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = item.mimeType.ifBlank { "video/*" }
+                                putExtra(Intent.EXTRA_STREAM, item.uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Share Video"))
+                        })
+                        TopBarButton(icon = Icons.Outlined.Info,    desc = "Video info",  onClick = { showInfoCard = !showInfoCard; showSpeedPanel = false })
+                        TopBarButton(icon = Icons.Filled.MoreVert,  desc = "Options",     onClick = { showSpeedPanel = !showSpeedPanel; showInfoCard = false })
+                        }
                     }
                 )
             }
@@ -849,71 +896,8 @@ private fun SeekFeedbackBubble(feedback: SeekFeedback) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Top bar
+// Top bar button (used by the inline OmniMediaTopBar trailing slot above)
 // ══════════════════════════════════════════════════════════════════════════════
-
-@Composable
-private fun VideoTopBar(
-    title:            String,
-    subtitle:         String,
-    currentSpeed:     Float,
-    supportsPiP:      Boolean,
-    castState:        CastState,
-    onBack:           () -> Unit,
-    onPiP:            () -> Unit,
-    onToggleInfo:     () -> Unit,
-    onOpenSpeedPanel: () -> Unit,
-    onShare:          () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(60.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(NavigationSurfaceColor)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
-            .padding(horizontal = 8.dp),
-        verticalAlignment     = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        TopBarButton(icon = Icons.AutoMirrored.Filled.ArrowBack, desc = "Back", onClick = onBack)
-
-        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(title, color = Color.White.copy(alpha = 0.94f),
-                style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
-                maxLines = 1, textAlign = TextAlign.Center)
-            if (subtitle.isNotBlank()) {
-                Text(subtitle, color = Color.White.copy(alpha = 0.40f),
-                    style = MaterialTheme.typography.labelSmall)
-            }
-        }
-
-        if (currentSpeed != 1f) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(Color(0xFF2D26A0))
-                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.42f), RoundedCornerShape(9.dp))
-                    .clickable(onClick = onOpenSpeedPanel)
-                    .padding(horizontal = 9.dp, vertical = 4.dp)
-            ) {
-                Text(currentSpeed.toSpeedLabel(), color = Color.White,
-                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
-            }
-            Spacer(Modifier.width(2.dp))
-        }
-
-        if (castState == CastState.CONNECTED)
-            TopBarButton(icon = Icons.Filled.Cast, desc = "Casting", tint = Color(0xFF8B7FF5), onClick = onOpenSpeedPanel)
-
-        if (supportsPiP)
-            TopBarButton(icon = Icons.Filled.PictureInPicture, desc = "Picture in picture", onClick = onPiP)
-
-        TopBarButton(icon = Icons.Outlined.Share,  desc = "Share",       onClick = onShare)
-        TopBarButton(icon = Icons.Outlined.Info,   desc = "Video info",  onClick = onToggleInfo)
-        TopBarButton(icon = Icons.Filled.MoreVert, desc = "Options",     onClick = onOpenSpeedPanel)
-    }
-}
 
 @Composable
 private fun TopBarButton(
@@ -948,9 +932,9 @@ private fun VideoSeekBar(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(MediaChromeCorner))
             .background(NavigationSurfaceColor)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(MediaChromeCorner))
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Slider(

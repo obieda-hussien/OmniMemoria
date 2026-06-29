@@ -9,9 +9,11 @@ import androidx.room.RoomDatabase
         PhotoIntelligenceFts::class,
         TrashItem::class,
         FavoritePhoto::class,
-        SortPreset::class
+        SortPreset::class,
+        CorruptedMedia::class,
+        MediaIntegrityChecked::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -19,4 +21,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun trashDao(): TrashDao
     abstract fun favoritesDao(): FavoritesDao
     abstract fun sortPresetDao(): SortPresetDao
+    abstract fun corruptedMediaDao(): CorruptedMediaDao
+    abstract fun mediaIntegrityCheckedDao(): MediaIntegrityCheckedDao
 }

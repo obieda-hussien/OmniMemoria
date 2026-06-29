@@ -130,6 +130,10 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
 
         // On This Day — FIX: كانت ناسية تتجدول
         workManagerScheduler.scheduleOnThisDay()
+
+        // Media integrity scan — baseline gallery hygiene, runs unconditionally
+        // regardless of which AI feature flags are on or off.
+        workManagerScheduler.scheduleMediaIntegrityCheck()
     }
 
     companion object {

@@ -39,6 +39,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.size.Size
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
@@ -46,10 +48,13 @@ import com.omnimemoria.domain.model.SortOrder
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
 import com.omnimemoria.ui.components.OmniActionChip
+import com.omnimemoria.ui.components.OmniDetailTopBar
 import com.omnimemoria.ui.components.OmniSelectionBar
+import com.omnimemoria.ui.components.OmniSurface
 import com.omnimemoria.ui.components.ShimmerBox
 import com.omnimemoria.ui.detail.photosBoundsTransform
 import com.omnimemoria.ui.photoSharedKey
+import com.omnimemoria.ui.theme.OmniSheetContainerColor
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class,
@@ -172,17 +177,20 @@ fun FolderDetailScreen(
                     key   = { i -> photos[i]?.id ?: "p_$i" }
                 ) { index ->
                     photos[index]?.let { photo ->
-                        FolderPhotoCell(
-                            photo                   = photo,
-                            selected                = photo.id in selectedIds,
-                            selecting               = isSelecting,
+                        com.omnimemoria.ui.gallery.PhotoCell(
+                            uri                     = photo.uri.toString(),
+                            photoId                 = photo.id,
+                            isVideo                 = photo.mimeType.startsWith("video/", ignoreCase = true),
+                            isSelected              = photo.id in selectedIds,
+                            isSelecting             = isSelecting,
+                            isFavorite              = false,
                             sharedTransitionScope   = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
-                            onClick = {
+                            onClick                 = {
                                 if (isSelecting) viewModel.toggleSelection(photo.id)
                                 else { viewModel.prepareForNavigation(photo); onPhotoClick(photo.id) }
                             },
-                            onLongClick = {
+                            onLongClick             = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 viewModel.toggleSelection(photo.id)
                             }
@@ -209,12 +217,12 @@ fun FolderDetailScreen(
                 )
         )
 
-        FolderTopBar(
-            folderName = folder?.name ?: "",
-            photoCount = photos.itemCount,
-            onBack     = onBack,
-            onSort     = { showSortSheet = true },
-            modifier   = Modifier.align(Alignment.TopCenter)
+        OmniDetailTopBar(
+            title    = folder?.name?.ifBlank { "Album" } ?: "Album",
+            subtitle = if (photos.itemCount > 0) "${photos.itemCount} items" else null,
+            onBack   = onBack,
+            actions  = { OmniActionChip(label = "Sort", icon = Icons.Outlined.Sort, onClick = { showSortSheet = true }) },
+            modifier = Modifier.align(Alignment.TopCenter)
         )
 
         // Selection bar
@@ -262,20 +270,22 @@ private fun FolderHeroCard(
     folder:     com.omnimemoria.domain.model.MediaFolder?,
     photoCount: Int
 ) {
-    Row(
+    val context = androidx.compose.ui.platform.LocalContext.current
+    OmniSurface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 14.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF141220))
-            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(20.dp))
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(bottom = 14.dp),
+        cornerRadius = 20.dp
     ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
         Box(modifier = Modifier.size(80.dp).clip(RoundedCornerShape(16.dp))) {
             if (folder != null) {
+                // Bound decode to 2x the displayed size (80dp * 2 = ~160dp at mdpi)
                 AsyncImage(
-                    model              = folder.coverUri,
+                    model              = ImageRequest.Builder(context).data(folder.coverUri).size(Size(320, 320)).build(),
                     contentDescription = folder.name,
                     contentScale       = ContentScale.Crop,
                     modifier           = Modifier.fillMaxSize()
@@ -313,124 +323,12 @@ private fun FolderHeroCard(
                     color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
             }
         }
-    }
+        } // end inner Row
+    } // end OmniSurface
 }
 
-// ── Photo cell ─────────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
-@Composable
-private fun FolderPhotoCell(
-    photo:                   MediaPhoto,
-    selected:                Boolean,
-    selecting:               Boolean,
-    sharedTransitionScope:   SharedTransitionScope?,
-    animatedVisibilityScope: AnimatedVisibilityScope?,
-    onClick:                 () -> Unit,
-    onLongClick:             () -> Unit
-) {
-    val scale by animateFloatAsState(
-        targetValue   = if (selected) 0.88f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label         = "cell_scale"
-    )
-    val isVideo = photo.mimeType.startsWith("video/", ignoreCase = true)
-    val sharedModifier: Modifier = if (
-        sharedTransitionScope   != null &&
-        animatedVisibilityScope != null &&
-        !selecting
-    ) {
-        with(sharedTransitionScope) {
-            Modifier.sharedElement(
-                sharedContentState      = rememberSharedContentState(key = photoSharedKey(photo.id)),
-                animatedVisibilityScope = animatedVisibilityScope,
-                boundsTransform         = photosBoundsTransform
-            )
-        }
-    } else Modifier
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .scale(scale)
-            .clip(RoundedCornerShape(if (selected) 14.dp else 8.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-    ) {
-        AsyncImage(
-            model              = photo.uri,
-            contentDescription = photo.name,
-            contentScale       = ContentScale.Crop,
-            modifier           = Modifier.fillMaxSize().then(sharedModifier)
-        )
-        if (isVideo) {
-            Box(
-                modifier = Modifier.align(Alignment.BottomStart).padding(5.dp)
-                    .clip(RoundedCornerShape(99.dp)).background(Color.Black.copy(alpha = 0.6f))
-                    .padding(horizontal = 6.dp, vertical = 3.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Filled.PlayArrow, "Video", tint = Color.White, modifier = Modifier.size(13.dp))
-            }
-        }
-        AnimatedVisibility(visible = selecting, enter = fadeIn(), exit = fadeOut()) {
-            Box(
-                modifier = Modifier.fillMaxSize()
-                    .background(
-                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-                        else Color.Black.copy(alpha = 0.18f)
-                    )
-            ) {
-                if (selected) {
-                    Icon(Icons.Filled.CheckCircle, "Selected",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(5.dp).size(22.dp))
-                } else {
-                    Box(modifier = Modifier.align(Alignment.TopEnd).padding(5.dp).size(22.dp)
-                        .clip(CircleShape).border(2.dp, Color.White.copy(alpha = 0.85f), CircleShape))
-                }
-            }
-        }
-    }
-}
-
-// ── Top bar ────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun FolderTopBar(
-    folderName: String,
-    photoCount: Int,
-    onBack:     () -> Unit,
-    onSort:     () -> Unit,
-    modifier:   Modifier = Modifier
-) {
-    Row(
-        modifier = modifier.fillMaxWidth().statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(44.dp).clip(CircleShape)
-                .background(Color(0xFF1E1C30))
-                .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
-                .combinedClickable(onClick = onBack),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back",
-                tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(folderName.ifBlank { "Album" }, style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
-            if (photoCount > 0) {
-                Text("$photoCount items", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        OmniActionChip(label = "Sort", icon = Icons.Outlined.Sort, onClick = onSort)
-    }
-}
+// FolderTopBar and FolderPhotoCell removed -- replaced by OmniDetailTopBar and
+// PhotoCell (from GalleryScreen) in the main composable above.
 
 // ── Sort bottom sheet ──────────────────────────────────────────────────────────
 
@@ -447,7 +345,7 @@ private fun FolderSortBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor   = Color(0xFF141220),
+        containerColor   = OmniSheetContainerColor,
         shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
         Column(

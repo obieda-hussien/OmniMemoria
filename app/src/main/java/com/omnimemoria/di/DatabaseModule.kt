@@ -3,6 +3,8 @@ package com.omnimemoria.di
 import android.content.Context
 import androidx.room.Room
 import com.omnimemoria.data.local.db.AppDatabase
+import com.omnimemoria.data.local.db.CorruptedMediaDao
+import com.omnimemoria.data.local.db.MediaIntegrityCheckedDao
 import com.omnimemoria.data.local.db.PhotoIntelligenceDao
 import com.omnimemoria.data.local.db.SortPresetDao
 import com.omnimemoria.data.local.db.FavoritesDao
@@ -20,7 +22,9 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
-        return Room.databaseBuilder(context, AppDatabase::class.java, "omnimemoria.db").build()
+        return Room.databaseBuilder(context, AppDatabase::class.java, "omnimemoria.db")
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
     @Provides
@@ -41,5 +45,15 @@ object DatabaseModule {
     @Provides
     fun provideTrashDao(database: AppDatabase): TrashDao {
         return database.trashDao()
+    }
+
+    @Provides
+    fun provideCorruptedMediaDao(database: AppDatabase): CorruptedMediaDao {
+        return database.corruptedMediaDao()
+    }
+
+    @Provides
+    fun provideMediaIntegrityCheckedDao(database: AppDatabase): MediaIntegrityCheckedDao {
+        return database.mediaIntegrityCheckedDao()
     }
 }

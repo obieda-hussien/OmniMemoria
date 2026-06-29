@@ -255,26 +255,22 @@ class GalleryViewModel @Inject constructor(
         if (selectedPhotos.isEmpty()) return
         val count = selectedPhotos.size
         viewModelScope.launch(Dispatchers.IO) {
-            val pendingIntent = trashRepository.moveToTrashIntent(selectedPhotos)
-            val deletedIds    = selectedPhotos.map { it.id }
-            if (pendingIntent != null) {
-                _uiEvents.send(
-                    GalleryUiEvent.RequestMediaPermission(
-                        pendingIntent = pendingIntent,
-                        onConfirmed   = {
-                            viewModelScope.launch(Dispatchers.IO) {
-                                trashRepository.confirmMoveToTrash(selectedPhotos)
-                                clearSelection()
-                                _uiEvents.send(buildUndoEvent(count, deletedIds))
-                            }
-                        }
+            val deletedIds = selectedPhotos.map { it.id }
+            trashRepository.moveToTrashWithFallback(
+                photos            = selectedPhotos,
+                onNeedsPermission = { pi, onConfirmed ->
+                    _uiEvents.send(
+                        GalleryUiEvent.RequestMediaPermission(
+                            pendingIntent = pi,
+                            onConfirmed   = { viewModelScope.launch(Dispatchers.IO) { onConfirmed() } }
+                        )
                     )
-                )
-            } else {
-                trashRepository.confirmMoveToTrash(selectedPhotos)
-                clearSelection()
-                _uiEvents.send(buildUndoEvent(count, deletedIds))
-            }
+                },
+                onDone = {
+                    clearSelection()
+                    _uiEvents.send(buildUndoEvent(count, deletedIds))
+                }
+            )
         }
     }
 

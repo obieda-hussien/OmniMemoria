@@ -1,5 +1,11 @@
 package com.omnimemoria.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,6 +25,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,25 +38,27 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * OmniMemoria — Shared Design Components
- * ═══════════════════════════════════════
+ * OmniMemoria -- Shared Design Components
+ * ==========================================
  * Single source of truth for every reusable UI primitive.
  * All screens MUST use these instead of rolling their own versions.
  *
  * Design Tokens
- * ─────────────
- * Card background   : Color(0xFF1E1C30)   ← SurfaceVariantDark
+ * -------------
+ * Card background   : Color(0xFF1E1C30)   <- SurfaceVariantDark
  * Card border       : White @ 6% opacity
- * Corner — large    : 20.dp
- * Corner — medium   : 16.dp
- * Corner — chip     : 12.dp
- * Corner — button   : 14.dp
+ * Corner -- large   : 20.dp
+ * Corner -- medium  : 16.dp
+ * Corner -- chip    : 12.dp
+ * Corner -- button  : 14.dp
  * Selection bar     : horizontal indigo gradient, 24.dp pill
+ * Media chrome corner: 28.dp (see MediaChromeCorner)
+ * Media chrome height: 64.dp (see MediaChromeHeight)
  */
 
 // ── 1. Detail / Secondary Top Bar ─────────────────────────────────────────────
 // Used by: FolderDetailScreen, SettingsScreen, any non-tab secondary screen.
-// Floats over content — no Scaffold needed.
+// Floats over content -- no Scaffold needed.
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -67,7 +76,7 @@ fun OmniDetailTopBar(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Back pill — matches FAB/stat-chip visual language
+        // Back pill -- matches FAB/stat-chip visual language
         Box(
             modifier = Modifier
                 .size(44.dp)
@@ -154,7 +163,7 @@ fun OmniSectionHeader(
 
 // ── 3. Action Chip ────────────────────────────────────────────────────────────
 // Used for: "Filter & Sort", "Sort", "See all", "Re-index", etc.
-// Same style everywhere — primary-tinted pill with subtle border.
+// Same style everywhere -- primary-tinted pill with subtle border.
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -225,8 +234,11 @@ fun OmniIconAction(
 }
 
 // ── 5. Empty State ────────────────────────────────────────────────────────────
-// Used by: AlbumsScreen, SearchScreen, TrashScreen, etc.
+// Used by: AlbumsScreen, SearchScreen, TrashScreen, FavoritesScreen, etc.
 // Standard: 72dp icon box (22dp corners) + title + subtitle + optional CTA.
+// floating=true adds an infinite float animation to the icon box (absorbs the
+// per-screen float animation blocks previously duplicated in TrashEmptyState,
+// EmptyFavoritesContent, and VaultDisabledState).
 
 @Composable
 fun OmniEmptyState(
@@ -234,10 +246,22 @@ fun OmniEmptyState(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
+    floating: Boolean = false,
     actionLabel: String? = null,
     actionIcon: ImageVector? = null,
     onAction: (() -> Unit)? = null
 ) {
+    val floatY = if (floating) {
+        val transition = rememberInfiniteTransition(label = "empty_state_float")
+        val value by transition.animateFloat(
+            initialValue = 0f, targetValue = -8f,
+            animationSpec = infiniteRepeatable(
+                tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse
+            ), label = "float_y"
+        )
+        value
+    } else 0f
+
     Column(
         modifier            = modifier
             .fillMaxWidth()
@@ -246,6 +270,7 @@ fun OmniEmptyState(
     ) {
         Box(
             modifier = Modifier
+                .offset(y = floatY.dp)
                 .size(72.dp)
                 .clip(RoundedCornerShape(22.dp))
                 .background(Color(0xFF1E1C30))
@@ -299,7 +324,7 @@ fun OmniEmptyState(
 }
 
 // ── 6. Selection Action Bar ───────────────────────────────────────────────────
-// Used by: GalleryScreen, FolderDetailScreen — multi-select mode bottom bar.
+// Used by: GalleryScreen, FolderDetailScreen -- multi-select mode bottom bar.
 // Indigo gradient pill, always floats above the bottom nav.
 
 @Composable
@@ -365,6 +390,33 @@ fun OmniSelectionBar(
     }
 }
 
+// ── 6b. Info Banner ───────────────────────────────────────────────────────────
+// Used by: FavoritesScreen, TrashScreen.
+// Replaces per-screen FavoritesInfoBanner / TrashInfoBanner duplicates.
+
+@Composable
+fun OmniInfoBanner(
+    icon: ImageVector,
+    text: String,
+    modifier: Modifier = Modifier,
+    tint: Color = MaterialTheme.colorScheme.primary
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF1E1C30))
+            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = tint.copy(alpha = 0.85f), modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(text, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 // ── 7. Omni Surface / Card ────────────────────────────────────────────────────
 // Base card primitive. Use instead of Material3's Card for consistent styling.
 
@@ -383,6 +435,69 @@ fun OmniSurface(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         content = content
     )
+}
+
+// ── 9. Media Chrome Constants and Bars ───────────────────────────────────────
+// Floating opaque pill chrome that sits ON TOP of photo/video content.
+// Standardizes corner radius and height that PhotoDetailScreen and
+// VideoPlayerScreen previously diverged on (32dp/68dp vs 20dp/60dp).
+// 28dp/64dp is the standardized middle ground -- change in one place.
+
+val MediaChromeCorner = 28.dp
+val MediaChromeHeight = 64.dp
+
+@Composable
+fun OmniMediaTopBar(
+    modifier: Modifier = Modifier,
+    leading: @Composable RowScope.() -> Unit,
+    center: @Composable RowScope.() -> Unit = {},
+    trailing: @Composable RowScope.() -> Unit = {}
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .clip(RoundedCornerShape(MediaChromeCorner))
+            .background(com.omnimemoria.ui.navigation.NavigationSurfaceColor)
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(MediaChromeCorner))
+            .height(MediaChromeHeight)
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) { leading() }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.Center
+        ) { center() }
+        Row(verticalAlignment = Alignment.CenterVertically) { trailing() }
+    }
+}
+
+@Composable
+fun OmniMediaBottomBar(
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .navigationBarsPadding()
+            .padding(bottom = 12.dp)
+            .clip(RoundedCornerShape(MediaChromeCorner))
+            .background(com.omnimemoria.ui.navigation.NavigationSurfaceColor)
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(MediaChromeCorner))
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(MediaChromeHeight).padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
+    }
 }
 
 // ── 8. Settings Group Card ────────────────────────────────────────────────────

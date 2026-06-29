@@ -19,6 +19,7 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
+import com.omnimemoria.data.local.db.CorruptedMediaDao
 import com.omnimemoria.data.local.db.PhotoIntelligenceDao
 import com.omnimemoria.domain.model.FolderSortBy
 import com.omnimemoria.domain.model.FilterConfig
@@ -59,36 +60,49 @@ data class MediaStats(
 class MediaStoreRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val photoIntelligenceDao: PhotoIntelligenceDao,
-    private val favoritesRepository: FavoritesRepository
+    private val favoritesRepository: FavoritesRepository,
+    private val corruptedMediaDao: CorruptedMediaDao
 ) {
     private val contentResolver: ContentResolver = context.contentResolver
     private val mediaCollection: Uri = MediaStore.Files.getContentUri("external")
 
     // ══ 1. إحصائيات حقيقية ══════════════════════════════════════════════════════
-    fun getMediaStats(): MediaStats {
+    suspend fun getMediaStats(): MediaStats {
         var photoCount = 0
         var videoCount = 0
         var photoSize  = 0L
         var videoSize  = 0L
         val bucketIds  = mutableSetOf<String>()
 
+        // Compute selection once — reused for both selection and args below.
+        val (selection, selectionArgs) = QueryBuilder(FilterConfig()).buildSelection()
+
+        val corruptedIds = runCatching {
+            corruptedMediaDao.getAllIds().toHashSet()
+        }.getOrDefault(emptySet<Long>())
+
         contentResolver.query(
             mediaCollection,
             arrayOf(
+                MediaStore.MediaColumns._ID,
                 MediaStore.MediaColumns.SIZE,
                 MediaStore.MediaColumns.BUCKET_ID,
                 MediaStore.MediaColumns.MIME_TYPE,
                 MediaStore.Files.FileColumns.MEDIA_TYPE
             ),
-            QueryBuilder(FilterConfig()).buildSelection().first,
-            QueryBuilder(FilterConfig()).buildSelection().second,
+            selection,
+            selectionArgs,
             null
         )?.use { cursor ->
+            val idi = cursor.getColumnIndex(MediaStore.MediaColumns._ID)
             val si = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
             val bi = cursor.getColumnIndex(MediaStore.MediaColumns.BUCKET_ID)
             val pi = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
             val mi = cursor.getColumnIndex(MediaStore.Files.FileColumns.MEDIA_TYPE)
             while (cursor.moveToNext()) {
+                val rowId = if (idi >= 0) cursor.getLong(idi) else -1L
+                if (rowId in corruptedIds) continue
+
                 val size = if (si >= 0) cursor.getLong(si) else 0L
                 val mediaType = if (mi >= 0 && !cursor.isNull(mi)) cursor.getInt(mi) else null
                 val mimeType = if (pi >= 0 && !cursor.isNull(pi)) cursor.getString(pi).orEmpty() else ""
@@ -178,6 +192,9 @@ class MediaStoreRepository @Inject constructor(
         val day     = today.get(Calendar.DAY_OF_MONTH)
         val curYear = today.get(Calendar.YEAR)
 
+        // Compute the base selection once — same FilterConfig() for all 5 iterations.
+        val (baseSelection, baseArgs) = QueryBuilder(FilterConfig()).buildSelection()
+
         for (yearsBack in 1..5) {
             val start = Calendar.getInstance().apply {
                 set(curYear - yearsBack, month, day, 0, 0, 0)
@@ -188,8 +205,8 @@ class MediaStoreRepository @Inject constructor(
             contentResolver.query(
                 mediaCollection,
                 photoProjection,
-                "${MediaStore.MediaColumns.DATE_TAKEN} BETWEEN ? AND ? AND (${QueryBuilder(FilterConfig()).buildSelection().first})",
-                arrayOf(start.toString(), end.toString(), *QueryBuilder(FilterConfig()).buildSelection().second),
+                "${MediaStore.MediaColumns.DATE_TAKEN} BETWEEN ? AND ? AND ($baseSelection)",
+                arrayOf(start.toString(), end.toString(), *baseArgs),
                 "${MediaStore.MediaColumns.DATE_TAKEN} DESC"
             )?.use { cursor ->
                 if (cursor.moveToFirst()) results.add(cursor.toMediaPhoto())
@@ -211,11 +228,12 @@ class MediaStoreRepository @Inject constructor(
             )
         } else {
             val sortOrderStr = getSortOrderStr(sortConfig)
+            val (sel, args) = QueryBuilder(FilterConfig()).buildSelection()
             contentResolver.query(
                 mediaCollection,
                 photoProjection,
-                QueryBuilder(FilterConfig()).buildSelection().first,
-                QueryBuilder(FilterConfig()).buildSelection().second,
+                sel,
+                args,
                 sortOrderStr
             )
         }?.use { cursor ->
@@ -230,19 +248,20 @@ class MediaStoreRepository @Inject constructor(
     }
 
     // ══ 7. All non-vault photos — unlimited swipe source for PhotoDetail ═════════
-    // Filters out vault items so the pager index matches the gallery grid exactly.
+    // Filters out vault and corrupted items so the pager index matches the gallery grid.
     suspend fun getAllNonVaultPhotos(sortConfig: SortConfig): List<MediaPhoto> =
         withContext(Dispatchers.IO) {
             val vaultIds = photoIntelligenceDao.getVaultPhotoIds().toHashSet()
-            getAllPhotos(sortConfig).filterNot { it.id in vaultIds }
+            val corruptedIds = corruptedMediaDao.getAllIds().toHashSet()
+            getAllPhotos(sortConfig).filterNot { it.id in vaultIds || it.id in corruptedIds }
         }
 
-    // ══ Paging ══════════════════════════════════════════════════════════════════
+    // ═══ Paging ══════════════════════════════════════════════════════════════════
 
     fun getPhotosPaged(sortConfig: SortConfig, filterConfig: FilterConfig = FilterConfig()): Flow<PagingData<MediaPhoto>> = Pager(
         config              = PagingConfig(pageSize = PAGE_SIZE),
         pagingSourceFactory = {
-            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, sortConfig, filterConfig, null, favoritesRepository)
+            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, corruptedMediaDao, sortConfig, filterConfig, null, favoritesRepository)
         }
     ).flow
 
@@ -254,14 +273,15 @@ class MediaStoreRepository @Inject constructor(
     fun getPhotosByFolder(bucketId: String, sortConfig: SortConfig): Flow<PagingData<MediaPhoto>> = Pager(
         config              = PagingConfig(pageSize = PAGE_SIZE),
         pagingSourceFactory = {
-            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, sortConfig, FilterConfig(), bucketId, favoritesRepository)
+            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, corruptedMediaDao, sortConfig, FilterConfig(), bucketId, favoritesRepository)
         }
     ).flow
 
     suspend fun getAllNonVaultPhotosByFolder(bucketId: String, sortConfig: SortConfig): List<MediaPhoto> =
         withContext(Dispatchers.IO) {
             val vaultIds = photoIntelligenceDao.getVaultPhotoIds().toHashSet()
-            getAllPhotosByFolder(bucketId, sortConfig).filterNot { it.id in vaultIds }
+            val corruptedIds = corruptedMediaDao.getAllIds().toHashSet()
+            getAllPhotosByFolder(bucketId, sortConfig).filterNot { it.id in vaultIds || it.id in corruptedIds }
         }
 
     fun getAllPhotosByFolder(bucketId: String, sortConfig: SortConfig): List<MediaPhoto> {
@@ -275,11 +295,13 @@ class MediaStoreRepository @Inject constructor(
             )
         } else {
             val sortOrderStr = getSortOrderStr(sortConfig)
+            // Compute selection once and reuse.
+            val (sel, selArgs) = QueryBuilder(FilterConfig()).buildSelection()
             contentResolver.query(
                 mediaCollection,
                 photoProjection,
-                "${MediaStore.MediaColumns.BUCKET_ID} = ? AND (${QueryBuilder(FilterConfig()).buildSelection().first})",
-                arrayOf(bucketId, *QueryBuilder(FilterConfig()).buildSelection().second),
+                "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($sel)",
+                arrayOf(bucketId, *selArgs),
                 sortOrderStr
             )
         }?.use { cursor ->
@@ -300,8 +322,10 @@ class MediaStoreRepository @Inject constructor(
     fun searchPhotosByDisplayName(query: String, limit: Int = 100): List<MediaPhoto> {
         if (query.isBlank()) return emptyList()
         val escaped = query.replace("%", "\\%").replace("_", "\\_")
-        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? ESCAPE '\\' AND (${QueryBuilder(FilterConfig()).buildSelection().first})"
-        val args = arrayOf("%$escaped%", *QueryBuilder(FilterConfig()).buildSelection().second)
+        // Compute selection once and reuse.
+        val (baseSel, baseArgs) = QueryBuilder(FilterConfig()).buildSelection()
+        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? ESCAPE '\\' AND ($baseSel)"
+        val args = arrayOf("%$escaped%", *baseArgs)
         val out = mutableListOf<MediaPhoto>()
         contentResolver.query(
             mediaCollection,
@@ -315,15 +339,12 @@ class MediaStoreRepository @Inject constructor(
         return out
     }
 
-    fun getPhotoById(id: Long): MediaPhoto? {
+    suspend fun getPhotoById(id: Long): MediaPhoto? {
         // We use a basic query without TRASH filtering to ensure we can retrieve the photo
         // even if it was just selected or moved.
         val selection = "${MediaStore.MediaColumns._ID} = ?"
         val args = arrayOf(id.toString())
 
-        // Use the query directly on the contentResolver
-        // Using a bundle allows us to query trashed items on API 30+ if needed, but for now basic query works
-        // for non-trashed items, which is what we need for deleteSelected.
         contentResolver.query(
             mediaCollection,
             photoProjection,
@@ -331,7 +352,19 @@ class MediaStoreRepository @Inject constructor(
             args,
             null
         )?.use { cursor ->
-            if (cursor.moveToFirst()) return cursor.toMediaPhoto()
+            if (cursor.moveToFirst()) {
+                val photo = cursor.toMediaPhoto()
+                // Corrupted files are excluded: a stale Favorite pointing at a broken
+                // file behaves identically to a file deleted outside the app — the
+                // existing mapNotNull pattern in FavoritesViewModel.resolvePhotos
+                // already handles null returns from this function gracefully.
+                // (Deliberately flagged behavior change — see PR description.)
+                val corruptedIds = runCatching {
+                    corruptedMediaDao.getAllIds().toHashSet()
+                }.getOrDefault(emptySet<Long>())
+                if (photo.id in corruptedIds) return null
+                return photo
+            }
         }
         return null
     }
@@ -354,12 +387,14 @@ class MediaStoreRepository @Inject constructor(
     private class MediaPhotoPagingSource(
         private val contentResolver:      ContentResolver,
         private val photoIntelligenceDao: PhotoIntelligenceDao,
+        private val corruptedMediaDao:    CorruptedMediaDao,
         private val sortConfig:           SortConfig,
         private val filterConfig:         FilterConfig,
         private val bucketId:             String? = null,
         private val favoritesRepository:  FavoritesRepository? = null
     ) : PagingSource<Int, MediaPhoto>() {
         private var cachedVaultedIds: Set<Long>? = null
+        private var cachedCorruptedIds: Set<Long>? = null
 
         override suspend fun load(params: LoadParams<Int>): LoadResult<Int, MediaPhoto> {
             return try {
@@ -367,6 +402,20 @@ class MediaStoreRepository @Inject constructor(
                 val vaultedIds  = cachedVaultedIds
                     ?: photoIntelligenceDao.getVaultPhotoIds().toHashSet()
                         .also { cachedVaultedIds = it }
+                val corruptedIds = cachedCorruptedIds
+                    ?: corruptedMediaDao.getAllIds().toHashSet()
+                        .also { cachedCorruptedIds = it }
+
+                // Resolve favorite IDs once before the loop — not inside it.
+                // Avoids the runBlocking-inside-a-loop correctness bug where a
+                // suspend flow was wrapped in runBlocking inside an already-suspending
+                // function, potentially re-run many times per page load.
+                val needsFavoriteIds = (filterConfig.isFavorite != null ||
+                    sortConfig.sortBy == SortBy.FAVORITES_FIRST) && favoritesRepository != null
+                val favoriteIds: Set<Long> = if (needsFavoriteIds) {
+                    favoritesRepository!!.getAllFavoriteIds().first()
+                } else emptySet()
+
                 val pageData   = mutableListOf<MediaPhoto>()
                 var offset     = startOffset
                 var endReached = false
@@ -377,14 +426,15 @@ class MediaStoreRepository @Inject constructor(
                     if (chunk.isEmpty()) {
                         endReached = true
                     } else {
-                        var processedChunk = chunk.filterNot { it.id in vaultedIds }
+                        var processedChunk = chunk
+                            .filterNot { it.id in vaultedIds }
+                            .filterNot { it.id in corruptedIds }
 
                         if (filterConfig.minResolutionMp != null) {
                             processedChunk = processedChunk.filter { (it.width * it.height) / 1000000f >= filterConfig.minResolutionMp }
                         }
 
                         if (filterConfig.isFavorite != null && favoritesRepository != null) {
-                            val favoriteIds = kotlinx.coroutines.runBlocking { favoritesRepository.getAllFavoriteIds().first() }
                             processedChunk = processedChunk.filter { (it.id in favoriteIds) == filterConfig.isFavorite }
                         }
 
@@ -395,7 +445,6 @@ class MediaStoreRepository @Inject constructor(
                                 processedChunk.sortedByDescending { it.width * it.height }
                             }
                         } else if (sortConfig.sortBy == SortBy.FAVORITES_FIRST && favoritesRepository != null) {
-                            val favoriteIds = kotlinx.coroutines.runBlocking { favoritesRepository.getAllFavoriteIds().first() }
                             processedChunk = if (sortConfig.sortOrder == SortOrder.ASCENDING) {
                                 processedChunk.sortedBy { if (it.id in favoriteIds) 1 else 0 }
                             } else {
@@ -459,6 +508,11 @@ class MediaStoreRepository @Inject constructor(
             fun buildSelection(): Pair<String, Array<String>> {
                 val clauses = mutableListOf<String>()
                 val args = mutableListOf<String>()
+
+                // Zero-byte filter — catches placeholder/empty files immediately
+                // with no worker needed. Applies everywhere QueryBuilder is used.
+                // Added strict metadata dimension validation constraint
+                clauses.add("${MediaStore.MediaColumns.SIZE} > 0 AND ${MediaStore.MediaColumns.WIDTH} > 0 AND ${MediaStore.MediaColumns.HEIGHT} > 0")
 
                 // Media Types
                 if (filter.mediaTypes.isNotEmpty()) {
@@ -572,18 +626,19 @@ class MediaStoreRepository @Inject constructor(
                 )
             } else {
                 val sortOrderStr = getSortOrderStr(sortConfig)
-                val (mediaSelection, mediaSelectionArgs) = QueryBuilder(filterConfig).buildSelection()
+                // Compute selection once and reuse both uses below.
+                val (sel, selArgs) = QueryBuilder(filterConfig).buildSelection()
                 if (bucketId.isNullOrBlank()) {
                     cr.query(
                         MediaStore.Files.getContentUri("external"),
-                        photoProjection, QueryBuilder(FilterConfig()).buildSelection().first, QueryBuilder(FilterConfig()).buildSelection().second, "$sortOrderStr LIMIT $limit OFFSET $offset"
+                        photoProjection, sel, selArgs, "$sortOrderStr LIMIT $limit OFFSET $offset"
                     )
                 } else {
-                    val combinedArgs = arrayOf(bucketId, *QueryBuilder(FilterConfig()).buildSelection().second)
+                    val combinedArgs = arrayOf(bucketId, *selArgs)
                     cr.query(
                         MediaStore.Files.getContentUri("external"),
                         photoProjection,
-                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND (${QueryBuilder(FilterConfig()).buildSelection().first})",
+                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($sel)",
                         combinedArgs,
                         "$sortOrderStr LIMIT $limit OFFSET $offset"
                     )
@@ -624,6 +679,8 @@ class MediaStoreRepository @Inject constructor(
                 SortOrder.ASCENDING  -> ContentResolver.QUERY_SORT_DIRECTION_ASCENDING
                 SortOrder.DESCENDING -> ContentResolver.QUERY_SORT_DIRECTION_DESCENDING
             }
+            // Compute selection once and reuse for both the no-bucket and bucket branches.
+            val (sel, selArgs) = QueryBuilder(filterConfig).buildSelection()
             return Bundle().apply {
                 if (sc.sortBy == SortBy.DATE_TAKEN) {
                     val sqlDir = when (sc.sortOrder) {
@@ -653,18 +710,17 @@ class MediaStoreRepository @Inject constructor(
                 if (limit != null) putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
                 if (offset != null) putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
                 
-                val (mediaSelection, mediaSelectionArgs) = QueryBuilder(filterConfig).buildSelection()
                 if (bucketId.isNullOrBlank()) {
-                    putString(ContentResolver.QUERY_ARG_SQL_SELECTION, QueryBuilder(FilterConfig()).buildSelection().first)
-                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, QueryBuilder(FilterConfig()).buildSelection().second)
+                    putString(ContentResolver.QUERY_ARG_SQL_SELECTION, sel)
+                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selArgs)
                 } else {
                     putString(
                         ContentResolver.QUERY_ARG_SQL_SELECTION,
-                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND (${QueryBuilder(FilterConfig()).buildSelection().first})"
+                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($sel)"
                     )
                     putStringArray(
                         ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
-                        arrayOf(bucketId, *QueryBuilder(FilterConfig()).buildSelection().second)
+                        arrayOf(bucketId, *selArgs)
                     )
                 }
             }
@@ -672,6 +728,8 @@ class MediaStoreRepository @Inject constructor(
 
         private fun queryFolders(cr: ContentResolver, sortConfig: FolderSortConfig): List<MediaFolder> {
             val map  = linkedMapOf<String, FolderAccumulator>()
+            // Compute selection once and reuse for the query.
+            val (folderSel, folderSelArgs) = QueryBuilder(FilterConfig()).buildSelection()
             val args = Bundle().apply {
                 putStringArray(
                     ContentResolver.QUERY_ARG_SORT_COLUMNS,
@@ -681,14 +739,13 @@ class MediaStoreRepository @Inject constructor(
                     ContentResolver.QUERY_ARG_SORT_DIRECTION,
                     ContentResolver.QUERY_SORT_DIRECTION_DESCENDING
                 )
+                putString(ContentResolver.QUERY_ARG_SQL_SELECTION, folderSel)
+                putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, folderSelArgs)
             }
             cr.query(
                 MediaStore.Files.getContentUri("external"),
                 photoProjection,
-                Bundle(args).apply {
-                    putString(ContentResolver.QUERY_ARG_SQL_SELECTION, QueryBuilder(FilterConfig()).buildSelection().first)
-                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, QueryBuilder(FilterConfig()).buildSelection().second)
-                },
+                args,
                 null
             )
                 ?.use { cursor ->

@@ -42,7 +42,8 @@ import coil3.request.ImageRequest
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
-import com.omnimemoria.ui.navigation.NavigationSurfaceColor
+import com.omnimemoria.ui.components.OmniMediaBottomBar
+import com.omnimemoria.ui.components.OmniMediaTopBar
 import com.omnimemoria.ui.photoSharedKey
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import java.text.SimpleDateFormat
@@ -158,7 +159,7 @@ private fun PhotoPager(
         )
     }
 
-    val currentPhoto by remember {
+    val currentPhoto by remember(photoList) {
         derivedStateOf { photoList.getOrNull(pagerState.currentPage) }
     }
 
@@ -255,11 +256,47 @@ private fun PhotoPager(
             exit     = slideOutVertically(targetOffsetY  = { -it }) + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
         ) {
-            DetailTopBar(
-                photo       = currentPhoto,
-                onBack      = onBack,
-                onInfo      = { showMetadata = !showMetadata },
-                showingInfo = showMetadata
+            OmniMediaTopBar(
+                leading = {
+                    Box(
+                        modifier = Modifier.size(44.dp).clip(RoundedCornerShape(16.dp))
+                            .background(Color.White.copy(alpha = 0.08f)).clickable(onClick = onBack),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back",
+                            tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                },
+                center = {
+                    currentPhoto?.name?.let { name ->
+                        Text(
+                            text       = name.substringBeforeLast('.'),
+                            color      = Color.White.copy(alpha = 0.9f),
+                            style      = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines   = 1,
+                            textAlign  = TextAlign.Center,
+                            modifier   = Modifier.padding(horizontal = 10.dp)
+                        )
+                    }
+                },
+                trailing = {
+                    Box(
+                        modifier = Modifier.size(44.dp).clip(RoundedCornerShape(16.dp))
+                            .background(
+                                if (showMetadata) Color(0xFF8B7FF5).copy(alpha = 0.2f)
+                                else Color.White.copy(alpha = 0.08f)
+                            ).clickable { showMetadata = !showMetadata },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector        = if (showMetadata) Icons.Filled.Info else Icons.Outlined.Info,
+                            contentDescription = "Info",
+                            tint               = if (showMetadata) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.9f),
+                            modifier           = Modifier.size(20.dp)
+                        )
+                    }
+                }
             )
         }
 
@@ -318,10 +355,13 @@ private fun PhotoPager(
             exit     = slideOutVertically(targetOffsetY  = { it }) + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
         ) {
-            DetailBottomBar(
-                isFavorite = isFavorite,
-                onFavorite = { onFavorite(currentPhoto?.id ?: return@DetailBottomBar) },
-                onShare    = {
+            val heartScale by animateFloatAsState(
+                targetValue   = if (isFavorite) 1.28f else 1f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                label         = "heart_scale"
+            )
+            OmniMediaBottomBar {
+                DetailAction(Icons.Outlined.Share, "Share", Color.White.copy(alpha = 0.85f), onClick = {
                     val shareIntent = android.content.Intent().apply {
                         action = android.content.Intent.ACTION_SEND
                         putExtra(android.content.Intent.EXTRA_STREAM, currentPhoto?.uri)
@@ -329,70 +369,16 @@ private fun PhotoPager(
                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Media"))
-                },
-                onDelete   = { onDelete(currentPhoto?.id ?: return@DetailBottomBar) }, // ← FIXED
-                onEdit     = { }
-            )
-        }
-    }
-}
-
-@Composable
-private fun DetailTopBar(
-    photo:       MediaPhoto?,
-    onBack:      () -> Unit,
-    onInfo:      () -> Unit,
-    showingInfo: Boolean
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 10.dp)
-            .clip(RoundedCornerShape(32.dp))
-            .background(NavigationSurfaceColor)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(68.dp).padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment     = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(16.dp))
-                    .background(Color.White.copy(alpha = 0.08f)).clickable(onClick = onBack),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back",
-                    tint = Color.White, modifier = Modifier.size(20.dp))
-            }
-
-            photo?.name?.let { name ->
-                Text(
-                    text       = name.substringBeforeLast('.'),
-                    color      = Color.White.copy(alpha = 0.9f),
-                    style      = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines   = 1,
-                    textAlign  = TextAlign.Center,
-                    modifier   = Modifier.weight(1f).padding(horizontal = 10.dp)
+                })
+                DetailAction(
+                    icon    = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                    label   = if (isFavorite) "Saved" else "Save",
+                    tint    = if (isFavorite) Color(0xFFFF4B6E) else Color.White.copy(alpha = 0.85f),
+                    scale   = heartScale,
+                    onClick = { currentPhoto?.id?.let { onFavorite(it) } }
                 )
-            }
-
-            Box(
-                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(16.dp))
-                    .background(
-                        if (showingInfo) Color(0xFF8B7FF5).copy(alpha = 0.2f)
-                        else Color.White.copy(alpha = 0.08f)
-                    ).clickable(onClick = onInfo),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector        = if (showingInfo) Icons.Filled.Info else Icons.Outlined.Info,
-                    contentDescription = "Info",
-                    tint               = if (showingInfo) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.9f),
-                    modifier           = Modifier.size(20.dp)
-                )
+                DetailAction(Icons.Outlined.Edit,          "Edit",   Color.White.copy(alpha = 0.85f), onClick = { })
+                DetailAction(Icons.Outlined.DeleteOutline, "Delete", Color(0xFFFF6B6B),               onClick = { currentPhoto?.id?.let { onDelete(it) } })
             }
         }
     }
@@ -465,48 +451,6 @@ private fun MetaRow(icon: ImageVector, label: String, value: String) {
             Text(label, color = Color.White.copy(alpha = 0.38f), style = MaterialTheme.typography.labelSmall)
             Text(value, color = Color.White.copy(alpha = 0.88f),
                 style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-        }
-    }
-}
-
-@Composable
-private fun DetailBottomBar(
-    isFavorite: Boolean,
-    onFavorite: () -> Unit,
-    onShare:    () -> Unit,
-    onDelete:   () -> Unit,
-    onEdit:     () -> Unit
-) {
-    val heartScale by animateFloatAsState(
-        targetValue   = if (isFavorite) 1.28f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-        label         = "heart_scale"
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .navigationBarsPadding()
-            .padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(32.dp))
-            .background(NavigationSurfaceColor)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
-    ) {
-        Row(
-            modifier              = Modifier.fillMaxWidth().height(68.dp).padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment     = Alignment.CenterVertically
-        ) {
-            DetailAction(Icons.Outlined.Share,  "Share",  Color.White.copy(alpha = 0.85f), onClick = onShare)
-            DetailAction(
-                icon    = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                label   = if (isFavorite) "Saved" else "Save",
-                tint    = if (isFavorite) Color(0xFFFF4B6E) else Color.White.copy(alpha = 0.85f),
-                scale   = heartScale,
-                onClick = onFavorite
-            )
-            DetailAction(Icons.Outlined.Edit,           "Edit",   Color.White.copy(alpha = 0.85f), onClick = onEdit)
-            DetailAction(Icons.Outlined.DeleteOutline,  "Delete", Color(0xFFFF6B6B),               onClick = onDelete)
         }
     }
 }
