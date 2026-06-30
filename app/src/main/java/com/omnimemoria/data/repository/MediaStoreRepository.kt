@@ -510,9 +510,18 @@ class MediaStoreRepository @Inject constructor(
                 val args = mutableListOf<String>()
 
                 // Zero-byte filter — catches placeholder/empty files immediately
-                // with no worker needed. Applies everywhere QueryBuilder is used.
-                // Added strict metadata dimension validation constraint
-                clauses.add("${MediaStore.MediaColumns.SIZE} > 0 AND ${MediaStore.MediaColumns.WIDTH} > 0 AND ${MediaStore.MediaColumns.HEIGHT} > 0")
+                // Smart dimension validation: enforces WIDTH > 0 and HEIGHT > 0 only for
+                // known raster image formats and videos. Vector graphics (like SVG, XML)
+                // or unrecognized formats bypass the dimension check.
+                val dimCheck = "(${MediaStore.MediaColumns.WIDTH} > 0 AND ${MediaStore.MediaColumns.HEIGHT} > 0) " +
+                    "OR (${MediaStore.MediaColumns.MIME_TYPE} IS NULL) " +
+                    "OR (${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'image/jpeg' " +
+                    "AND ${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'image/png' " +
+                    "AND ${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'image/webp' " +
+                    "AND ${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'image/gif' " +
+                    "AND ${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'image/heic' " +
+                    "AND ${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'video/%')"
+                clauses.add("${MediaStore.MediaColumns.SIZE} > 0 AND ($dimCheck)")
 
                 // Media Types
                 if (filter.mediaTypes.isNotEmpty()) {
