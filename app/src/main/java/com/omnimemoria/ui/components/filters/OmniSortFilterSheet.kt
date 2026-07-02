@@ -14,12 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.omnimemoria.domain.model.FilterConfig
-import com.omnimemoria.domain.model.SortConfig
-import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortOrder
-import com.omnimemoria.domain.model.FolderSortConfig
-import com.omnimemoria.domain.model.FolderSortBy
 import com.omnimemoria.ui.theme.OmniSheetContainerColor
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -88,7 +83,7 @@ fun SortOrderRow(
             onClick = { onOrderChanged(SortOrder.ASCENDING) }
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text("↑ Oldest", color = ascContentColor, fontWeight = FontWeight.Medium)
+                Text("↑ Ascending", color = ascContentColor, fontWeight = FontWeight.Medium)
             }
         }
 
@@ -100,7 +95,7 @@ fun SortOrderRow(
             onClick = { onOrderChanged(SortOrder.DESCENDING) }
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text("↓ Newest", color = descContentColor, fontWeight = FontWeight.Medium)
+                Text("↓ Descending", color = descContentColor, fontWeight = FontWeight.Medium)
             }
         }
     }

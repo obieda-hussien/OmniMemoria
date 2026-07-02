@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OmniTopBar(
+fun OmniSortFilterTopBar(
     title: String,
     onSortFilterClick: () -> Unit,
     isVisible: Boolean = true,

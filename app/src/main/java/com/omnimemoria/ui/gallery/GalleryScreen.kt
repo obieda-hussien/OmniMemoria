@@ -38,7 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
-import com.omnimemoria.ui.components.OmniTopBar
+import com.omnimemoria.ui.components.OmniSortFilterTopBar
 import com.omnimemoria.ui.components.filters.GallerySortFilterSheetContent
 import com.omnimemoria.domain.model.MediaType
 import androidx.compose.ui.unit.dp
