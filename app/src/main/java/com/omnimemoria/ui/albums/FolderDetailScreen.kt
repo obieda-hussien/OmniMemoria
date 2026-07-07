@@ -254,12 +254,37 @@ fun FolderDetailScreen(
         )
     }
 
+
     if (showSortSheet) {
-        FolderSortBottomSheet(
-            current   = sortConfig,
+
+
+        com.omnimemoria.ui.components.filters.GallerySortFilterSheetContent(
+
+
+            currentFilter = com.omnimemoria.domain.model.FilterConfig(),
+
+
+            currentSort = sortConfig,
+
+
             onDismiss = { showSortSheet = false },
-            onApply   = { viewModel.updateSort(it); showSortSheet = false }
+
+
+            onApply = { sort, _ ->
+
+
+                viewModel.updateSort(sort)
+
+
+                showSortSheet = false
+
+
+            }
+
+
         )
+
+
     }
 }
 
