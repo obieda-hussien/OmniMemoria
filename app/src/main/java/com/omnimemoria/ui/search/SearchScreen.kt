@@ -166,8 +166,8 @@ private fun OmniSearchBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(18.dp))
-                .background(Color(0xFF1E1C30))
-                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
                 .padding(horizontal = 16.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -226,7 +226,7 @@ private fun OmniSearchBar(
                     modifier = Modifier
                         .size(28.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF2D2B45))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                         .clickable(onClick = onClear),
                     contentAlignment = Alignment.Center
                 ) {
@@ -412,8 +412,8 @@ private fun RecentChip(term: String, onClick: () -> Unit, onDelete: () -> Unit) 
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF1E1C30))
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
             .combinedClickable(onClick = onClick)
             .padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -435,7 +435,7 @@ private fun RecentChip(term: String, onClick: () -> Unit, onDelete: () -> Unit) 
             modifier = Modifier
                 .size(20.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF2D2B45))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
                 .clickable(onClick = onDelete),
             contentAlignment = Alignment.Center
         ) {
