@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -460,6 +461,7 @@ fun OmniMediaTopBar(
             .padding(horizontal = 20.dp, vertical = 10.dp)
             .clip(RoundedCornerShape(MediaChromeCorner))
             .background(com.omnimemoria.ui.navigation.MediaChromeSurfaceColor)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(MediaChromeCorner))
             .height(MediaChromeHeight)
             .padding(horizontal = 8.dp),
@@ -489,6 +491,7 @@ fun OmniMediaBottomBar(
             .padding(bottom = 12.dp)
             .clip(RoundedCornerShape(MediaChromeCorner))
             .background(com.omnimemoria.ui.navigation.MediaChromeSurfaceColor)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(MediaChromeCorner))
     ) {
         Row(

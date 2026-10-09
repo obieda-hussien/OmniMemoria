@@ -21,6 +21,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
+import com.omnimemoria.ui.gallery.PreviewCollection
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -46,6 +50,10 @@ class FolderDetailViewModel @Inject constructor(
     private val trashRepository:      TrashRepository           // جديد
 ) : ViewModel() {
 
+    val gridState = LazyGridState()
+    private val _filter = MutableStateFlow(galleryStateHolder.consumeFolderFilter())
+    val filter: StateFlow<FilterConfig> = _filter.asStateFlow()
+
     val bucketId: String = savedStateHandle["bucketId"] ?: ""
 
     private val _sortConfig = MutableStateFlow(SortConfig())
@@ -60,8 +68,8 @@ class FolderDetailViewModel @Inject constructor(
     private val _uiEvents = Channel<FolderDetailUiEvent>(Channel.BUFFERED)
     val uiEvents: Flow<FolderDetailUiEvent> = _uiEvents.receiveAsFlow()
 
-    val photos: Flow<PagingData<MediaPhoto>> = _sortConfig
-        .flatMapLatest { mediaStoreRepository.getPhotosByFolder(bucketId, it) }
+    val photos: Flow<PagingData<MediaPhoto>> = combine(_sortConfig, _filter, mediaStoreRepository.observeMediaStoreChanges().onStart { emit(Unit) }) { sort, filter, _ -> sort to filter }
+        .flatMapLatest { (sort, filter) -> mediaStoreRepository.getPhotosByFolder(bucketId, sort, filter) }
         .cachedIn(viewModelScope)
 
     init {
@@ -75,9 +83,12 @@ class FolderDetailViewModel @Inject constructor(
     }
 
     fun prepareForNavigation(photo: MediaPhoto) {
-        galleryStateHolder.cachePendingPhoto(photo)
-        galleryStateHolder.activeSortConfig.value = _sortConfig.value
-        galleryStateHolder.activeFilter.value     = FilterConfig()
+        galleryStateHolder.prepare(PreviewCollection(photo, _sortConfig.value, _filter.value, bucketId))
+    }
+    fun updateSortAndFilter(sort: SortConfig, filter: FilterConfig) {
+        _sortConfig.value = sort
+        _filter.value = filter
+        clearSelection()
     }
 
     // ── Delete ─────────────────────────────────────────────────────────────────

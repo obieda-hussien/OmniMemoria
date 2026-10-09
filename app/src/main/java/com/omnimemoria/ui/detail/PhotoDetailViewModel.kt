@@ -16,6 +16,8 @@ import com.omnimemoria.domain.model.FilterConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,56 +70,35 @@ class PhotoDetailViewModel @Inject constructor(
     private var currentPhotoId: Long = -1L
     private var favoriteObserverJob: kotlinx.coroutines.Job? = null
 
+    private val collection = galleryStateHolder.consumeCollection()
+    private var loadJob: Job? = null
+
     init {
-        val cached = galleryStateHolder.consumePendingPhoto()
-        if (cached != null) _photoList.value = listOf(cached)
+        collection?.seed?.let { _photoList.value = listOf(it) }
     }
 
     fun loadAllPhotos(photoId: Long, bucketId: String?, externalUriStr: String? = null) {
-        viewModelScope.launch(Dispatchers.IO) {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch(Dispatchers.IO) {
             if (externalUriStr != null) {
-                val single = getPhotoFromUri(externalUriStr)
-                if (single != null) {
-                    _photoList.value       = listOf(single)
-                    _initialPage.value     = 0
-                    _isFullListReady.value = true
-                }
-                return@launch
-            }
-
-            if (_photoList.value.isEmpty()) {
-                mediaStoreRepository.getPhotoById(photoId)?.let { seed ->
-                    _photoList.value   = listOf(seed)
-                    _initialPage.value = 0
-                }
-            }
-
-            val sortConfig = galleryStateHolder.activeSortConfig.value
-                .takeIf { it != com.omnimemoria.domain.model.SortConfig() }
-                ?: sortPresetRepository.getCurrentSort().first()
-
-            val activeFilter = galleryStateHolder.activeFilter.value
-
-            val rawAll = if (bucketId.isNullOrBlank())
-                mediaStoreRepository.getAllNonVaultPhotos(sortConfig)
-            else
-                mediaStoreRepository.getAllNonVaultPhotosByFolder(bucketId, sortConfig)
-
-            val all = rawAll.applyFilterConfig(
-                filter   = if (bucketId.isNullOrBlank()) activeFilter else FilterConfig(),
-                isBucket = !bucketId.isNullOrBlank()
-            )
-
-            val targetIndex = all.indexOfFirst { it.id == photoId }
-            if (targetIndex < 0) {
+                getPhotoFromUri(externalUriStr)?.let { _photoList.value = listOf(it) }
                 _isFullListReady.value = true
                 return@launch
             }
-
-            _photoList.value       = all
-            _initialPage.value     = targetIndex
+            if (_photoList.value.isEmpty()) {
+                mediaStoreRepository.getPhotoById(photoId)?.let { _photoList.value = listOf(it) }
+            }
+            val all = collection?.snapshot ?: mediaStoreRepository.getMatchingPhotos(
+                sort = collection?.sort ?: sortPresetRepository.getCurrentSort().first(),
+                filter = collection?.filter ?: FilterConfig(),
+                bucketId = collection?.bucketId ?: bucketId
+            )
+            val targetIndex = all.indexOfFirst { it.id == photoId }
+            if (targetIndex >= 0) {
+                _initialPage.value = targetIndex
+                _photoList.value = all
+            }
             _isFullListReady.value = true
-
             observeFavoriteState(photoId)
         }
     }
@@ -138,6 +119,11 @@ class PhotoDetailViewModel @Inject constructor(
     fun toggleFavorite(photoId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             favoritesRepository.toggleFavorite(photoId)
+            if (collection?.filter?.isFavorite == true) {
+                val ids = favoritesRepository.getAllFavoriteIds().first()
+                _photoList.value = _photoList.value.filter { it.id in ids }
+                if (_photoList.value.isEmpty()) _uiEvents.send(PhotoDetailUiEvent.NavigateBack)
+            }
         }
     }
 
@@ -235,11 +221,4 @@ class PhotoDetailViewModel @Inject constructor(
             )
         } catch (e: Exception) { null }
     }
-}
-
-internal fun List<MediaPhoto>.applyFilterConfig(
-    filter:   FilterConfig,
-    isBucket: Boolean = false
-): List<MediaPhoto> {
-    return this // Now handled by MediaStoreRepository directly
 }

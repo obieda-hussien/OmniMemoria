@@ -40,6 +40,9 @@ fun FavoritesScreen(
     viewModel:    FavoritesViewModel = hiltViewModel()
 ) {
     BackHandler(onBack = onBack)
+    var showSortSheet by remember { mutableStateOf(false) }
+    val sort by viewModel.sortConfig.collectAsState()
+    val filter by viewModel.filterConfig.collectAsState()
     val haptic                  = LocalHapticFeedback.current
     val uiState                 by viewModel.uiState.collectAsState()
     val count                   by viewModel.favoritesCount.collectAsState()
@@ -55,13 +58,15 @@ fun FavoritesScreen(
             OmniDetailTopBar(
                 title = "Favorites",
                 subtitle = if (count > 0) "$count item${if (count != 1) "s" else ""}" else null,
-                onBack = onBack
+                onBack = onBack,
+                actions = { TextButton(onClick = { showSortSheet = true }) { Text("Sort & Filter") } }
             )
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     // ── Loading skeleton ───────────────────────────────────────────────
                     uiState.isLoading -> {
                         LazyVerticalGrid(
+                            state             = viewModel.gridState,
                             columns           = GridCells.Fixed(3),
                             contentPadding    = PaddingValues(
                                 top    = 8.dp,
@@ -98,6 +103,7 @@ fun FavoritesScreen(
                     // ── Populated grid ─────────────────────────────────────────────────
                     else -> {
                         LazyVerticalGrid(
+                            state             = viewModel.gridState,
                             columns           = GridCells.Fixed(3),
                             contentPadding    = PaddingValues(
                                 top    = 8.dp,
@@ -126,7 +132,7 @@ fun FavoritesScreen(
                                     isFavorite              = true,   // all cells here ARE favorites
                                     sharedTransitionScope   = sharedTransitionScope,
                                     animatedVisibilityScope = animatedVisibilityScope,
-                                    onClick                 = { onPhotoClick(photo.id) },
+                                    onClick                 = { viewModel.prepareForNavigation(photo.id); onPhotoClick(photo.id) },
                                     onLongClick             = {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         viewModel.removeFavorite(photo.id)
@@ -140,6 +146,11 @@ fun FavoritesScreen(
             }
         }
     }
+    if (showSortSheet) com.omnimemoria.ui.gallery.GallerySortFilterSheet(
+        currentFilter = filter, currentSort = sort, onDismiss = { showSortSheet = false },
+        onApply = { sort, filter -> viewModel.updateSortAndFilter(sort, filter); showSortSheet = false }
+    )
+
 }
 
 // ── Header: section title + count ─────────────────────────────────────────────

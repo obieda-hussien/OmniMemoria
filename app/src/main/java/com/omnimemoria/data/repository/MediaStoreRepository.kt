@@ -24,6 +24,10 @@ import com.omnimemoria.data.local.db.PhotoIntelligenceDao
 import com.omnimemoria.domain.model.FolderSortBy
 import com.omnimemoria.domain.model.FilterConfig
 import com.omnimemoria.domain.model.MediaType
+import com.omnimemoria.domain.model.MediaQuerySql
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import com.omnimemoria.domain.model.FolderSortConfig
 import com.omnimemoria.domain.model.MediaFolder
 import com.omnimemoria.domain.model.MediaPhoto
@@ -216,157 +220,90 @@ class MediaStoreRepository @Inject constructor(
         return results
     }
 
-    // ══ 6. كل الصور مرتبة بناءً على الإعدادات — للـ PhotoDetail swipe window ══════════════
-    fun getAllPhotos(sortConfig: SortConfig): List<MediaPhoto> {
-        val results = mutableListOf<MediaPhoto>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            contentResolver.query(
-                mediaCollection,
-                photoProjection,
-                buildQueryArgs(sortConfig, FilterConfig(), null, null, null),
-                null
-            )
-        } else {
-            val sortOrderStr = getSortOrderStr(sortConfig)
-            val (sel, args) = QueryBuilder(FilterConfig()).buildSelection()
-            contentResolver.query(
-                mediaCollection,
-                photoProjection,
-                sel,
-                args,
-                sortOrderStr
-            )
-        }?.use { cursor ->
-            while (cursor.moveToNext()) results += cursor.toMediaPhoto()
-        }
-        
-        if (sortConfig.sortBy != SortBy.RESOLUTION) return results
-        return when (sortConfig.sortOrder) {
-            SortOrder.ASCENDING  -> results.sortedBy { it.width.toLong() * it.height }
-            SortOrder.DESCENDING -> results.sortedByDescending { it.width.toLong() * it.height }
-        }
+    private data class ResolvedQuery(
+        val selection: String,
+        val args: Array<String>,
+        val favoriteIds: Set<Long>
+    )
+
+    private suspend fun resolveQuery(filter: FilterConfig, includedIds: Set<Long>? = null): ResolvedQuery {
+        val (base, args) = QueryBuilder(filter).buildSelection()
+        val clauses = mutableListOf(base)
+        val excluded = photoIntelligenceDao.getVaultPhotoIds().toSet() + corruptedMediaDao.getAllIds()
+        clauses += MediaQuerySql.idsClause(excluded, false)
+        val favorites = favoritesRepository.getAllFavoriteIds().first()
+        filter.isFavorite?.let { clauses += MediaQuerySql.idsClause(favorites, it) }
+        includedIds?.let { clauses += MediaQuerySql.idsClause(it, true) }
+        filter.hasText?.let { clauses += MediaQuerySql.idsClause(photoIntelligenceDao.getIdsByTextPresence(it).toSet(), true) }
+        filter.hasFaces?.let { clauses += MediaQuerySql.idsClause(photoIntelligenceDao.getIdsByFaces(it).toSet(), true) }
+        filter.hasPhoneNumber?.let { clauses += MediaQuerySql.idsClause(photoIntelligenceDao.getIdsByPhoneNumber(it).toSet(), true) }
+        return ResolvedQuery(clauses.joinToString(" AND "), args, favorites)
     }
 
-    // ══ 7. All non-vault photos — unlimited swipe source for PhotoDetail ═════════
-    // Filters out vault and corrupted items so the pager index matches the gallery grid.
-    suspend fun getAllNonVaultPhotos(sortConfig: SortConfig): List<MediaPhoto> =
-        withContext(Dispatchers.IO) {
-            val vaultIds = photoIntelligenceDao.getVaultPhotoIds().toHashSet()
-            val corruptedIds = corruptedMediaDao.getAllIds().toHashSet()
-            getAllPhotos(sortConfig).filterNot { it.id in vaultIds || it.id in corruptedIds }
-        }
+    suspend fun getMatchingPhotos(
+        sort: SortConfig = SortConfig(),
+        filter: FilterConfig = FilterConfig(),
+        bucketId: String? = null,
+        ids: Set<Long>? = null
+    ): List<MediaPhoto> = withContext(Dispatchers.IO) {
+        currentCoroutineContext().ensureActive()
+        queryPhotos(contentResolver, sort, filter, Int.MAX_VALUE, 0, bucketId, resolveQuery(filter, ids))
+            .also { currentCoroutineContext().ensureActive() }
+    }
 
-    // ═══ Paging ══════════════════════════════════════════════════════════════════
+    suspend fun getPhotosByIds(ids: List<Long>): List<MediaPhoto> = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext emptyList()
+        val resolved = resolveQuery(FilterConfig(), ids.toSet())
+        val found = queryPhotos(contentResolver, SortConfig(), FilterConfig(), Int.MAX_VALUE, 0, null, resolved)
+            .associateBy { it.id }
+        ids.mapNotNull(found::get)
+    }
 
-    fun getPhotosPaged(sortConfig: SortConfig, filterConfig: FilterConfig = FilterConfig()): Flow<PagingData<MediaPhoto>> = Pager(
-        config              = PagingConfig(pageSize = PAGE_SIZE),
-        pagingSourceFactory = {
-            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, corruptedMediaDao, sortConfig, filterConfig, null, favoritesRepository)
-        }
-    ).flow
+    fun getAllPhotos(sortConfig: SortConfig): List<MediaPhoto> =
+        queryPhotos(contentResolver, sortConfig, FilterConfig(), Int.MAX_VALUE, 0)
 
-    fun getFoldersPaged(sortConfig: FolderSortConfig = FolderSortConfig()): Flow<PagingData<MediaFolder>> = Pager(
-        config              = PagingConfig(pageSize = PAGE_SIZE),
-        pagingSourceFactory = { MediaFolderPagingSource(contentResolver, sortConfig) }
-    ).flow
-
-    fun getPhotosByFolder(bucketId: String, sortConfig: SortConfig): Flow<PagingData<MediaPhoto>> = Pager(
-        config              = PagingConfig(pageSize = PAGE_SIZE),
-        pagingSourceFactory = {
-            MediaPhotoPagingSource(contentResolver, photoIntelligenceDao, corruptedMediaDao, sortConfig, FilterConfig(), bucketId, favoritesRepository)
-        }
-    ).flow
-
+    suspend fun getAllNonVaultPhotos(sortConfig: SortConfig): List<MediaPhoto> = getMatchingPhotos(sortConfig)
     suspend fun getAllNonVaultPhotosByFolder(bucketId: String, sortConfig: SortConfig): List<MediaPhoto> =
-        withContext(Dispatchers.IO) {
-            val vaultIds = photoIntelligenceDao.getVaultPhotoIds().toHashSet()
-            val corruptedIds = corruptedMediaDao.getAllIds().toHashSet()
-            getAllPhotosByFolder(bucketId, sortConfig).filterNot { it.id in vaultIds || it.id in corruptedIds }
-        }
+        getMatchingPhotos(sortConfig, bucketId = bucketId)
+    fun getAllPhotosByFolder(bucketId: String, sortConfig: SortConfig): List<MediaPhoto> =
+        queryPhotos(contentResolver, sortConfig, FilterConfig(), Int.MAX_VALUE, 0, bucketId)
 
-    fun getAllPhotosByFolder(bucketId: String, sortConfig: SortConfig): List<MediaPhoto> {
-        val results = mutableListOf<MediaPhoto>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            contentResolver.query(
-                mediaCollection,
-                photoProjection,
-                buildQueryArgs(sortConfig, FilterConfig(), null, null, bucketId),
-                null
-            )
-        } else {
-            val sortOrderStr = getSortOrderStr(sortConfig)
-            // Compute selection once and reuse.
-            val (sel, selArgs) = QueryBuilder(FilterConfig()).buildSelection()
-            contentResolver.query(
-                mediaCollection,
-                photoProjection,
-                "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($sel)",
-                arrayOf(bucketId, *selArgs),
-                sortOrderStr
-            )
-        }?.use { cursor ->
-            while (cursor.moveToNext()) results += cursor.toMediaPhoto()
-        }
+    fun getPhotosPaged(sortConfig: SortConfig, filterConfig: FilterConfig = FilterConfig()): Flow<PagingData<MediaPhoto>> =
+        Pager(PagingConfig(pageSize = PAGE_SIZE, prefetchDistance = 24, enablePlaceholders = false)) {
+            MediaPhotoPagingSource(this, sortConfig, filterConfig, null)
+        }.flow
 
-        if (sortConfig.sortBy != SortBy.RESOLUTION) return results
-        return when (sortConfig.sortOrder) {
-            SortOrder.ASCENDING -> results.sortedBy { it.width.toLong() * it.height }
-            SortOrder.DESCENDING -> results.sortedByDescending { it.width.toLong() * it.height }
-        }
+    fun getPhotosByFolder(bucketId: String, sortConfig: SortConfig, filterConfig: FilterConfig = FilterConfig()): Flow<PagingData<MediaPhoto>> =
+        Pager(PagingConfig(pageSize = PAGE_SIZE, prefetchDistance = 24, enablePlaceholders = false)) {
+            MediaPhotoPagingSource(this, sortConfig, filterConfig, bucketId)
+        }.flow
+
+    fun getFoldersPaged(sortConfig: FolderSortConfig = FolderSortConfig(), filter: FilterConfig = FilterConfig()): Flow<PagingData<MediaFolder>> =
+        Pager(PagingConfig(pageSize = PAGE_SIZE, enablePlaceholders = false)) {
+            MediaFolderPagingSource(this, sortConfig, filter)
+        }.flow
+
+    suspend fun getFolderByBucketId(bucketId: String): MediaFolder? = withContext(Dispatchers.IO) {
+        queryFolders(contentResolver, FolderSortConfig(), resolveQuery(FilterConfig()), bucketId).firstOrNull()
     }
 
-    fun getFolderByBucketId(bucketId: String): MediaFolder? {
-        return queryFolders(contentResolver, FolderSortConfig()).firstOrNull { it.bucketId == bucketId }
+    suspend fun searchMatchingPhotos(
+        text: String, sort: SortConfig, filter: FilterConfig, matchingIds: Set<Long> = emptySet()
+    ): List<MediaPhoto> = withContext(Dispatchers.IO) {
+        val resolved = resolveQuery(filter)
+        val escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        val nameClause = "_display_name LIKE ? ESCAPE '\\'"
+        val match = if (matchingIds.isEmpty()) nameClause else "($nameClause OR ${MediaQuerySql.idsClause(matchingIds, true)})"
+        queryPhotos(contentResolver, sort, filter, 500, 0, null,
+            resolved.copy(selection = "${resolved.selection} AND ($match)", args = resolved.args + "%$escaped%"))
+            .also { currentCoroutineContext().ensureActive() }
     }
 
-    fun searchPhotosByDisplayName(query: String, limit: Int = 100): List<MediaPhoto> {
-        if (query.isBlank()) return emptyList()
-        val escaped = query.replace("%", "\\%").replace("_", "\\_")
-        // Compute selection once and reuse.
-        val (baseSel, baseArgs) = QueryBuilder(FilterConfig()).buildSelection()
-        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? ESCAPE '\\' AND ($baseSel)"
-        val args = arrayOf("%$escaped%", *baseArgs)
-        val out = mutableListOf<MediaPhoto>()
-        contentResolver.query(
-            mediaCollection,
-            photoProjection,
-            selection,
-            args,
-            "${MediaStore.MediaColumns.DATE_TAKEN} DESC"
-        )?.use { cursor ->
-            while (cursor.moveToNext() && out.size < limit) out += cursor.toMediaPhoto()
+    suspend fun getPhotoById(id: Long): MediaPhoto? = withContext(Dispatchers.IO) {
+        if (id in corruptedMediaDao.getAllIds()) return@withContext null
+        contentResolver.query(mediaCollection, photoProjection, "_id = ?", arrayOf(id.toString()), null)?.use {
+            if (it.moveToFirst()) it.toMediaPhoto() else null
         }
-        return out
-    }
-
-    suspend fun getPhotoById(id: Long): MediaPhoto? {
-        // We use a basic query without TRASH filtering to ensure we can retrieve the photo
-        // even if it was just selected or moved.
-        val selection = "${MediaStore.MediaColumns._ID} = ?"
-        val args = arrayOf(id.toString())
-
-        contentResolver.query(
-            mediaCollection,
-            photoProjection,
-            selection,
-            args,
-            null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val photo = cursor.toMediaPhoto()
-                // Corrupted files are excluded: a stale Favorite pointing at a broken
-                // file behaves identically to a file deleted outside the app — the
-                // existing mapNotNull pattern in FavoritesViewModel.resolvePhotos
-                // already handles null returns from this function gracefully.
-                // (Deliberately flagged behavior change — see PR description.)
-                val corruptedIds = runCatching {
-                    corruptedMediaDao.getAllIds().toHashSet()
-                }.getOrDefault(emptySet<Long>())
-                if (photo.id in corruptedIds) return null
-                return photo
-            }
-        }
-        return null
     }
 
     fun deletePhotos(ids: List<Long>): Result<Unit> {
@@ -385,118 +322,55 @@ class MediaStoreRepository @Inject constructor(
     // ── PagingSources ────────────────────────────────────────────────────────────
 
     private class MediaPhotoPagingSource(
-        private val contentResolver:      ContentResolver,
-        private val photoIntelligenceDao: PhotoIntelligenceDao,
-        private val corruptedMediaDao:    CorruptedMediaDao,
-        private val sortConfig:           SortConfig,
-        private val filterConfig:         FilterConfig,
-        private val bucketId:             String? = null,
-        private val favoritesRepository:  FavoritesRepository? = null
+        private val repository: MediaStoreRepository,
+        private val sort: SortConfig,
+        private val filter: FilterConfig,
+        private val bucketId: String?
     ) : PagingSource<Int, MediaPhoto>() {
-        private var cachedVaultedIds: Set<Long>? = null
-        private var cachedCorruptedIds: Set<Long>? = null
-
-        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, MediaPhoto> {
-            return try {
-                val startOffset = params.key ?: 0
-                val vaultedIds  = cachedVaultedIds
-                    ?: photoIntelligenceDao.getVaultPhotoIds().toHashSet()
-                        .also { cachedVaultedIds = it }
-                val corruptedIds = cachedCorruptedIds
-                    ?: corruptedMediaDao.getAllIds().toHashSet()
-                        .also { cachedCorruptedIds = it }
-
-                // Resolve favorite IDs once before the loop — not inside it.
-                // Avoids the runBlocking-inside-a-loop correctness bug where a
-                // suspend flow was wrapped in runBlocking inside an already-suspending
-                // function, potentially re-run many times per page load.
-                val needsFavoriteIds = (filterConfig.isFavorite != null ||
-                    sortConfig.sortBy == SortBy.FAVORITES_FIRST) && favoritesRepository != null
-                val favoriteIds: Set<Long> = if (needsFavoriteIds) {
-                    favoritesRepository!!.getAllFavoriteIds().first()
-                } else emptySet()
-
-                val pageData   = mutableListOf<MediaPhoto>()
-                var offset     = startOffset
-                var endReached = false
-                val chunkSize  = params.loadSize * 2
-
-                while (pageData.size < params.loadSize && !endReached) {
-                    val chunk = queryPhotos(contentResolver, sortConfig, filterConfig, chunkSize, offset, bucketId)
-                    if (chunk.isEmpty()) {
-                        endReached = true
-                    } else {
-                        var processedChunk = chunk
-                            .filterNot { it.id in vaultedIds }
-                            .filterNot { it.id in corruptedIds }
-
-                        if (filterConfig.minResolutionMp != null) {
-                            processedChunk = processedChunk.filter { (it.width * it.height) / 1000000f >= filterConfig.minResolutionMp }
-                        }
-
-                        if (filterConfig.isFavorite != null && favoritesRepository != null) {
-                            processedChunk = processedChunk.filter { (it.id in favoriteIds) == filterConfig.isFavorite }
-                        }
-
-                        if (sortConfig.sortBy == SortBy.RESOLUTION) {
-                            processedChunk = if (sortConfig.sortOrder == SortOrder.ASCENDING) {
-                                processedChunk.sortedBy { it.width * it.height }
-                            } else {
-                                processedChunk.sortedByDescending { it.width * it.height }
-                            }
-                        } else if (sortConfig.sortBy == SortBy.FAVORITES_FIRST && favoritesRepository != null) {
-                            processedChunk = if (sortConfig.sortOrder == SortOrder.ASCENDING) {
-                                processedChunk.sortedBy { if (it.id in favoriteIds) 1 else 0 }
-                            } else {
-                                processedChunk.sortedByDescending { if (it.id in favoriteIds) 1 else 0 }
-                            }
-                        }
-                        pageData += processedChunk
-                        offset   += chunk.size
-                        if (chunk.size < chunkSize) endReached = true
-                    }
-                }
-                LoadResult.Page(
-                    data    = pageData,
-                    prevKey = if (startOffset == 0) null
-                              else (startOffset - params.loadSize).coerceAtLeast(0),
-                    nextKey = if (endReached) null else offset
-                )
-            } catch (t: Throwable) { LoadResult.Error(t) }
+        private var resolved: ResolvedQuery? = null
+        private val positions = java.util.concurrent.ConcurrentHashMap<Long, Int>()
+        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, MediaPhoto> = withContext(Dispatchers.IO) {
+            try {
+                val boundary = params.key ?: 0
+                val offset = if (params is LoadParams.Prepend) (boundary - params.loadSize).coerceAtLeast(0) else boundary
+                val size = if (params is LoadParams.Prepend) boundary - offset else params.loadSize
+                val query = resolved ?: repository.resolveQuery(filter).also { resolved = it }
+                currentCoroutineContext().ensureActive()
+                val data = queryPhotos(repository.contentResolver, sort, filter, size, offset, bucketId, query)
+                currentCoroutineContext().ensureActive()
+                data.forEachIndexed { index, photo -> positions[photo.id] = offset + index }
+                LoadResult.Page(data, if (offset == 0) null else offset,
+                    if (data.size < size) null else offset + data.size)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { LoadResult.Error(error) }
         }
-
         override fun getRefreshKey(state: PagingState<Int, MediaPhoto>): Int? {
             val anchor = state.anchorPosition ?: return null
-            val page   = state.closestPageToPosition(anchor) ?: return null
-            return page.prevKey?.plus(state.config.pageSize)
-                ?: page.nextKey?.minus(state.config.pageSize)
+            val photo = state.closestItemToPosition(anchor) ?: return null
+            return positions[photo.id]?.let { (it - state.config.initialLoadSize / 2).coerceAtLeast(0) }
         }
     }
 
     private class MediaFolderPagingSource(
-        private val contentResolver: ContentResolver,
-        private val sortConfig: FolderSortConfig
+        private val repository: MediaStoreRepository,
+        private val sort: FolderSortConfig,
+        private val filter: FilterConfig
     ) : PagingSource<Int, MediaFolder>() {
-        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, MediaFolder> {
-            return try {
-                val offset  = params.key ?: 0
-                val folders = queryFolders(contentResolver, sortConfig)
-                val end     = (offset + params.loadSize).coerceAtMost(folders.size)
-                LoadResult.Page(
-                    data    = if (offset < folders.size) folders.subList(offset, end)
-                              else emptyList(),
-                    prevKey = if (offset == 0) null
-                              else (offset - params.loadSize).coerceAtLeast(0),
-                    nextKey = if (end >= folders.size) null else end
-                )
-            } catch (t: Throwable) { LoadResult.Error(t) }
+        private var snapshot: List<MediaFolder>? = null
+        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, MediaFolder> = withContext(Dispatchers.IO) {
+            try {
+                val folders = snapshot ?: queryFolders(repository.contentResolver, sort, repository.resolveQuery(filter))
+                    .also { snapshot = it }
+                val boundary = (params.key ?: 0).coerceAtMost(folders.size)
+                val offset = if (params is LoadParams.Prepend) (boundary - params.loadSize).coerceAtLeast(0) else boundary
+                val end = if (params is LoadParams.Prepend) boundary else (offset + params.loadSize).coerceAtMost(folders.size)
+                LoadResult.Page(folders.subList(offset, end), if (offset == 0) null else offset,
+                    if (end == folders.size) null else end)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { LoadResult.Error(error) }
         }
-        override fun getRefreshKey(state: PagingState<Int, MediaFolder>): Int? {
-            val anchor = state.anchorPosition ?: return null
-            val page   = state.closestPageToPosition(anchor) ?: return null
-            return page.prevKey?.plus(state.config.pageSize)
-                ?: page.nextKey?.minus(state.config.pageSize)
-        }
+        override fun getRefreshKey(state: PagingState<Int, MediaFolder>): Int? =
+            state.anchorPosition?.let { (it - state.config.initialLoadSize / 2).coerceAtLeast(0) }
     }
 
     // ── Companion ────────────────────────────────────────────────────────────────
@@ -506,99 +380,12 @@ class MediaStoreRepository @Inject constructor(
 
         class QueryBuilder(private val filter: FilterConfig) {
             fun buildSelection(): Pair<String, Array<String>> {
-                val clauses = mutableListOf<String>()
-                val args = mutableListOf<String>()
-
-                // Zero-byte filter — catches placeholder/empty files immediately
-                // Smart dimension validation: enforces WIDTH > 0 and HEIGHT > 0 only for
-                // known raster image formats and videos. Vector graphics (like SVG, XML)
-                // or unrecognized formats bypass the dimension check.
-                val dimCheck = "(${MediaStore.MediaColumns.WIDTH} > 0 AND ${MediaStore.MediaColumns.HEIGHT} > 0) " +
-                    "OR (${MediaStore.MediaColumns.MIME_TYPE} IS NULL) " +
-                    "OR (${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'image/jpeg' " +
-                    "AND ${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'image/png' " +
-                    "AND ${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'image/webp' " +
-                    "AND ${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'image/gif' " +
-                    "AND ${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'image/heic' " +
-                    "AND ${MediaStore.MediaColumns.MIME_TYPE} NOT LIKE 'video/%')"
-                clauses.add("${MediaStore.MediaColumns.SIZE} > 0 AND ($dimCheck)")
-
-                // Media Types
-                if (filter.mediaTypes.isNotEmpty()) {
-                    val typeClauses = mutableListOf<String>()
-                    if (filter.mediaTypes.contains(MediaType.IMAGE)) {
-                        typeClauses.add("(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ${MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE} OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'image/%')")
-                    }
-                    if (filter.mediaTypes.contains(MediaType.VIDEO)) {
-                        typeClauses.add("(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ${MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO} OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'video/%')")
-                    }
-                    if (typeClauses.isNotEmpty()) {
-                        clauses.add("(" + typeClauses.joinToString(" OR ") + ")")
-                    }
-                } else {
-                    // Fallback to defaults
-                    clauses.add("(${MediaStore.Files.FileColumns.MEDIA_TYPE} IN (${MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE}, ${MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO}) OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'image/%' OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'video/%')")
-                }
-
-                // Mime Formats
-                if (filter.mimeFormats.isNotEmpty()) {
-                    val placeholders = filter.mimeFormats.joinToString(", ") { "?" }
-                    clauses.add("${MediaStore.MediaColumns.MIME_TYPE} IN ($placeholders)")
-                    args.addAll(filter.mimeFormats)
-                }
-
-                // Size
-                if (filter.minSizeBytes != null) {
-                    clauses.add("${MediaStore.MediaColumns.SIZE} >= ?")
-                    args.add(filter.minSizeBytes.toString())
-                }
-                if (filter.maxSizeBytes != null) {
-                    clauses.add("${MediaStore.MediaColumns.SIZE} <= ?")
-                    args.add(filter.maxSizeBytes.toString())
-                }
-
-                // Date Range
-                if (filter.dateRange != null) {
-                    clauses.add("${MediaStore.MediaColumns.DATE_TAKEN} >= ? AND ${MediaStore.MediaColumns.DATE_TAKEN} <= ?")
-                    args.add(filter.dateRange.first.toString())
-                    args.add(filter.dateRange.last.toString())
-                }
-
-                // Exclude trash/pending items
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    clauses.add("${MediaStore.MediaColumns.IS_TRASHED} = 0")
-                    clauses.add("${MediaStore.MediaColumns.IS_PENDING} = 0")
-                }
-
-                val selection = if (clauses.isEmpty()) null else clauses.joinToString(" AND ")
-                val selectionArgs = if (args.isEmpty()) null else args.toTypedArray()
-
-                return Pair(selection ?: "", selectionArgs ?: emptyArray())
+                val (selection, args) = MediaQuerySql.selection(filter)
+                val visibility = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) " AND is_trashed = 0 AND is_pending = 0"
+                    else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) " AND is_pending = 0" else ""
+                return selection + visibility to args
             }
         }
-
-        private fun getSortOrderStr(sc: SortConfig): String {
-            val (col, fallback) = when (sc.sortBy) {
-                SortBy.DATE_TAKEN      -> MediaStore.MediaColumns.DATE_TAKEN    to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.DATE_MODIFIED   -> MediaStore.MediaColumns.DATE_MODIFIED to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.SIZE            -> MediaStore.MediaColumns.SIZE          to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.NAME            -> MediaStore.MediaColumns.DISPLAY_NAME  to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.TYPE            -> MediaStore.MediaColumns.MIME_TYPE     to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.RESOLUTION      -> MediaStore.MediaColumns.WIDTH         to MediaStore.MediaColumns.HEIGHT
-                SortBy.DURATION        -> MediaStore.MediaColumns.DURATION      to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.FAVORITES_FIRST -> MediaStore.MediaColumns.DATE_TAKEN  to MediaStore.MediaColumns.DATE_ADDED
-            }
-            val sqlDir = when (sc.sortOrder) {
-                SortOrder.ASCENDING  -> "ASC"
-                SortOrder.DESCENDING -> "DESC"
-            }
-            if (sc.sortBy == SortBy.DATE_TAKEN) {
-                val effectiveDateOrderExpr = "CASE WHEN ${MediaStore.MediaColumns.DATE_TAKEN} > 0 THEN ${MediaStore.MediaColumns.DATE_TAKEN} WHEN ${MediaStore.MediaColumns.DATE_MODIFIED} > 0 THEN ${MediaStore.MediaColumns.DATE_MODIFIED} * 1000 ELSE ${MediaStore.MediaColumns.DATE_ADDED} * 1000 END"
-                return "$effectiveDateOrderExpr $sqlDir, ${MediaStore.MediaColumns._ID} $sqlDir"
-            }
-            return "$col $sqlDir, $fallback $sqlDir, ${MediaStore.MediaColumns._ID} $sqlDir"
-        }
-
 
         // ── FIX: added DATE_MODIFIED and DATE_ADDED for fallback display ──────
         // Snapchat / received media often has DATE_TAKEN = 0.
@@ -620,143 +407,44 @@ class MediaStoreRepository @Inject constructor(
         )
 
         private fun queryPhotos(
-            cr: ContentResolver,
-            sortConfig: SortConfig,
-            filterConfig: FilterConfig,
-            limit: Int,
-            offset: Int,
-            bucketId: String? = null
+            cr: ContentResolver, sort: SortConfig, filter: FilterConfig, limit: Int, offset: Int,
+            bucketId: String? = null, resolved: ResolvedQuery? = null
         ): List<MediaPhoto> {
+            val (base, baseArgs) = resolved?.let { it.selection to it.args } ?: QueryBuilder(filter).buildSelection()
+            val selection = if (bucketId.isNullOrBlank()) base else "($base) AND bucket_id = ?"
+            val args = if (bucketId.isNullOrBlank()) baseArgs else baseArgs + bucketId
+            val order = MediaQuerySql.sort(sort, resolved?.favoriteIds ?: emptySet())
             val results = mutableListOf<MediaPhoto>()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                cr.query(
-                    MediaStore.Files.getContentUri("external"),
-                    photoProjection, buildQueryArgs(sortConfig, filterConfig, limit, offset, bucketId), null
-                )
-            } else {
-                val sortOrderStr = getSortOrderStr(sortConfig)
-                // Compute selection once and reuse both uses below.
-                val (sel, selArgs) = QueryBuilder(filterConfig).buildSelection()
-                if (bucketId.isNullOrBlank()) {
-                    cr.query(
-                        MediaStore.Files.getContentUri("external"),
-                        photoProjection, sel, selArgs, "$sortOrderStr LIMIT $limit OFFSET $offset"
-                    )
-                } else {
-                    val combinedArgs = arrayOf(bucketId, *selArgs)
-                    cr.query(
-                        MediaStore.Files.getContentUri("external"),
-                        photoProjection,
-                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($sel)",
-                        combinedArgs,
-                        "$sortOrderStr LIMIT $limit OFFSET $offset"
-                    )
-                }
-            }?.use { cursor ->
-                while (cursor.moveToNext()) results += cursor.toMediaPhoto()
-            }
-            if (sortConfig.sortBy != SortBy.RESOLUTION) return results
-            return when (sortConfig.sortOrder) {
-                SortOrder.ASCENDING  -> results.sortedBy          { it.width.toLong() * it.height }
-                SortOrder.DESCENDING -> results.sortedByDescending { it.width.toLong() * it.height }
-            }
-        }
-
-        @RequiresApi(Build.VERSION_CODES.O)
-        private fun buildQueryArgs(
-            sc: SortConfig,
-            filterConfig: FilterConfig,
-            limit: Int?,
-            offset: Int?,
-            bucketId: String? = null
-        ): Bundle {
-            val (col, fallback) = when (sc.sortBy) {
-                SortBy.DATE_TAKEN      -> MediaStore.MediaColumns.DATE_TAKEN    to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.DATE_MODIFIED   -> MediaStore.MediaColumns.DATE_MODIFIED to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.SIZE            -> MediaStore.MediaColumns.SIZE          to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.NAME            -> MediaStore.MediaColumns.DISPLAY_NAME  to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.TYPE            -> MediaStore.MediaColumns.MIME_TYPE     to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.RESOLUTION      -> MediaStore.MediaColumns.WIDTH         to MediaStore.MediaColumns.HEIGHT
-                SortBy.DURATION        -> MediaStore.MediaColumns.DURATION      to MediaStore.MediaColumns.DATE_ADDED
-                SortBy.FAVORITES_FIRST ->
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-                        MediaStore.MediaColumns.IS_FAVORITE to MediaStore.MediaColumns.DATE_TAKEN
-                    else
-                        MediaStore.MediaColumns.DATE_TAKEN  to MediaStore.MediaColumns.DATE_ADDED
-            }
-            val dir = when (sc.sortOrder) {
-                SortOrder.ASCENDING  -> ContentResolver.QUERY_SORT_DIRECTION_ASCENDING
-                SortOrder.DESCENDING -> ContentResolver.QUERY_SORT_DIRECTION_DESCENDING
-            }
-            // Compute selection once and reuse for both the no-bucket and bucket branches.
-            val (sel, selArgs) = QueryBuilder(filterConfig).buildSelection()
-            return Bundle().apply {
-                if (sc.sortBy == SortBy.DATE_TAKEN) {
-                    val sqlDir = when (sc.sortOrder) {
-                        SortOrder.ASCENDING  -> "ASC"
-                        SortOrder.DESCENDING -> "DESC"
+            val cursor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                cr.query(MediaStore.Files.getContentUri("external"), photoProjection, Bundle().apply {
+                    putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
+                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, args)
+                    putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, order)
+                    putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
+                    putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
+                }, null)
+            } else cr.query(MediaStore.Files.getContentUri("external"), photoProjection, selection, args, "$order LIMIT $limit OFFSET $offset")
+            cursor?.use {
+                val handled = it.extras.getStringArray(ContentResolver.EXTRA_HONORED_ARGS)?.toSet().orEmpty()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && offset > 0 && ContentResolver.QUERY_ARG_OFFSET !in handled) {
+                    // An OEM may apply OFFSET without advertising it. Query an
+                    // unbounded cursor before applying the window ourselves.
+                    cr.query(MediaStore.Files.getContentUri("external"), photoProjection, selection, args, order)?.use { full ->
+                        full.moveToPosition(offset - 1)
+                        while (results.size < limit && full.moveToNext()) results += full.toMediaPhoto()
                     }
-                    val effectiveDateOrderExpr =
-                        "CASE " +
-                            "WHEN ${MediaStore.MediaColumns.DATE_TAKEN} > 0 " +
-                            "THEN ${MediaStore.MediaColumns.DATE_TAKEN} " +
-                            "WHEN ${MediaStore.MediaColumns.DATE_MODIFIED} > 0 " +
-                            "THEN ${MediaStore.MediaColumns.DATE_MODIFIED} * 1000 " +
-                            "ELSE ${MediaStore.MediaColumns.DATE_ADDED} * 1000 " +
-                        "END"
-                    putString(
-                        ContentResolver.QUERY_ARG_SQL_SORT_ORDER,
-                        "$effectiveDateOrderExpr $sqlDir, ${MediaStore.MediaColumns._ID} $sqlDir"
-                    )
-                } else {
-                    putStringArray(
-                        ContentResolver.QUERY_ARG_SORT_COLUMNS,
-                        arrayOf(col, fallback, MediaStore.MediaColumns._ID)
-                    )
-                    putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, dir)
-                }
-                
-                if (limit != null) putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
-                if (offset != null) putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
-                
-                if (bucketId.isNullOrBlank()) {
-                    putString(ContentResolver.QUERY_ARG_SQL_SELECTION, sel)
-                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selArgs)
-                } else {
-                    putString(
-                        ContentResolver.QUERY_ARG_SQL_SELECTION,
-                        "${MediaStore.MediaColumns.BUCKET_ID} = ? AND ($sel)"
-                    )
-                    putStringArray(
-                        ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
-                        arrayOf(bucketId, *selArgs)
-                    )
-                }
+                } else while (results.size < limit && it.moveToNext()) results += it.toMediaPhoto()
             }
+            return results
         }
 
-        private fun queryFolders(cr: ContentResolver, sortConfig: FolderSortConfig): List<MediaFolder> {
+        private fun queryFolders(cr: ContentResolver, sortConfig: FolderSortConfig, resolved: ResolvedQuery? = null, bucketId: String? = null): List<MediaFolder> {
             val map  = linkedMapOf<String, FolderAccumulator>()
-            // Compute selection once and reuse for the query.
-            val (folderSel, folderSelArgs) = QueryBuilder(FilterConfig()).buildSelection()
-            val args = Bundle().apply {
-                putStringArray(
-                    ContentResolver.QUERY_ARG_SORT_COLUMNS,
-                    arrayOf(MediaStore.Images.Media.DATE_TAKEN)
-                )
-                putInt(
-                    ContentResolver.QUERY_ARG_SORT_DIRECTION,
-                    ContentResolver.QUERY_SORT_DIRECTION_DESCENDING
-                )
-                putString(ContentResolver.QUERY_ARG_SQL_SELECTION, folderSel)
-                putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, folderSelArgs)
-            }
-            cr.query(
-                MediaStore.Files.getContentUri("external"),
-                photoProjection,
-                args,
-                null
-            )
+            val (base, baseArgs) = resolved?.let { it.selection to it.args } ?: QueryBuilder(FilterConfig()).buildSelection()
+            val selection = if (bucketId == null) base else "($base) AND bucket_id = ?"
+            val selectionArgs = if (bucketId == null) baseArgs else baseArgs + bucketId
+            cr.query(MediaStore.Files.getContentUri("external"), photoProjection, selection, selectionArgs,
+                MediaQuerySql.sort(SortConfig()))
                 ?.use { cursor ->
                     val idC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                     val biC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_ID)
@@ -766,7 +454,7 @@ class MediaStoreRepository @Inject constructor(
                         val bid  = cursor.getString(biC) ?: continue
                         val name = cursor.getString(bnC) ?: "Unknown"
                         val pid  = cursor.getLong(idC)
-                        val dt   = cursor.getLong(dtC)
+                        val dt   = cursor.toMediaPhoto().effectiveDateMs
                         val uri  = contentUriForMime(
                             pid,
                             cursor.getStringOrEmpty(MediaStore.MediaColumns.MIME_TYPE),
@@ -784,9 +472,9 @@ class MediaStoreRepository @Inject constructor(
                 .map { f -> MediaFolder(f.bucketId, f.name, f.coverUri, f.photoCount, f.latestPhotoDate) }
                 .let { folders ->
                     val sorted = when (sortConfig.sortBy) {
-                        FolderSortBy.DATE_LATEST_PHOTO -> folders.sortedBy { it.latestPhotoDate }
-                        FolderSortBy.NAME -> folders.sortedBy { it.name.lowercase() }
-                        FolderSortBy.PHOTO_COUNT -> folders.sortedBy { it.photoCount }
+                        FolderSortBy.DATE_LATEST_PHOTO -> folders.sortedWith(compareBy<MediaFolder> { it.latestPhotoDate }.thenBy { it.bucketId })
+                        FolderSortBy.NAME -> folders.sortedWith(compareBy<MediaFolder> { it.name.lowercase(java.util.Locale.ROOT) }.thenBy { it.bucketId })
+                        FolderSortBy.PHOTO_COUNT -> folders.sortedWith(compareBy<MediaFolder> { it.photoCount }.thenBy { it.bucketId })
                     }
                     when (sortConfig.sortOrder) {
                         SortOrder.ASCENDING -> sorted

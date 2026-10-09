@@ -61,6 +61,7 @@ fun FolderDetailScreen(
     val folder           by viewModel.folder.collectAsState()
     val selectedIds      by viewModel.selectedIds.collectAsState()
     val isSelecting       = selectedIds.isNotEmpty()
+    val filterConfig by viewModel.filter.collectAsState()
     val sortConfig       by viewModel.sortConfig.collectAsState()
     var showSortSheet    by remember { mutableStateOf(false) }
 
@@ -73,7 +74,7 @@ fun FolderDetailScreen(
 
     val sharedTransitionScope   = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
-    val gridState               = rememberLazyGridState()
+    val gridState               = viewModel.gridState
 
     // ── Delete / events wiring ─────────────────────────────────────────────────
     val snackbarHostState = remember { SnackbarHostState() }
@@ -119,7 +120,7 @@ fun FolderDetailScreen(
                 subtitle = if (photos.itemCount > 0) "${photos.itemCount} items" else null,
                 onBack = { if (isSelecting) viewModel.clearSelection() else onBack() },
                 actions = {
-                    OmniActionChip(label = "Sort", icon = Icons.Outlined.Sort,
+                    OmniActionChip(label = "Sort & Filter", icon = Icons.Outlined.Sort,
                         onClick = { showSortSheet = true })
                 }
             )
@@ -140,7 +141,7 @@ fun FolderDetailScreen(
                     FolderHeroCard(folder = folder, photoCount = photos.itemCount)
                 }
 
-                if (photos.loadState.refresh is LoadState.Loading) {
+                if (photos.loadState.refresh is LoadState.Loading && photos.itemCount == 0) {
                     items(24) {
                         ShimmerBox(modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp)))
                     }
@@ -167,7 +168,7 @@ fun FolderDetailScreen(
                 } else {
                     items(
                         count = photos.itemCount,
-                        key   = { i -> photos[i]?.id ?: "p_$i" }
+                        key   = { i -> photos.peek(i)?.id ?: "p_$i" }
                     ) { index ->
                         photos[index]?.let { photo ->
                             com.omnimemoria.ui.gallery.PhotoCell(
@@ -228,10 +229,11 @@ fun FolderDetailScreen(
     }
 
     if (showSortSheet) {
-        FolderSortBottomSheet(
-            current   = sortConfig,
+        com.omnimemoria.ui.components.filters.GallerySortFilterSheetContent(
+            currentSort = sortConfig,
+            currentFilter = filterConfig,
             onDismiss = { showSortSheet = false },
-            onApply   = { viewModel.updateSort(it); showSortSheet = false }
+            onApply = { sort, filter -> viewModel.updateSortAndFilter(sort, filter); showSortSheet = false }
         )
     }
 }
@@ -303,85 +305,3 @@ private fun FolderHeroCard(
 
 // FolderTopBar and FolderPhotoCell removed -- replaced by OmniDetailTopBar and
 // PhotoCell (from GalleryScreen) in the main composable above.
-
-// ── Sort bottom sheet ──────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
-@Composable
-private fun FolderSortBottomSheet(
-    current:   SortConfig,
-    onDismiss: () -> Unit,
-    onApply:   (SortConfig) -> Unit
-) {
-    var sortBy    by remember(current) { mutableStateOf(current.sortBy) }
-    var sortOrder by remember(current) { mutableStateOf(current.sortOrder) }
-
-    ModalBottomSheet(
-        dragHandle = null,
-        onDismissRequest = onDismiss,
-        sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor   = OmniSheetContainerColor,
-        shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().navigationBarsPadding()
-                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            Box(modifier = Modifier.align(Alignment.CenterHorizontally).width(36.dp).height(4.dp)
-                .clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.outlineVariant))
-            Spacer(Modifier.height(20.dp))
-            Text("Sort photos", style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-            Spacer(Modifier.height(16.dp))
-
-            listOf(SortBy.DATE_TAKEN to "Date Taken", SortBy.NAME to "File Name A–Z", SortBy.SIZE to "Largest First")
-                .forEach { (candidate, label) ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                            .background(
-                                if (sortBy == candidate)
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                else Color.Transparent
-                            )
-                            .combinedClickable(onClick = { sortBy = candidate })
-                            .padding(horizontal = 4.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(selected = sortBy == candidate, onClick = { sortBy = candidate },
-                            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary))
-                        Spacer(Modifier.width(8.dp))
-                        Text(label, color = MaterialTheme.colorScheme.onBackground,
-                            style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-
-            Spacer(Modifier.height(16.dp))
-            Text("Direction", style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(SortOrder.DESCENDING to "Newest ↓", SortOrder.ASCENDING to "Oldest ↑")
-                    .forEach { (ord, lbl) ->
-                        FilterChip(selected = sortOrder == ord, onClick = { sortOrder = ord },
-                            label = { Text(lbl) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                selectedLabelColor     = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                    }
-            }
-            Spacer(Modifier.height(24.dp))
-            Box(
-                modifier = Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(16.dp))
-                    .background(Brush.horizontalGradient(listOf(Color(0xFF5548D9), Color(0xFF8B7FF5))))
-                    .combinedClickable(onClick = { onApply(SortConfig(sortBy = sortBy, sortOrder = sortOrder)) }),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Apply", color = Color.White, fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleSmall)
-            }
-        }
-    }
-}

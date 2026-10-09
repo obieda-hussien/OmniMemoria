@@ -92,7 +92,7 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
             // ── UX ─────────────────────────────────────────────────────────────
             // 300ms crossfade makes the transition from shimmer → image feel smooth
             // without being slow.
-            .crossfade(durationMillis = 300)
+            .crossfade(durationMillis = 120)
 
             .build()
     }

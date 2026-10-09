@@ -32,7 +32,7 @@ interface PhotoIntelligenceDao {
         INNER JOIN photo_intelligence_fts fts ON pi.id = fts.rowid
         WHERE photo_intelligence_fts MATCH :query
         ORDER BY pi.indexedAt DESC
-        LIMIT 100
+        LIMIT 500
         """
     )
     suspend fun searchByText(query: String): List<PhotoIntelligence>
@@ -45,4 +45,13 @@ interface PhotoIntelligenceDao {
 
     @Query("SELECT id FROM photo_intelligence WHERE hasFaces = 1")
     suspend fun getIdsWithFaces(): List<Long>
+    @Query("SELECT id FROM photo_intelligence WHERE isIndexed = 1 AND (length(trim(rawText)) > 0) = :present")
+    suspend fun getIdsByTextPresence(present: Boolean): List<Long>
+
+    @Query("SELECT id FROM photo_intelligence WHERE isIndexed = 1 AND hasFaces = :present")
+    suspend fun getIdsByFaces(present: Boolean): List<Long>
+
+    @Query("SELECT id FROM photo_intelligence WHERE isIndexed = 1 AND hasPhoneNumber = :present")
+    suspend fun getIdsByPhoneNumber(present: Boolean): List<Long>
+
 }

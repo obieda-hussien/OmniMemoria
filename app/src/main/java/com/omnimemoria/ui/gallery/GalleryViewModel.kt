@@ -32,6 +32,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import com.omnimemoria.domain.model.GroupBy
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -67,7 +70,9 @@ sealed class GalleryItem {
 }
 
 
-private fun MediaPhoto.toDateGroupLabel(): String {
+private fun MediaPhoto.toDateGroupLabel(group: GroupBy): String {
+    if (group == GroupBy.LOCATION) return if (latitude != null && longitude != null) "%.2f, %.2f".format(latitude, longitude) else "Unknown location"
+    if (group == GroupBy.MONTH || group == GroupBy.YEAR) return SimpleDateFormat(if (group == GroupBy.MONTH) "MMMM yyyy" else "yyyy", Locale.getDefault()).format(Date(effectiveDateMs))
     val ms = this.effectiveDateMs
     if (ms <= 0L) return "Unknown Date"
     val today     = Calendar.getInstance()
@@ -97,6 +102,8 @@ class GalleryViewModel @Inject constructor(
     private val trashRepository:       TrashRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    val gridState = LazyGridState()
 
     // ── Media stats ────────────────────────────────────────────────────────────
     private val _mediaStats = MutableStateFlow(MediaStats())
@@ -149,7 +156,7 @@ class GalleryViewModel @Inject constructor(
 
     private val _localSortConfig = MutableStateFlow<SortConfig?>(null)
 
-    val activeSortConfig: StateFlow<SortConfig> = sortPresetRepository.getCurrentSort()
+    val activeSortConfig: StateFlow<SortConfig> = combine(_localSortConfig, sortPresetRepository.getCurrentSort()) { local, saved -> local ?: saved }
         .stateIn(viewModelScope, SharingStarted.Eagerly, SortConfig())
 
     // ── Favorites ──────────────────────────────────────────────────────────────
@@ -163,34 +170,21 @@ class GalleryViewModel @Inject constructor(
     val uiEvents: Flow<GalleryUiEvent> = _uiEvents.receiveAsFlow()
 
     // ── Paging flow ────────────────────────────────────────────────────────────
-    val groupedPhotos: Flow<PagingData<GalleryItem>> = combine(
-        _localSortConfig.combine(activeSortConfig) { local, repo -> local ?: repo },
-        _currentFilter,
-        mediaStoreVersion
-    ) { config, filter, _ -> Pair(config, filter) }
-        .flatMapLatest { (config, currentFilter) ->
-            mediaStoreRepository.getPhotosPaged(config, currentFilter).cachedIn(viewModelScope)
+    private data class QuerySettings(val sort: SortConfig, val filter: FilterConfig, val version: Int, val favorites: Set<Long>)
+    private val querySettings = combine(activeSortConfig, _currentFilter, mediaStoreVersion, favoriteIds) { sort, filter, version, favorites ->
+        QuerySettings(sort, filter, version, if (filter.isFavorite != null || sort.sortBy == com.omnimemoria.domain.model.SortBy.FAVORITES_FIRST) favorites else emptySet())
+    }.distinctUntilChanged()
+
+    val groupedPhotos: Flow<PagingData<GalleryItem>> = querySettings.flatMapLatest { settings ->
+        mediaStoreRepository.getPhotosPaged(settings.sort, settings.filter).map { data -> settings.sort to data }
+    }.combine(favoriteIds) { (sort, data), favorites ->
+        val mapped = data.map { GalleryItem.Photo(it, it.id in favorites) as GalleryItem }
+        if (sort.groupBy == null) mapped else mapped.insertSeparators { before, after ->
+            val previous = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel(sort.groupBy)
+            val next = (after as? GalleryItem.Photo)?.photo?.toDateGroupLabel(sort.groupBy)
+            if (after is GalleryItem.Photo && previous != next) GalleryItem.DateHeader(next.orEmpty(), after.photo.id) else null
         }
-        .combine(favoriteIds) { pagingData, favIds -> Pair(pagingData, favIds) }
-        .combine(_currentFilter) { (pagingData, favIds), filter ->
-            // We let MediaStoreRepository do most of the filtering now, but we still map to GalleryItem
-            pagingData
-                .map { photo -> GalleryItem.Photo(photo, isFavorite = photo.id in favIds) as GalleryItem }
-                .insertSeparators { before, after ->
-                    val bLabel = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
-                    val aLabel = (after  as? GalleryItem.Photo)?.photo?.toDateGroupLabel()
-                    when {
-                        after == null || after !is GalleryItem.Photo -> null
-                        before == null || bLabel != aLabel ->
-                            GalleryItem.DateHeader(
-                                label         = aLabel ?: "",
-                                anchorPhotoId = after.photo.id
-                            )
-                        else -> null
-                    }
-                }
-        }
-        .cachedIn(viewModelScope)
+    }.cachedIn(viewModelScope)
 
     init {
         viewModelScope.launch {
@@ -231,10 +225,7 @@ class GalleryViewModel @Inject constructor(
     // ── Navigation ─────────────────────────────────────────────────────────────
 
     fun prepareForNavigation(photo: MediaPhoto) {
-        galleryStateHolder.cachePendingPhoto(photo)
-        galleryStateHolder.activeSortConfig.value =
-            _localSortConfig.value ?: activeSortConfig.value
-        galleryStateHolder.activeFilter.value = _currentFilter.value
+        galleryStateHolder.prepare(PreviewCollection(photo, activeSortConfig.value, _currentFilter.value))
     }
 
     fun updateSortAndFilter(config: SortConfig, filter: FilterConfig) {

@@ -49,6 +49,9 @@ import com.omnimemoria.ui.components.OmniMediaBottomBar
 import com.omnimemoria.ui.components.OmniMediaTopBar
 import com.omnimemoria.ui.photoSharedKey
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
+import me.saket.telephoto.zoomable.rememberZoomableState
+import me.saket.telephoto.zoomable.image.rememberZoomableImageState
+import androidx.compose.runtime.saveable.rememberSaveable
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -114,6 +117,7 @@ fun PhotoDetailScreen(
 
     PhotoPager(
         photoList       = photoList,
+        initialPhotoId = photoId,
         isFullListReady = isFullListReady,
         isFavorite      = isFavorite,
         onBack          = onBack,
@@ -133,6 +137,7 @@ fun PhotoDetailScreen(
 @Composable
 private fun PhotoPager(
     photoList:       List<MediaPhoto>,
+    initialPhotoId: Long,
     isFullListReady: Boolean,
     isFavorite:      Boolean,
     onBack:          () -> Unit,
@@ -145,12 +150,11 @@ private fun PhotoPager(
     val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
     val context                 = LocalContext.current
 
-    val seedPhoto   = remember { photoList.firstOrNull() }
     val isTrulyReady = isFullListReady && photoList.size > 1
 
-    val targetIndex = remember(photoList, isTrulyReady, seedPhoto) {
-        if (isTrulyReady && seedPhoto != null) {
-            val idx = photoList.indexOfFirst { it.id == seedPhoto.id }
+    val targetIndex = remember(photoList, isTrulyReady, initialPhotoId) {
+        if (isTrulyReady) {
+            val idx = photoList.indexOfFirst { it.id == initialPhotoId }
             if (idx >= 0) idx else 0
         } else 0
     }
@@ -166,11 +170,11 @@ private fun PhotoPager(
         derivedStateOf { photoList.getOrNull(pagerState.currentPage) }
     }
 
-    LaunchedEffect(pagerState, pagerState.currentPage, photoList) {
-        photoList.getOrNull(pagerState.currentPage)?.id?.let { onPageChanged(it) }
+    LaunchedEffect(pagerState, pagerState.settledPage, photoList) {
+        photoList.getOrNull(pagerState.settledPage)?.id?.let { onPageChanged(it) }
     }
 
-    var showChrome   by remember { mutableStateOf(true) }
+    var showChrome   by rememberSaveable { mutableStateOf(true) }
     var showMetadata by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -202,14 +206,12 @@ private fun PhotoPager(
             val mediaMod = Modifier.fillMaxSize().then(sharedMod)
 
             if (photo.mimeType.startsWith("video/", ignoreCase = true)) {
-                Box(modifier = mediaMod.clickable {
-                    onOpenVideo(photo.id, if (photo.id == -1L) photo.uri.toString() else null)
-                }) {
+                Box(modifier = mediaMod) {
                     AsyncImage(
                         model              = imageRequest,
                         contentDescription = photo.name,
                         contentScale       = ContentScale.Fit,
-                        modifier           = Modifier.fillMaxSize()
+                        modifier           = Modifier.fillMaxSize().clickable { showChrome = !showChrome }
                     )
                     Box(
                         modifier = Modifier
@@ -228,7 +230,14 @@ private fun PhotoPager(
                     }
                 }
             } else {
+                val zoomState = rememberZoomableState()
+                // Let Telephoto arbitrate image panning vs pager scrolling. Reset
+                // off-screen zoom so an old image cannot capture a new page's drag.
+                LaunchedEffect(pagerState.settledPage) {
+                    if (pagerState.settledPage != page) zoomState.resetZoom(animationSpec = snap())
+                }
                 ZoomableAsyncImage(
+                    state = rememberZoomableImageState(zoomState),
                     model              = imageRequest,
                     contentDescription = photo.name,
                     modifier           = mediaMod,
