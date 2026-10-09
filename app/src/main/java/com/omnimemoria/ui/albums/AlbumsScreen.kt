@@ -38,16 +38,13 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Size
-import com.omnimemoria.domain.model.FolderSortBy
 import com.omnimemoria.domain.model.FolderSortConfig
 import com.omnimemoria.domain.model.MediaFolder
-import com.omnimemoria.domain.model.SortOrder
 import com.omnimemoria.ui.components.OmniActionChip
 import com.omnimemoria.ui.components.OmniEmptyState
 import com.omnimemoria.ui.components.OmniSectionHeader
 import com.omnimemoria.ui.components.ShimmerBox
 import com.omnimemoria.ui.theme.AmberVibe
-import com.omnimemoria.ui.theme.OmniSheetContainerColor
 import com.omnimemoria.ui.theme.RoseMemory
 import kotlinx.coroutines.delay
 
@@ -155,18 +152,11 @@ fun AlbumsScreen(
 
     // ── Sort bottom sheet ────────────────────────────────────────────────────
     if (showSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showSheet = false },
-            sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor   = OmniSheetContainerColor,
-            shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-        ) {
-            AlbumSortSheet(
-                initial   = sortConfig,
-                onDismiss = { showSheet = false },
-                onApply   = { viewModel.updateFolderSort(it); showSheet = false }
-            )
-        }
+        com.omnimemoria.ui.components.filters.AlbumSortFilterSheetContent(
+            currentSort = sortConfig,
+            onDismiss = { showSheet = false },
+            onApply = { viewModel.updateFolderSort(it); showSheet = false }
+        )
     }
 }
 
@@ -337,132 +327,6 @@ private fun AlbumCard(folder: MediaFolder, index: Int, onClick: () -> Unit) {
                 DropdownMenuItem(
                     text    = { Text("Select", color = MaterialTheme.colorScheme.onSurface) },
                     onClick = { menuExpanded = false }
-                )
-            }
-        }
-    }
-}
-
-// ── Sort bottom sheet ──────────────────────────────────────────────────────────
-
-@Composable
-private fun AlbumSortSheet(
-    initial:   FolderSortConfig,
-    onDismiss: () -> Unit,
-    onApply:   (FolderSortConfig) -> Unit
-) {
-    var sortBy    by remember(initial) { mutableStateOf(initial.sortBy) }
-    var sortOrder by remember(initial) { mutableStateOf(initial.sortOrder) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            // FIXED: Using valid start/end/top/bottom padding bounds instead of mixing horizontal with vertical components.
-            .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .width(36.dp)
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(Color(0xFF3A3860))
-        )
-        Spacer(Modifier.height(20.dp))
-
-        Text(
-            "Sort albums",
-            style      = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color      = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(Modifier.height(16.dp))
-
-        listOf(
-            FolderSortBy.DATE_LATEST_PHOTO to "Latest Photo",
-            FolderSortBy.NAME             to "Name A–Z",
-            FolderSortBy.PHOTO_COUNT      to "Most Photos"
-        ).forEach { (candidate, label) ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        if (sortBy == candidate)
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                        else Color.Transparent
-                    )
-                    .clickable { sortBy = candidate }
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(
-                    selected = sortBy == candidate,
-                    onClick  = { sortBy = candidate },
-                    colors   = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text  = label,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-        Text(
-            text  = "Direction",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(8.dp))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            listOf(
-                SortOrder.DESCENDING to "Newest ↓",
-                SortOrder.ASCENDING  to "Oldest ↑"
-            ).forEach { (ord, lbl) ->
-                FilterChip(
-                    selected = sortOrder == ord,
-                    onClick  = { sortOrder = ord },
-                    label    = { Text(lbl) },
-                    colors   = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                        selectedLabelColor     = MaterialTheme.colorScheme.primary
-                    )
-                )
-            }
-        }
-
-        Spacer(Modifier.height(24.dp))
-
-        Row(
-            modifier              = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            TextButton(
-                onClick  = onDismiss,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Box(
-                modifier = Modifier
-                    .weight(2f)
-                    .height(52.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.primary)
-                    .clickable { onApply(FolderSortConfig(sortBy, sortOrder)) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "Apply",
-                    color      = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    style      = MaterialTheme.typography.titleSmall
                 )
             }
         }
