@@ -6,7 +6,8 @@ object MediaQuerySql {
     private val rawFormats = setOf("image/x-adobe-dng", "image/x-canon-cr2", "image/x-canon-cr3", "image/x-nikon-nef", "image/x-sony-arw", "image/x-panasonic-rw2", "image/x-fuji-raf", "image/x-olympus-orf", "image/x-pentax-pef")
 
     fun selection(filter: FilterConfig): Pair<String, Array<String>> {
-        val clauses = mutableListOf("_size > 0")
+        val dimensions = "((width > 0 AND height > 0) OR mime_type IS NULL OR (mime_type NOT IN ('image/jpeg','image/png','image/webp','image/gif','image/heic') AND mime_type NOT LIKE 'video/%'))"
+        val clauses = mutableListOf("_size > 0", dimensions)
         val args = mutableListOf<String>()
         val types = filter.mediaTypes.map { type ->
             when (type) {

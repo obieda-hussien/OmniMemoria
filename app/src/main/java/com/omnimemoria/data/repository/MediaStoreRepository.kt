@@ -42,6 +42,9 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import javax.inject.Inject
@@ -142,6 +145,11 @@ class MediaStoreRepository @Inject constructor(
         )
         awaitClose { contentResolver.unregisterContentObserver(observer) }
     }.debounce(1_500L)
+
+    fun observeMediaQueryChanges(sort: SortConfig = SortConfig(), filter: FilterConfig = FilterConfig()): Flow<Unit> =
+        if (filter.isFavorite != null || sort.sortBy == SortBy.FAVORITES_FIRST) {
+            merge(observeMediaStoreChanges(), favoritesRepository.getAllFavoriteIds().drop(1).map { Unit })
+        } else observeMediaStoreChanges()
 
     // ══ 3. آخر صورة — لـ Dynamic Theme ═════════════════════════════════════════
     fun getMostRecentPhotoUri(): Uri? {

@@ -68,9 +68,11 @@ class FolderDetailViewModel @Inject constructor(
     private val _uiEvents = Channel<FolderDetailUiEvent>(Channel.BUFFERED)
     val uiEvents: Flow<FolderDetailUiEvent> = _uiEvents.receiveAsFlow()
 
-    val photos: Flow<PagingData<MediaPhoto>> = combine(_sortConfig, _filter, mediaStoreRepository.observeMediaStoreChanges().onStart { emit(Unit) }) { sort, filter, _ -> sort to filter }
-        .flatMapLatest { (sort, filter) -> mediaStoreRepository.getPhotosByFolder(bucketId, sort, filter) }
-        .cachedIn(viewModelScope)
+    val photos: Flow<PagingData<MediaPhoto>> = combine(_sortConfig, _filter) { sort, filter -> sort to filter }
+        .flatMapLatest { (sort, filter) ->
+            mediaStoreRepository.observeMediaQueryChanges(sort, filter).onStart { emit(Unit) }
+                .flatMapLatest { mediaStoreRepository.getPhotosByFolder(bucketId, sort, filter) }
+        }.cachedIn(viewModelScope)
 
     init {
         viewModelScope.launch {

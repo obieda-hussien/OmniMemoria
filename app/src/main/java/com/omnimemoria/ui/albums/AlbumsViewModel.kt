@@ -30,9 +30,11 @@ class AlbumsViewModel @Inject constructor(
     private val _folderSortConfig = MutableStateFlow(FolderSortConfig())
     val folderSortConfig: StateFlow<FolderSortConfig> = _folderSortConfig.asStateFlow()
 
-    val folders: Flow<PagingData<MediaFolder>> = combine(folderSortConfig, filterConfig, mediaStoreRepository.observeMediaStoreChanges().onStart { emit(Unit) }) { sort, filter, _ -> sort to filter }
-        .flatMapLatest { (sort, filter) -> mediaStoreRepository.getFoldersPaged(sort, filter) }
-        .cachedIn(viewModelScope)
+    val folders: Flow<PagingData<MediaFolder>> = combine(folderSortConfig, filterConfig) { sort, filter -> sort to filter }
+        .flatMapLatest { (sort, filter) ->
+            mediaStoreRepository.observeMediaQueryChanges(filter = filter).onStart { emit(Unit) }
+                .flatMapLatest { mediaStoreRepository.getFoldersPaged(sort, filter) }
+        }.cachedIn(viewModelScope)
 
     fun prepareFolderNavigation() { galleryStateHolder.prepareFolder(filterConfig.value) }
 

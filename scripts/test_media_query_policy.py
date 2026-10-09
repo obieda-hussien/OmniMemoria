@@ -30,6 +30,8 @@ fun main() {
     emit("raw", FilterConfig(mediaTypes = setOf(MediaType.RAW)))
     emit("megapixels", FilterConfig(minResolutionMp = 2f))
     emit("collection", constraint = "${MediaQuerySql.idsClause(setOf(1L,4L), true)} AND ${MediaQuerySql.idsClause(setOf(4L), false)}")
+    emit("placeholder", constraint = MediaQuerySql.idsClause(setOf(7L), true))
+    emit("vector", FilterConfig(mimeFormats = setOf("image/svg+xml")))
     emit("name", sort = SortConfig(SortBy.NAME, SortOrder.ASCENDING))
 }
 '''
@@ -47,8 +49,10 @@ conn.executemany('INSERT INTO files VALUES(?,?,?,?,?,?,?,?,?,?,?)', [
     (4,'gif',30,'image/gif',1,0,0,40,20,20,0),
     (5,'raw',500,'image/x-adobe-dng',1,1000,0,0,6000,4000,0),
     (6,'empty',0,'image/jpeg',1,999999,0,0,0,0,0),
+    (7,'bad placeholder',100,'image/jpeg',1,999999,0,0,0,0,0),
+    (8,'vector',100,'image/svg+xml',1,0,0,60,0,0,0),
 ])
-expected = {'resolution':[5,3,1,2,4], 'favorites':[4,1,2,3,5], 'date':[4,1], 'empty':[], 'gif':[4], 'raw':[5], 'megapixels':[3,5], 'collection':[1], 'name':[1,2,4,5,3]}
+expected = {'resolution':[5,3,1,2,4,8], 'favorites':[4,1,8,2,3,5], 'date':[4,1], 'empty':[], 'gif':[4], 'raw':[5], 'megapixels':[3,5], 'collection':[1], 'name':[1,2,4,5,8,3], 'placeholder':[], 'vector':[8]}
 for line in output.splitlines():
     name, encoded, raw_args = line.split('\t')
     sql = base64.b64decode(encoded).decode()
@@ -58,4 +62,4 @@ for line in output.splitlines():
     # Real LIMIT/OFFSET queries must concatenate to exactly the globally ordered results.
     pages = [row[0] for offset in range(0,len(result),2) for row in conn.execute(sql + ' LIMIT 2 OFFSET ?', values+[offset])]
     assert pages == result, (name, pages, result)
-print('Passed 9 Kotlin/SQLite policy cases and 9 pagination checks.')
+print('Passed 11 Kotlin/SQLite policy cases and 11 pagination checks.')
