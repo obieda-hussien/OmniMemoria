@@ -36,7 +36,7 @@ class OnThisDayWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         // An OS-disabled channel or a missing Android 13+ runtime grant is not a retryable error.
-        if (!canPostNotifications()) return@withContext Result.success()
+        if (!isEnabled(appContext) || !canPostNotifications()) return@withContext Result.success()
         val memories = mediaStoreRepository.getPhotosOnThisDay()
         if (memories.isEmpty()) return@withContext Result.success()
 
@@ -114,6 +114,18 @@ class OnThisDayWorker @AssistedInject constructor(
         const val NOTIFICATION_ID     = 1001
         const val EXTRA_OPEN_ON_THIS_DAY = "open_on_this_day"
         private const val WORK_NAME   = "omnimemoria_on_this_day_daily"
+        private const val PREFS_NAME = "memory_notifications"
+        private const val PREF_ENABLED = "on_this_day_enabled"
+
+        fun isEnabled(context: Context): Boolean =
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(PREF_ENABLED, true)
+
+        fun setEnabled(context: Context, enabled: Boolean) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putBoolean(PREF_ENABLED, enabled).apply()
+            if (enabled) scheduleDaily(context) else cancel(context)
+        }
 
         // ── جدولة يومية — بيشتغل كل 24 ساعة ────────────────────────────────
         // استدعاء من Application.onCreate أو Settings
