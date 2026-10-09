@@ -100,6 +100,10 @@ class GalleryViewModel @Inject constructor(
     private val _mediaStats = MutableStateFlow(MediaStats())
     val mediaStats: StateFlow<MediaStats> = _mediaStats.asStateFlow()
 
+    // A zero-item library is a valid loaded state, not an endless loading state.
+    private val _summaryLoaded = MutableStateFlow(false)
+    val summaryLoaded: StateFlow<Boolean> = _summaryLoaded.asStateFlow()
+
     private val _onThisDayPhotos = MutableStateFlow<List<MediaPhoto>>(emptyList())
     val onThisDayPhotos: StateFlow<List<MediaPhoto>> = _onThisDayPhotos.asStateFlow()
 
@@ -197,10 +201,14 @@ class GalleryViewModel @Inject constructor(
     }
 
     private suspend fun refreshHomeSummary() = withContext(Dispatchers.IO) {
-        _mediaStats.value = mediaStoreRepository.getMediaStats()
-        _onThisDayPhotos.value = mediaStoreRepository.getPhotosOnThisDay()
-        val uri = mediaStoreRepository.getMostRecentPhotoUri()
-        _dynamicAccent.value = uri?.let { mediaStoreRepository.extractDominantColor(it) }
+        try {
+            _mediaStats.value = mediaStoreRepository.getMediaStats()
+            _onThisDayPhotos.value = mediaStoreRepository.getPhotosOnThisDay()
+            val uri = mediaStoreRepository.getMostRecentPhotoUri()
+            _dynamicAccent.value = uri?.let { mediaStoreRepository.extractDominantColor(it) }
+        } finally {
+            _summaryLoaded.value = true
+        }
     }
 
     // ── Navigation ─────────────────────────────────────────────────────────────
