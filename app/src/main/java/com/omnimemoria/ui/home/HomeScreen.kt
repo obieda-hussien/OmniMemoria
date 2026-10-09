@@ -198,7 +198,7 @@ fun HomeScreen(
                 )
             }
 
-            // Smart FAB + Favorites chip
+            // One entry point for working library management actions
             AnimatedVisibility(
                 visible = currentTab == HomeTab.GALLERY,
                 enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
@@ -209,10 +209,9 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FavoritesChip(onClick = onFavoritesClick)
                     SmartFab(
                         accent = dynamicAccent,
                         onClick = { showSmartSheet = true }
@@ -247,6 +246,10 @@ fun HomeScreen(
     if (showSmartSheet) {
         SmartActionsSheet(
             onDismiss = { showSmartSheet = false },
+            onFavoritesClick = {
+                showSmartSheet = false
+                onFavoritesClick()
+            },
             onTrashClick = {
                 showSmartSheet = false
                 onTrashClick()
@@ -617,9 +620,9 @@ private fun SmartFab(accent: Color?, onClick: () -> Unit) {
         shape = RoundedCornerShape(18.dp),
         elevation = FloatingActionButtonDefaults.elevation(6.dp, 2.dp)
     ) {
-        Icon(Icons.Outlined.AutoAwesome, null, modifier = Modifier.size(20.dp))
+        Icon(Icons.Outlined.Tune, null, modifier = Modifier.size(20.dp))
         Spacer(modifier = Modifier.width(8.dp))
-        Text("Smart", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text("Library Tools", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
     }
 }
 
@@ -734,21 +737,13 @@ private data class SmartActionItem(
 @Composable
 private fun SmartActionsSheet(
     onDismiss: () -> Unit,
-    onTrashClick: () -> Unit // ← new
+    onFavoritesClick: () -> Unit,
+    onTrashClick: () -> Unit
 ) {
+    // Do not present unimplemented tools as clickable actions.
     val items = listOf(
-        SmartActionItem(
-            icon = Icons.Outlined.Delete,
-            title = "Recycle Bin",
-            subtitle = "Manage deleted photos",
-            color = Color(0xFFFF6B6B),
-            dismissOnClick = true,
-            onClick = onTrashClick
-        ),
-        SmartActionItem(Icons.Outlined.Compress, "Smart Compress", "Free up space intelligently", Color(0xFF8B7FF5)),
-        SmartActionItem(Icons.Outlined.ContentCopy, "Photo DNA", "Find & remove duplicates", Color(0xFFFFB300)),
-        SmartActionItem(Icons.Outlined.Refresh, "Re-Index", "Rebuild photo intelligence", Color(0xFFFF5252)),
-        SmartActionItem(Icons.Outlined.BarChart, "Memoria Stats", "Visualize your memory patterns", Color(0xFF7C4DFF))
+        SmartActionItem(Icons.Outlined.FavoriteBorder, "Favorites", "See saved photos", Color(0xFFFF4B6E), onClick = onFavoritesClick),
+        SmartActionItem(Icons.Outlined.Delete, "Recycle Bin", "Manage recently deleted photos", Color(0xFFFF6B6B), onClick = onTrashClick)
     )
 
     ModalBottomSheet(
@@ -783,12 +778,12 @@ private fun SmartActionsSheet(
                 Spacer(modifier = Modifier.width(14.dp))
                 Column {
                     Text(
-                        "Smart Actions",
+                        "Library Tools",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "AI-powered tools for your memories",
+                        "Your saved and deleted media",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
