@@ -20,6 +20,7 @@ import androidx.compose.foundation.clickable
 fun GallerySortFilterSheetContent(
     currentSort: SortConfig,
     currentFilter: FilterConfig,
+    showGrouping: Boolean = true,
     onDismiss: () -> Unit,
     onApply: (SortConfig, FilterConfig) -> Unit
 ) {
@@ -31,7 +32,7 @@ fun GallerySortFilterSheetContent(
     OmniSortFilterSheet(
         title = "Sort & Filter",
         onDismiss = onDismiss,
-        footer = { ApplyButton(onApply = { onApply(currentSort.copy(sortBy = sortBy, sortOrder = sortOrder, groupBy = groupBy), filterBy) }, onCancel = onDismiss) }
+        footer = { ApplyButton(onApply = { onApply(currentSort.copy(sortBy = sortBy, sortOrder = sortOrder, groupBy = if (showGrouping) groupBy else null), filterBy) }, onCancel = onDismiss) }
     ) {
         // --- SORTING SECTION ---
         Text("Sort By", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -65,6 +66,7 @@ fun GallerySortFilterSheetContent(
 
 
         Spacer(Modifier.height(16.dp))
+        if (showGrouping) {
         Text("Group By", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
 
@@ -72,8 +74,7 @@ fun GallerySortFilterSheetContent(
             null to "None",
             GroupBy.DAY to "Day",
             GroupBy.MONTH to "Month",
-            GroupBy.YEAR to "Year",
-            GroupBy.LOCATION to "Location"
+            GroupBy.YEAR to "Year"
         )
         groupOptions.chunked(3).forEach { groupRow ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -87,30 +88,11 @@ fun GallerySortFilterSheetContent(
             }
         }
 
+        }
         Spacer(Modifier.height(24.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         Spacer(Modifier.height(24.dp))
 
-        // --- FILTERING SECTION ---
-        Text("Media Type", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(12.dp))
-
-        MediaType.entries.chunked(2).forEach { mediaRow ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                mediaRow.forEach { mediaType ->
-                    val isSelected = filterBy.mediaTypes.contains(mediaType)
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = {
-                            val newTypes = if (isSelected) filterBy.mediaTypes - mediaType
-                                           else filterBy.mediaTypes + mediaType
-                            filterBy = filterBy.copy(mediaTypes = newTypes)
-                        },
-                        label = { Text(mediaType.name.lowercase().replaceFirstChar { it.uppercase() }) }
-                    )
-                }
-            }
-        }
-
+        MediaFilterControls(filterBy) { filterBy = it }
     }
 }

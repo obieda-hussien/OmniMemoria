@@ -7,6 +7,8 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -161,12 +163,28 @@ fun TrashScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             previewItem?.let { item ->
-                TrashPreviewOverlay(
-                    item      = item,
-                    onClose   = { previewItem = null },
-                    onRestore = { viewModel.restore(item); previewItem = null },
-                    onDelete  = { itemToDelete = item; previewItem = null }
+                val pager = rememberPagerState(
+                    initialPage = trashItems.indexOfFirst { it.id == item.id }.coerceAtLeast(0),
+                    pageCount = { trashItems.size }
                 )
+                Box(Modifier.fillMaxSize()) {
+                    HorizontalPager(state = pager, key = { trashItems[it].id }) { page ->
+                        val visibleItem = trashItems[page]
+                        TrashPreviewOverlay(
+                            item = visibleItem,
+                            onClose = { previewItem = null },
+                            onRestore = { viewModel.restore(visibleItem); previewItem = null },
+                            onDelete = { itemToDelete = visibleItem; previewItem = null }
+                        )
+                    }
+                    Text(
+                        "${(pager.currentPage + 1).coerceAtMost(trashItems.size)} / ${trashItems.size}",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
+                            .padding(top = 26.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
             }
         }
 
@@ -267,7 +285,7 @@ private fun TrashPreviewOverlay(
 ) {
     val isVideo = item.mediaType.startsWith("video/", ignoreCase = true)
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (isVideo) {
             // For video we just show a thumbnail and a message since we can't easily play it
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

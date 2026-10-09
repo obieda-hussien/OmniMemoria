@@ -43,6 +43,7 @@ import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
 import com.omnimemoria.domain.model.SortOrder
@@ -86,7 +87,7 @@ fun GalleryScreen(
         }
     }
 
-    val gridState          = rememberLazyGridState()
+    val gridState          = viewModel.gridState
     var showSortFilterSheet by remember { mutableStateOf(false) }
 
     // ── Delete / events wiring ─────────────────────────────────────────────────
@@ -142,6 +143,10 @@ fun GalleryScreen(
         }
     }
 
+    LaunchedEffect(transformableState.isTransformInProgress) {
+        if (!transformableState.isTransformInProgress) cumulativeZoom = 1f
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
 
         LazyVerticalGrid(
@@ -157,7 +162,8 @@ fun GalleryScreen(
             verticalArrangement   = Arrangement.spacedBy(3.dp),
             modifier = Modifier
                 .fillMaxSize()
-                .transformable(state = transformableState, lockRotationOnZoomPan = true)
+                .transformable(state = transformableState, lockRotationOnZoomPan = true,
+                    canPan = { false }, enabled = !isSelecting)
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 val activeFilterCount by viewModel.activeFilterCount.collectAsState()
@@ -171,7 +177,7 @@ fun GalleryScreen(
                 )
             }
 
-            if (groupedPhotos.loadState.refresh is LoadState.Loading) {
+            if (groupedPhotos.loadState.refresh is LoadState.Loading && groupedPhotos.itemCount == 0) {
                 items(count = 30, span = { GridItemSpan(1) }) {
                     SkeletonPhotoCell()
                 }
@@ -432,7 +438,7 @@ internal fun CachedThumbnail(uri: String, modifier: Modifier) {
     val context = LocalContext.current
     // Let Coil resolve the real cell dimensions (including pinch-to-zoom grid changes)
     // instead of decoding every thumbnail at a fixed 512 x 512 resolution.
-    val request = remember(uri, context) { ImageRequest.Builder(context).data(uri).build() }
+    val request = remember(uri, context) { ImageRequest.Builder(context).data(uri).crossfade(false).build() }
     AsyncImage(
         model              = request,
         contentDescription = null,
@@ -453,11 +459,13 @@ internal fun GallerySortFilterSheet(
     currentFilter: FilterConfig,
     currentSort: SortConfig,
     onDismiss: () -> Unit,
-    onApply: (SortConfig, FilterConfig) -> Unit
+    onApply: (SortConfig, FilterConfig) -> Unit,
+    showGrouping: Boolean = true
 ) {
     com.omnimemoria.ui.components.filters.GallerySortFilterSheetContent(
         currentFilter = currentFilter,
         currentSort = currentSort,
+        showGrouping = showGrouping,
         onDismiss = onDismiss,
         onApply = onApply
     )

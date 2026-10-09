@@ -1,5 +1,11 @@
 package com.omnimemoria.ui.search
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import com.omnimemoria.ui.gallery.GallerySortFilterSheet
+import com.omnimemoria.ui.gallery.CachedThumbnail
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -73,6 +79,9 @@ fun SearchScreen(
     val recent  by viewModel.recentSearches.collectAsState()
     val counts  by viewModel.quickFilterCounts.collectAsState()
 
+    val sort by viewModel.sortConfig.collectAsState()
+    val filter by viewModel.filterConfig.collectAsState()
+    var showSortSheet by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
     Box(
@@ -97,6 +106,10 @@ fun SearchScreen(
                     onClear        = viewModel::clearQuery,
                     focusRequester = focusRequester
                 )
+            }
+
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { showSortSheet = true }) { Text("Sort & Filter") }
             }
 
             // ── Body — animated content switch ─────────────────────────────
@@ -127,13 +140,26 @@ fun SearchScreen(
                     is SearchResultState.Results -> ResultsState(
                         photos       = state.photos,
                         query        = state.query,
-                        onPhotoClick = onPhotoClick
+                        onPhotoClick = { id -> viewModel.prepareForNavigation(id); onPhotoClick(id) },
+                        gridState = viewModel.gridState
                     )
                     is SearchResultState.Empty   -> EmptyState(query = state.query)
+                    is SearchResultState.Error -> com.omnimemoria.ui.components.OmniEmptyState(
+                        icon = Icons.Outlined.Search, title = "Search could not finish",
+                        subtitle = "Try your search again.", actionLabel = "Retry",
+                        actionIcon = Icons.Outlined.Refresh, onAction = viewModel::retry
+                    )
                 }
             }
         }
     }
+    if (showSortSheet) GallerySortFilterSheet(
+        currentFilter = filter, currentSort = sort,
+        showGrouping = false,
+        onDismiss = { showSortSheet = false },
+        onApply = { sort, filter -> viewModel.updateSortAndFilter(sort, filter); showSortSheet = false }
+    )
+
 }
 
 // ── Search bar ─────────────────────────────────────────────────────────────────
@@ -603,9 +629,11 @@ private fun SearchingState() {
 private fun ResultsState(
     photos:      List<MediaPhoto>,
     query:       String,
-    onPhotoClick: (Long) -> Unit
+    onPhotoClick: (Long) -> Unit,
+    gridState: LazyGridState
 ) {
     LazyVerticalGrid(
+        state = gridState,
         columns               = GridCells.Fixed(3),
         contentPadding        = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -650,13 +678,7 @@ private fun ResultsState(
                     .clip(RoundedCornerShape(8.dp))
                     .clickable { onPhotoClick(photo.id) }
             ) {
-                AsyncImage(
-                    model              = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-                        .data(photo.uri).size(Size(256, 256)).build(),
-                    contentDescription = photo.name,
-                    contentScale       = ContentScale.Crop,
-                    modifier           = Modifier.fillMaxSize()
-                )
+                CachedThumbnail(uri = photo.uri.toString(), modifier = Modifier.fillMaxSize())
             }
         }
 

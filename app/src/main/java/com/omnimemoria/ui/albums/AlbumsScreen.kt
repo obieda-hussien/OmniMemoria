@@ -57,6 +57,7 @@ fun AlbumsScreen(
     viewModel:     AlbumsViewModel = hiltViewModel()
 ) {
     val folders    = viewModel.folders.collectAsLazyPagingItems()
+    val filterConfig by viewModel.filterConfig.collectAsState()
     val sortConfig by viewModel.folderSortConfig.collectAsState()
     var showSheet  by remember { mutableStateOf(false) }
 
@@ -66,6 +67,7 @@ fun AlbumsScreen(
             .background(MaterialTheme.colorScheme.background)
     ) {
         LazyVerticalGrid(
+            state = viewModel.gridState,
             columns               = GridCells.Fixed(2),
             contentPadding        = PaddingValues(
                 top    = 12.dp,   // app shell reserves room for the header
@@ -83,7 +85,7 @@ fun AlbumsScreen(
                 OmniSectionHeader(
                     title       = "Albums",
                     subtitle    = if (folders.itemCount > 0) "${folders.itemCount} albums" else null,
-                    actionLabel = "Sort",
+                    actionLabel = "Sort & Filter",
                     actionIcon  = Icons.Outlined.Sort,
                     onAction    = { showSheet = true },
                     modifier    = Modifier.padding(horizontal = 4.dp)
@@ -91,7 +93,7 @@ fun AlbumsScreen(
             }
 
             // ── Loading skeleton ───────────────────────────────────────────
-            if (folders.loadState.refresh is LoadState.Loading) {
+            if (folders.loadState.refresh is LoadState.Loading && folders.itemCount == 0) {
                 items(6) {
                     ShimmerBox(
                         modifier = Modifier
@@ -111,12 +113,12 @@ fun AlbumsScreen(
             } else {
                 items(
                     count = folders.itemCount,
-                    key   = { idx -> folders[idx]?.bucketId ?: "folder_$idx" }
+                    key   = { idx -> folders.peek(idx)?.bucketId ?: "folder_$idx" }
                 ) { idx ->
                     folders[idx]?.let { folder ->
                         AlbumCard(
                             folder  = folder,
-                            onClick = { onFolderClick(folder.bucketId) }
+                            onClick = { viewModel.prepareFolderNavigation(); onFolderClick(folder.bucketId) }
                         )
                     } ?: ShimmerBox(
                         modifier = Modifier
@@ -135,8 +137,9 @@ fun AlbumsScreen(
     if (showSheet) {
         com.omnimemoria.ui.components.filters.AlbumSortFilterSheetContent(
             currentSort = sortConfig,
+            currentFilter = filterConfig,
             onDismiss = { showSheet = false },
-            onApply = { viewModel.updateFolderSort(it); showSheet = false }
+            onApply = { sort, filter -> viewModel.updateFolderSort(sort, filter); showSheet = false }
         )
     }
 }
