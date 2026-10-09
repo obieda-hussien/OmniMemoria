@@ -81,6 +81,7 @@ fun HomeScreen(
     val galleryViewModel: GalleryViewModel = hiltViewModel()
     val mediaStats by galleryViewModel.mediaStats.collectAsState()
     val summaryLoaded by galleryViewModel.summaryLoaded.collectAsState()
+    val summaryLoadFailed by galleryViewModel.summaryLoadFailed.collectAsState()
     val isSelecting by galleryViewModel.isInSelectionMode.collectAsState()
     val dynamicAccent by galleryViewModel.dynamicAccent.collectAsState()
     val compactTopBar by galleryViewModel.compactTopBar.collectAsState()
@@ -163,7 +164,9 @@ fun HomeScreen(
             videosFormattedSize = videosFormattedSize,
             totalFormattedSize = totalFormattedSize,
             albumCount = mediaStats.albumCount,
-            isLoading = !summaryLoaded,
+            isLoading = !summaryLoaded && !summaryLoadFailed,
+            summaryLoadFailed = summaryLoadFailed,
+            onRetrySummary = galleryViewModel::retryHomeSummary,
             dynamicAccent = dynamicAccent,
             compactMode = compactTopBar || currentTab != HomeTab.GALLERY,
             onSettingsClick = onSettingsClick,
@@ -262,6 +265,8 @@ private fun OmniTopBar(
     totalFormattedSize: String,
     albumCount: Int,
     isLoading: Boolean,
+    summaryLoadFailed: Boolean,
+    onRetrySummary: () -> Unit,
     dynamicAccent: Color?,
     compactMode: Boolean,
     onSettingsClick: () -> Unit,
@@ -319,7 +324,13 @@ private fun OmniTopBar(
             }
             Spacer(modifier = Modifier.height(8.dp))
             if (isLoading) StatsShimmerRow()
-            else {
+            else if (summaryLoadFailed) {
+                TextButton(onClick = onRetrySummary) {
+                    Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Library unavailable · Retry")
+                }
+            } else {
                 AnimatedVisibility(
                     visible = !isLoading && !compactMode,
                     enter = fadeIn(tween(400)) + expandVertically()
