@@ -49,7 +49,13 @@ fun SettingsScreen(
     val ocrEnabled          = featureStates[FeatureFlag.OCR] == true
     var activeDownloadModel by remember { mutableStateOf<String?>(null) }
     val appContext = LocalContext.current
-    var remindersEnabled by remember(appContext) { mutableStateOf(OnThisDayWorker.isEnabled(appContext)) }
+    var remindersEnabled by remember(appContext) {
+        mutableStateOf(
+            OnThisDayWorker.isEnabled(appContext) &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(appContext, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+        )
+    }
     val requestNotificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
