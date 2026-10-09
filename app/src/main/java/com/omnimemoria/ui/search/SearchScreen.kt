@@ -3,6 +3,7 @@ package com.omnimemoria.ui.search
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -194,7 +195,7 @@ private fun OmniSearchBar(
                         Text(
                             HintTexts[idx],
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF5A587A)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -339,7 +340,7 @@ private fun IdleState(
                 .clip(RoundedCornerShape(20.dp))
                 .background(
                     Brush.horizontalGradient(
-                        listOf(Color(0xFF1A1830), Color(0xFF1E1C38))
+                        listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f))
                     )
                 )
                 .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.15f), RoundedCornerShape(20.dp))
@@ -366,7 +367,7 @@ private fun IdleState(
                         "Smarter search with AI",
                         style      = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color      = MaterialTheme.colorScheme.onBackground
+                        color      = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -394,7 +395,7 @@ private fun IdleState(
                         Text(
                             "Enable in Settings",
                             style      = MaterialTheme.typography.labelMedium,
-                            color      = Color(0xFF8B7FF5),
+                            color      = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -462,12 +463,21 @@ private fun QuickFilterCard(
     modifier: Modifier = Modifier,
     onClick:  () -> Unit
 ) {
+    val darkTheme = isSystemInDarkTheme()
+    // Light system themes need readable surfaces and text, not nighttime gradients.
+    val colors = if (darkTheme) gradient else listOf(
+        MaterialTheme.colorScheme.surfaceVariant,
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+    )
+    val contentColor = if (darkTheme) Color.White else MaterialTheme.colorScheme.onSurface
+    val secondaryColor = if (darkTheme) accent else MaterialTheme.colorScheme.onSurfaceVariant
+    val iconColor = if (darkTheme) accent else MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
             .aspectRatio(1.6f)
             .clip(RoundedCornerShape(18.dp))
-            .background(Brush.linearGradient(gradient))
-            .border(1.dp, accent.copy(alpha = 0.15f), RoundedCornerShape(18.dp))
+            .background(Brush.linearGradient(colors))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(18.dp))
             .combinedClickable(onClick = onClick)
             .padding(14.dp)
     ) {
@@ -483,7 +493,7 @@ private fun QuickFilterCard(
             Icon(
                 icon,
                 null,
-                tint     = accent,
+                tint     = iconColor,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -494,13 +504,13 @@ private fun QuickFilterCard(
                 title,
                 style      = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color      = Color.White
+                color      = contentColor
             )
             if (count != null) {
                 Text(
                     text  = "$count found",
                     style = MaterialTheme.typography.labelSmall,
-                    color = accent.copy(alpha = 0.8f)
+                    color = secondaryColor
                 )
             }
         }
@@ -509,7 +519,7 @@ private fun QuickFilterCard(
         Icon(
             Icons.Outlined.ChevronRight,
             null,
-            tint     = accent.copy(alpha = 0.4f),
+            tint     = secondaryColor,
             modifier = Modifier
                 .size(16.dp)
                 .align(Alignment.TopEnd)
