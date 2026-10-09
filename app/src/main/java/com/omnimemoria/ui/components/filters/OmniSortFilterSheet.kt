@@ -75,6 +75,36 @@ fun OmniSortFilterSheet(
 }
 
 @Composable
+fun SortOptionRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                else MaterialTheme.colorScheme.surface
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RadioButton(selected = selected, onClick = null)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
 fun SortOrderRow(
     currentOrder: SortOrder,
     onOrderChanged: (SortOrder) -> Unit,
