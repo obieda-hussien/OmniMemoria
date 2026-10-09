@@ -466,8 +466,8 @@ private fun QuickFilterCard(
     val darkTheme = isSystemInDarkTheme()
     // Light system themes need readable surfaces and text, not nighttime gradients.
     val colors = if (darkTheme) gradient else listOf(
-        MaterialTheme.colorScheme.surfaceVariant,
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+        accent.copy(alpha = 0.18f),
+        accent.copy(alpha = 0.08f)
     )
     val contentColor = if (darkTheme) Color.White else MaterialTheme.colorScheme.onSurface
     val secondaryColor = if (darkTheme) accent else MaterialTheme.colorScheme.onSurfaceVariant
