@@ -469,7 +469,7 @@ fun RealVaultGallery() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF060610))
+            .background(MaterialTheme.colorScheme.background)
     ) {
         LazyVerticalGrid(
             columns               = GridCells.Fixed(3),
@@ -556,8 +556,8 @@ private fun VaultGalleryHeader(isDecoy: Boolean, count: Int) {
     val shieldIcon = if (isDecoy) Icons.Outlined.LockOpen else Icons.Outlined.Shield
     val tint       = if (isDecoy) Color(0xFF50C878) else Color(0xFF8B7FF5)
     val badgeText  = if (isDecoy) "Unlocked" else "AES-256 Encrypted"
-    val badgeBg    = if (isDecoy) Color(0xFF0D2A14) else Color(0xFF2D26A0).copy(alpha = 0.3f)
-    val badgeFg    = if (isDecoy) Color(0xFF50C878) else Color(0xFF8B7FF5)
+    val badgeBg    = if (isDecoy) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer
+    val badgeFg    = if (isDecoy) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
 
     Row(
         modifier = Modifier
@@ -613,9 +613,9 @@ private fun VaultGalleryHeader(isDecoy: Boolean, count: Int) {
 
 @Composable
 private fun VaultSecurityBanner(isDecoy: Boolean, modifier: Modifier = Modifier) {
-    val bg   = if (isDecoy) Color(0xFF0D2A14) else MaterialTheme.colorScheme.surfaceVariant
+    val bg   = if (isDecoy) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant
     val icon = if (isDecoy) Icons.Outlined.LockOpen else Icons.Outlined.Shield
-    val tint = if (isDecoy) Color(0xFF50C878) else Color(0xFF8B7FF5)
+    val tint = if (isDecoy) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.primary
     val text = if (isDecoy) "Showing decoy photos"
                else "AES-256 · Screenshots blocked"
 
@@ -634,7 +634,7 @@ private fun VaultSecurityBanner(isDecoy: Boolean, modifier: Modifier = Modifier)
             Text(
                 text,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (isDecoy) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
