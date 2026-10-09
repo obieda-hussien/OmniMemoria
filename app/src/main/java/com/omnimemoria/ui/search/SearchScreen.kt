@@ -83,8 +83,6 @@ fun SearchScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .padding(top = HomeTopOverlaySpacing)
         ) {
 
             // ── Search bar (تغليف احترافي يمنع تداخل العناصر أثناء التمرير) ──
@@ -160,7 +158,6 @@ private fun OmniSearchBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding() // يعطي الطول المناسب التلقائي بناءً على حجم شريط حالة نظام أندرويد لحمايته بالكامل
             .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp) // تقليل الـ padding الفوق ليتناسق بدقة وبدون تباعد عشوائي
     ) {
         Row(
