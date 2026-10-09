@@ -79,6 +79,7 @@ fun HomeScreen(
 ) {
     val galleryViewModel: GalleryViewModel = hiltViewModel()
     val mediaStats by galleryViewModel.mediaStats.collectAsState()
+    val summaryLoaded by galleryViewModel.summaryLoaded.collectAsState()
     val isSelecting by galleryViewModel.isInSelectionMode.collectAsState()
     val dynamicAccent by galleryViewModel.dynamicAccent.collectAsState()
     val compactTopBar by galleryViewModel.compactTopBar.collectAsState()
@@ -150,7 +151,7 @@ fun HomeScreen(
             videosFormattedSize = videosFormattedSize,
             totalFormattedSize = totalFormattedSize,
             albumCount = mediaStats.albumCount,
-            isLoading = mediaStats.totalCount == 0 && mediaStats.totalSizeBytes == 0L,
+            isLoading = !summaryLoaded,
             dynamicAccent = dynamicAccent,
             compactMode = compactTopBar || currentTab != HomeTab.GALLERY,
             onSettingsClick = onSettingsClick,
