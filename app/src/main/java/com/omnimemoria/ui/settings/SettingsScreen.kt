@@ -1,5 +1,12 @@
 package com.omnimemoria.ui.settings
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.omnimemoria.data.worker.ModelDownloadWorker
+import com.omnimemoria.data.worker.OnThisDayWorker
 import com.omnimemoria.domain.flags.FeatureFlag
 import com.omnimemoria.ui.components.OmniDetailTopBar
 import com.omnimemoria.ui.components.OmniSettingsGroup
@@ -40,6 +48,27 @@ fun SettingsScreen(
     val modelDownloadStates by viewModel.modelDownloadStates.collectAsState()
     val ocrEnabled          = featureStates[FeatureFlag.OCR] == true
     var activeDownloadModel by remember { mutableStateOf<String?>(null) }
+    val appContext = LocalContext.current
+    var remindersEnabled by remember(appContext) { mutableStateOf(OnThisDayWorker.isEnabled(appContext)) }
+    val requestNotificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            OnThisDayWorker.setEnabled(appContext, true)
+            remindersEnabled = true
+        }
+    }
+
+    fun setReminders(enabled: Boolean) {
+        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(appContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            OnThisDayWorker.setEnabled(appContext, enabled)
+            remindersEnabled = enabled
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -70,6 +99,19 @@ fun SettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+
+            item {
+                OmniSettingsGroup(title = "Notifications", icon = Icons.Outlined.NotificationsActive) {
+                    OmniFeatureToggleItem(
+                        title = "On This Day reminders",
+                        subtitle = "Optional daily memories. Android notification access is required.",
+                        icon = Icons.Outlined.Notifications,
+                        checked = remindersEnabled,
+                        onCheckedChange = ::setReminders,
+                        isLast = true
+                    )
+                }
+            }
 
             item {
                 OmniSettingsGroup(title = "AI Features", icon = Icons.Outlined.AutoAwesome) {
