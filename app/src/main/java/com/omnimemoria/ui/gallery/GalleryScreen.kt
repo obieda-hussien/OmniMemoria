@@ -1,6 +1,5 @@
 package com.omnimemoria.ui.gallery
 import com.omnimemoria.domain.model.FilterConfig
-import com.omnimemoria.domain.model.MediaType
 
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -16,8 +15,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -46,7 +43,6 @@ import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import com.omnimemoria.domain.model.GroupBy
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
 import com.omnimemoria.domain.model.SortOrder
@@ -58,7 +54,6 @@ import com.omnimemoria.ui.components.OmniEmptyState
 import com.omnimemoria.ui.components.ShimmerBox
 import com.omnimemoria.ui.detail.photosBoundsTransform
 import com.omnimemoria.ui.photoSharedKey
-import com.omnimemoria.ui.theme.OmniSheetContainerColor
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import kotlinx.coroutines.launch
