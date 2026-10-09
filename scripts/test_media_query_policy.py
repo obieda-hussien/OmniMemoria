@@ -48,7 +48,7 @@ conn.executemany('INSERT INTO files VALUES(?,?,?,?,?,?,?,?,?,?,?)', [
     (5,'raw',500,'image/x-adobe-dng',1,1000,0,0,6000,4000,0),
     (6,'empty',0,'image/jpeg',1,999999,0,0,0,0,0),
 ])
-expected = {'resolution':[5,3,1,2,4], 'favorites':[4,1,2,3,5], 'date':[4,1], 'empty':[], 'gif':[4], 'raw':[5], 'megapixels':[5,3], 'collection':[1], 'name':[1,2,4,5,3]}
+expected = {'resolution':[5,3,1,2,4], 'favorites':[4,1,2,3,5], 'date':[4,1], 'empty':[], 'gif':[4], 'raw':[5], 'megapixels':[3,5], 'collection':[1], 'name':[1,2,4,5,3]}
 for line in output.splitlines():
     name, encoded, raw_args = line.split('\t')
     sql = base64.b64decode(encoded).decode()

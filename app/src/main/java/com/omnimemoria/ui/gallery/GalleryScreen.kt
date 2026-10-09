@@ -459,11 +459,13 @@ internal fun GallerySortFilterSheet(
     currentFilter: FilterConfig,
     currentSort: SortConfig,
     onDismiss: () -> Unit,
-    onApply: (SortConfig, FilterConfig) -> Unit
+    onApply: (SortConfig, FilterConfig) -> Unit,
+    showGrouping: Boolean = true
 ) {
     com.omnimemoria.ui.components.filters.GallerySortFilterSheetContent(
         currentFilter = currentFilter,
         currentSort = currentSort,
+        showGrouping = showGrouping,
         onDismiss = onDismiss,
         onApply = onApply
     )

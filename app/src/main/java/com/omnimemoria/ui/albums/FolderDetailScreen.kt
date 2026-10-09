@@ -232,6 +232,7 @@ fun FolderDetailScreen(
         com.omnimemoria.ui.components.filters.GallerySortFilterSheetContent(
             currentSort = sortConfig,
             currentFilter = filterConfig,
+        showGrouping = false,
             onDismiss = { showSortSheet = false },
             onApply = { sort, filter -> viewModel.updateSortAndFilter(sort, filter); showSortSheet = false }
         )

@@ -147,7 +147,8 @@ fun FavoritesScreen(
         }
     }
     if (showSortSheet) com.omnimemoria.ui.gallery.GallerySortFilterSheet(
-        currentFilter = filter, currentSort = sort, onDismiss = { showSortSheet = false },
+        currentFilter = filter, currentSort = sort,
+        showGrouping = false, onDismiss = { showSortSheet = false },
         onApply = { sort, filter -> viewModel.updateSortAndFilter(sort, filter); showSortSheet = false }
     )
 

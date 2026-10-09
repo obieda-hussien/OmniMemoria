@@ -155,6 +155,7 @@ fun SearchScreen(
     }
     if (showSortSheet) GallerySortFilterSheet(
         currentFilter = filter, currentSort = sort,
+        showGrouping = false,
         onDismiss = { showSortSheet = false },
         onApply = { sort, filter -> viewModel.updateSortAndFilter(sort, filter); showSortSheet = false }
     )

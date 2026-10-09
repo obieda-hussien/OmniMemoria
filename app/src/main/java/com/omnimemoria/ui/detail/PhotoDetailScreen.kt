@@ -50,7 +50,7 @@ import com.omnimemoria.ui.components.OmniMediaTopBar
 import com.omnimemoria.ui.photoSharedKey
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableState
-import me.saket.telephoto.zoomable.image.rememberZoomableImageState
+import me.saket.telephoto.zoomable.rememberZoomableImageState
 import androidx.compose.runtime.saveable.rememberSaveable
 import java.text.SimpleDateFormat
 import java.util.Date
