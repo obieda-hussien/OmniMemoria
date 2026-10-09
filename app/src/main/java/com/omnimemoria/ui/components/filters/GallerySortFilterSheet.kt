@@ -30,7 +30,8 @@ fun GallerySortFilterSheetContent(
 
     OmniSortFilterSheet(
         title = "Sort & Filter",
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        footer = { ApplyButton(onApply = { onApply(currentSort.copy(sortBy = sortBy, sortOrder = sortOrder, groupBy = groupBy), filterBy) }, onCancel = onDismiss) }
     ) {
         // --- SORTING SECTION ---
         Text("Sort By", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -48,18 +49,12 @@ fun GallerySortFilterSheetContent(
                 SortBy.FAVORITES_FIRST to "Favorites First"
             )
 
-            options.forEach { (optionSortBy, label) ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clickable { sortBy = optionSortBy },
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(label)
-                    RadioButton(
-                        selected = sortBy == optionSortBy,
-                        onClick = { sortBy = optionSortBy }
-                    )
-                }
+            options.forEach { (candidate, label) ->
+                SortOptionRow(
+                    label = label,
+                    selected = sortBy == candidate,
+                    onClick = { sortBy = candidate }
+                )
             }
         }
 
@@ -73,24 +68,22 @@ fun GallerySortFilterSheetContent(
         Text("Group By", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.horizontalScroll(rememberScrollState())
-        ) {
-            val groupOptions = listOf(
-                null to "None",
-                GroupBy.DAY to "Day",
-                GroupBy.MONTH to "Month",
-                GroupBy.YEAR to "Year",
-                GroupBy.LOCATION to "Location"
-            )
-
-            groupOptions.forEach { (optionGroupBy, label) ->
-                FilterChip(
-                    selected = groupBy == optionGroupBy,
-                    onClick = { groupBy = optionGroupBy },
-                    label = { Text(label) }
-                )
+        val groupOptions = listOf(
+            null to "None",
+            GroupBy.DAY to "Day",
+            GroupBy.MONTH to "Month",
+            GroupBy.YEAR to "Year",
+            GroupBy.LOCATION to "Location"
+        )
+        groupOptions.chunked(3).forEach { groupRow ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                groupRow.forEach { (candidate, label) ->
+                    FilterChip(
+                        selected = groupBy == candidate,
+                        onClick = { groupBy = candidate },
+                        label = { Text(label) }
+                    )
+                }
             }
         }
 
@@ -102,28 +95,22 @@ fun GallerySortFilterSheetContent(
         Text("Media Type", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.horizontalScroll(rememberScrollState())
-        ) {
-            MediaType.entries.forEach { mediaType ->
-                val isSelected = filterBy.mediaTypes.contains(mediaType)
-                FilterChip(
-                    selected = isSelected,
-                    onClick = {
-                        val newTypes = if (isSelected) filterBy.mediaTypes - mediaType else filterBy.mediaTypes + mediaType
-                        filterBy = filterBy.copy(mediaTypes = newTypes)
-                    },
-                    label = { Text(mediaType.name.lowercase().replaceFirstChar { it.uppercase() }) }
-                )
+        MediaType.entries.chunked(2).forEach { mediaRow ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                mediaRow.forEach { mediaType ->
+                    val isSelected = filterBy.mediaTypes.contains(mediaType)
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = {
+                            val newTypes = if (isSelected) filterBy.mediaTypes - mediaType
+                                           else filterBy.mediaTypes + mediaType
+                            filterBy = filterBy.copy(mediaTypes = newTypes)
+                        },
+                        label = { Text(mediaType.name.lowercase().replaceFirstChar { it.uppercase() }) }
+                    )
+                }
             }
         }
 
-        ApplyButton(
-            onApply = {
-                onApply(currentSort.copy(sortBy = sortBy, sortOrder = sortOrder, groupBy = groupBy), filterBy)
-            },
-            onCancel = onDismiss
-        )
     }
 }
