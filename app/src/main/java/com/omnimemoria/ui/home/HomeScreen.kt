@@ -120,18 +120,18 @@ fun HomeScreen(
         ) {
             composable(
                 route = HomeTab.GALLERY.route,
-                enterTransition = { slideInHorizontally { -it / 4 } + fadeIn(tween(200)) },
-                exitTransition = { slideOutHorizontally { it / 4 } + fadeOut(tween(200)) }
+                enterTransition = { slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { -it / 10 } + fadeIn(tween(220)) },
+                exitTransition = { slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing)) { it / 10 } + fadeOut(tween(180)) }
             ) { GalleryScreen(onPhotoClick = onPhotoClick, viewModel = galleryViewModel) }
             composable(
                 route = HomeTab.ALBUMS.route,
-                enterTransition = { slideInHorizontally { it / 4 } + fadeIn(tween(200)) },
-                exitTransition = { slideOutHorizontally { -it / 4 } + fadeOut(tween(200)) }
+                enterTransition = { slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(220)) }
+                exitTransition = { slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing)) { -it / 10 } + fadeOut(tween(180)) }
             ) { AlbumsScreen(onFolderClick = onFolderClick) }
             composable(
                 route = HomeTab.SEARCH.route,
-                enterTransition = { slideInHorizontally { it / 4 } + fadeIn(tween(200)) },
-                exitTransition = { slideOutHorizontally { -it / 4 } + fadeOut(tween(200)) }
+                enterTransition = { slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(220)) }
+                exitTransition = { slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing)) { -it / 10 } + fadeOut(tween(180)) }
             ) {
                 SearchScreen(
                     onPhotoClick = { onPhotoClick(it) },
@@ -650,8 +650,8 @@ private fun OmniBottomNav(
                     onClick = { onTabSelected(tab) },
                     icon = {
                         val scale by animateFloatAsState(
-                            targetValue = if (selected) 1.15f else 1f,
-                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                            targetValue = if (selected) 1.08f else 1f,
+                            animationSpec = tween(180, easing = FastOutSlowInEasing),
                             label = "tab_scale_${tab.route}"
                         )
                         Icon(
@@ -662,7 +662,7 @@ private fun OmniBottomNav(
                                 HomeTab.VAULT -> if (selected) Icons.Filled.Lock else Icons.Outlined.Lock
                             },
                             contentDescription = tab.label,
-                            modifier = Modifier.size(if (selected) 24.dp else 22.dp).scale(scale),
+                            modifier = Modifier.size(24.dp).scale(scale),
                             tint = if (selected) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
