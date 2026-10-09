@@ -47,20 +47,8 @@ import com.omnimemoria.ui.theme.AmberVibe
 import com.omnimemoria.ui.theme.RoseMemory
 import kotlinx.coroutines.delay
 
-// ── Vibe data ──────────────────────────────────────────────────────────────────
-
-private data class VibeEntry(val emoji: String, val label: String, val color: Color)
-
-private val Vibes = listOf(
-    VibeEntry("🌅", "Golden\nHour",   AmberVibe),
-    VibeEntry("🌊", "Quiet\nMoments", Color(0xFF2D26A0)),
-    VibeEntry("❤️", "People",         RoseMemory),
-    VibeEntry("🌿", "Nature",         Color(0xFF1B6B3A)),
-    VibeEntry("🏙️", "City Life",     Color(0xFF333355)),
-    VibeEntry("🌙", "Night Shots",    Color(0xFF1A1040))
-)
-
-// ─────────────────────────────────────────────────────────────────────────────
+// Albums only show working actions. Curated 'Vibe' collections can return once indexed
+// and backed by real filters instead of placeholder cards.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,11 +77,6 @@ fun AlbumsScreen(
             verticalArrangement   = Arrangement.spacedBy(10.dp),
             modifier              = Modifier.fillMaxSize()
         ) {
-
-            // ── Vibe albums ────────────────────────────────────────────────
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                VibesSection()
-            }
 
             // ── Albums section header ──────────────────────────────────────
             item(span = { GridItemSpan(maxLineSpan) }) {
@@ -133,7 +116,6 @@ fun AlbumsScreen(
                     folders[idx]?.let { folder ->
                         AlbumCard(
                             folder  = folder,
-                            index   = idx,
                             onClick = { onFolderClick(folder.bucketId) }
                         )
                     } ?: ShimmerBox(
@@ -159,174 +141,66 @@ fun AlbumsScreen(
     }
 }
 
-// ── Vibe albums row ────────────────────────────────────────────────────────────
-
-@Composable
-private fun VibesSection() {
-    Column {
-        OmniSectionHeader(
-            title       = "Vibe Albums",
-            actionLabel = "See all",
-            onAction    = { /* TODO: navigate to vibe albums full list */ },
-            modifier    = Modifier.padding(horizontal = 4.dp)
-        )
-
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding        = PaddingValues(vertical = 4.dp)
-        ) {
-            items(Vibes) { vibe ->
-                VibeCard(vibe = vibe)
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-        HorizontalDivider(
-            color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-            thickness = 0.5.dp
-        )
-        Spacer(Modifier.height(4.dp))
-    }
-}
-
-@Composable
-private fun VibeCard(vibe: VibeEntry) {
-    Box(
-        modifier = Modifier
-            .width(110.dp)
-            .height(130.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(vibe.color, vibe.color.copy(alpha = 0.65f))
-                )
-            )
-            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
-            .clickable(onClick = {})
-            .padding(14.dp),
-        contentAlignment = Alignment.BottomStart
-    ) {
-        Column {
-            Text(vibe.emoji, fontSize = 26.sp)
-            Spacer(Modifier.height(5.dp))
-            Text(
-                text       = vibe.label,
-                style      = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color      = Color.White,
-                lineHeight = 18.sp
-            )
-        }
-    }
-}
-
 // ── Album card ─────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AlbumCard(folder: MediaFolder, index: Int, onClick: () -> Unit) {
-    var menuExpanded by remember { mutableStateOf(false) }
+private fun AlbumCard(folder: MediaFolder, onClick: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-
-    // Staggered entrance
-    val offsetY = remember { Animatable(28f) }
-    LaunchedEffect(folder.bucketId) {
-        delay(index * 38L)
-        offsetY.animateTo(0f, spring(stiffness = Spring.StiffnessLow))
+    // Coil resolves the real grid cell dimensions; don't decode every cover at fixed 400x400.
+    val coverRequest = remember(folder.coverUri, context) {
+        ImageRequest.Builder(context).data(folder.coverUri).build()
     }
-    val scale by animateFloatAsState(
-        targetValue   = if (menuExpanded) 0.96f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label         = "album_scale"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .graphicsLayer { translationY = offsetY.value; scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(20.dp))  // <- unified 20dp everywhere
-            .combinedClickable(
-                onClick     = onClick,
-                onLongClick = { menuExpanded = true }
-            )
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = 1.dp
     ) {
-        // Cover image -- bound decode to 2x cell size (~200dp * 2 = 400dp)
-        AsyncImage(
-            model              = ImageRequest.Builder(context).data(folder.coverUri).size(Size(400, 400)).build(),
-            contentDescription = folder.name,
-            contentScale       = ContentScale.Crop,
-            modifier           = Modifier.fillMaxSize()
-        )
-
-        // Bottom scrim
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f   to Color.Transparent,
-                        0.5f to Color.Transparent,
-                        1f   to Color.Black.copy(alpha = 0.72f)
-                    )
-                )
-        )
-
-        // Folder name + count
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
-        ) {
-            Text(
-                text       = folder.name,
-                style      = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color      = Color.White,
-                maxLines   = 1
+        Box(modifier = Modifier.fillMaxSize()) {
+            AsyncImage(
+                model = coverRequest,
+                contentDescription = folder.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
             )
-            Spacer(Modifier.height(3.dp))
+            // One subtle scrim keeps album captions legible regardless of cover brightness.
             Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White.copy(alpha = 0.18f))
-                    .padding(horizontal = 7.dp, vertical = 2.dp)
+                modifier = Modifier.fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.52f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.76f)
+                        )
+                    )
+            )
+            Row(
+                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text       = "${folder.photoCount}",
-                    style      = MaterialTheme.typography.labelSmall,
-                    color      = Color.White.copy(alpha = 0.9f),
-                    fontWeight = FontWeight.Medium
+                    text = folder.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f)
                 )
-            }
-        }
-
-        // Context menu
-        Box(modifier = Modifier.align(Alignment.TopEnd)) {
-            IconButton(
-                onClick  = { menuExpanded = true },
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    Icons.Outlined.MoreVert,
-                    contentDescription = "More",
-                    tint     = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            DropdownMenu(
-                expanded         = menuExpanded,
-                onDismissRequest = { menuExpanded = false },
-                containerColor   = MaterialTheme.colorScheme.surface
-            ) {
-                DropdownMenuItem(
-                    text    = { Text("Share All", color = MaterialTheme.colorScheme.onSurface) },
-                    onClick = { menuExpanded = false }
-                )
-                DropdownMenuItem(
-                    text    = { Text("Select", color = MaterialTheme.colorScheme.onSurface) },
-                    onClick = { menuExpanded = false }
-                )
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(9.dp),
+                    color = Color.Black.copy(alpha = 0.48f)
+                ) {
+                    Text(
+                        text = "${folder.photoCount}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
         }
     }
