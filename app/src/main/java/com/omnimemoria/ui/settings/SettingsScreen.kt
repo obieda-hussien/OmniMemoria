@@ -529,7 +529,7 @@ private val AI_MODEL_ITEMS = listOf(
 )
 
 private val SECURITY_FEATURE_ITEMS = listOf(
-    FeatureItem("Encrypted Vault",          FeatureFlag.VAULT,          Icons.Outlined.Lock),
+    FeatureItem("Vault PIN Preview",       FeatureFlag.VAULT,          Icons.Outlined.Lock, "PIN demo only · encrypted photo storage unavailable"),
     FeatureItem("Hidden Photo Notes",       FeatureFlag.SILENT_STORY,   Icons.Outlined.VisibilityOff),
     FeatureItem("Memory Map",               FeatureFlag.MEMORY_MAP,     Icons.Outlined.Map)
 )
