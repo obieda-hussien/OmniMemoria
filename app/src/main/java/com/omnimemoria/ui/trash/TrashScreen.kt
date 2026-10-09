@@ -202,7 +202,7 @@ fun TrashScreen(
         ) {
             AlertDialog(
                 onDismissRequest = { showEmptyConfirm = false },
-                containerColor   = Color(0xFF1E1C30),
+                containerColor   = MaterialTheme.colorScheme.surface,
                 titleContentColor = MaterialTheme.colorScheme.onBackground,
                 textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 title = { Text("Empty Recycle Bin?", fontWeight = FontWeight.Bold) },
@@ -230,7 +230,7 @@ fun TrashScreen(
             itemToDelete?.let { item ->
                 AlertDialog(
                     onDismissRequest = { itemToDelete = null },
-                    containerColor   = Color(0xFF1E1C30),
+                    containerColor   = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onBackground,
                     textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     title = { Text("Delete permanently?", fontWeight = FontWeight.Bold) },
@@ -391,8 +391,8 @@ private fun TrashItemCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF1E1C30))
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
