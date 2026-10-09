@@ -255,8 +255,8 @@ private fun PhotoPager(
         // Top bar
         AnimatedVisibility(
             visible  = showChrome,
-            enter    = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-            exit     = slideOutVertically(targetOffsetY  = { -it }) + fadeOut(),
+            enter    = slideInVertically(tween(200), initialOffsetY = { -it }) + fadeIn(tween(160)),
+            exit     = slideOutVertically(tween(160), targetOffsetY = { -it }) + fadeOut(tween(160)),
             modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
         ) {
             OmniMediaTopBar(
@@ -309,7 +309,7 @@ private fun PhotoPager(
             visible  = showChrome && photoList.size > 1,
             enter    = fadeIn(),
             exit     = fadeOut(),
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 92.dp)
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 92.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -344,8 +344,8 @@ private fun PhotoPager(
         // Bottom actions
         AnimatedVisibility(
             visible  = showChrome,
-            enter    = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit     = slideOutVertically(targetOffsetY  = { it }) + fadeOut(),
+            enter    = slideInVertically(tween(200), initialOffsetY = { it }) + fadeIn(tween(160)),
+            exit     = slideOutVertically(tween(160), targetOffsetY = { it }) + fadeOut(tween(160)),
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
         ) {
             val heartScale by animateFloatAsState(
@@ -424,7 +424,7 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
                 Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
             }
             Spacer(Modifier.width(10.dp))
-            Text("Photo Details", color = MaterialTheme.colorScheme.onSurface,
+            Text("Media details", color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.8.sp)
         }

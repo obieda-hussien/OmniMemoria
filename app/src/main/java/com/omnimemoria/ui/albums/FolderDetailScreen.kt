@@ -256,7 +256,7 @@ private fun FolderHeroCard(
         ) {
         Box(modifier = Modifier.size(64.dp).clip(RoundedCornerShape(16.dp))) {
             if (folder != null) {
-                // Bound decode to 2x the displayed size (80dp * 2 = ~160dp at mdpi)
+                // Keep cover decoding bounded for low-memory devices.
                 AsyncImage(
                     model              = ImageRequest.Builder(context).data(folder.coverUri).size(Size(320, 320)).build(),
                     contentDescription = folder.name,
