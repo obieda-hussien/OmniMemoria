@@ -112,11 +112,6 @@ class VaultPinViewModel @Inject constructor(
                 _pinState.value = PinUiState(step = PinStep.UNLOCKING, success = true, message = null)
                 // 3. تحديث لفتح الخزنة الحقيقية عند تطابق الـ PIN
                 _unlockedAs.value = UnlockType.REAL
-            } else if (typed == "0000") { 
-                // 4. رمز افتراضي مؤقت لفتح الخزنة الوهمية (Decoy Vault) للتجربة والـ Testing
-                _attemptsLeft.value = 5
-                _pinState.value = PinUiState(step = PinStep.UNLOCKING, success = true, message = null)
-                _unlockedAs.value = UnlockType.DECOY
             } else {
                 val left = (_attemptsLeft.value - 1).coerceAtLeast(0)
                 _attemptsLeft.value = left
