@@ -148,8 +148,8 @@ fun GalleryScreen(
             state             = gridState,
             columns           = GridCells.Fixed(columnCount),
             contentPadding    = PaddingValues(
-                top    = 112.dp,
-                bottom = 130.dp,
+                top    = 12.dp,
+                bottom = 24.dp,
                 start  = 6.dp,
                 end    = 6.dp
             ),
