@@ -7,6 +7,9 @@ import android.os.Parcelable
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
+import androidx.core.view.WindowCompat
 
 import com.omnimemoria.ui.navigation.AppNavGraph
 import com.omnimemoria.ui.theme.OmniMemoriaTheme
@@ -42,7 +45,15 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            OmniMemoriaTheme {
+            val darkTheme = isSystemInDarkTheme()
+            // Update system bar icon contrast every time Android changes its UI mode.
+            SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+            }
+            OmniMemoriaTheme(darkTheme = darkTheme) {
                 var permissionsGranted by remember { mutableStateOf(false) }
 
                 if (permissionsGranted) {
