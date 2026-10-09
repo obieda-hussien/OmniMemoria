@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.grid.items
@@ -25,6 +27,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -394,10 +398,11 @@ private fun PinPad(onDigit: (Int) -> Unit, onDelete: () -> Unit) {
         listOf("","0","⌫")
     )
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        rows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                row.forEach { key ->
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            rows.forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    row.forEach { key ->
                     if (key.isEmpty()) {
                         Spacer(Modifier.size(72.dp))
                     } else {
@@ -408,6 +413,7 @@ private fun PinPad(onDigit: (Int) -> Unit, onDelete: () -> Unit) {
                             onClick  = { if (isDelete) onDelete() else onDigit(key.toInt()) }
                         )
                     }
+                    }
                 }
             }
         }
@@ -417,10 +423,11 @@ private fun PinPad(onDigit: (Int) -> Unit, onDelete: () -> Unit) {
 @Composable
 private fun PinKey(label: String, isDelete: Boolean, onClick: () -> Unit) {
     val haptic = LocalHapticFeedback.current
-    var pressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
 
     val scale by animateFloatAsState(
-        targetValue   = if (pressed) 0.88f else 1f,
+        targetValue   = if (pressed) 0.94f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label         = "key_scale"
     )
@@ -440,7 +447,7 @@ private fun PinKey(label: String, isDelete: Boolean, onClick: () -> Unit) {
                 else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 CircleShape
             )
-            .clickable {
+            .clickable(interactionSource = interactionSource, indication = null) {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             },
