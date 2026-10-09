@@ -38,7 +38,6 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Size
-import com.omnimemoria.domain.model.FolderSortConfig
 import com.omnimemoria.domain.model.MediaFolder
 import com.omnimemoria.ui.components.OmniActionChip
 import com.omnimemoria.ui.components.OmniEmptyState
