@@ -276,7 +276,14 @@ fun VaultPinScreen(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(Modifier.height(36.dp))
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "PIN preview only · encrypted photo storage isn't available yet",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(24.dp))
 
             if (state.step == PinStep.LOCKED_OUT) {
                 // ── Lockout ring ──────────────────────────────────────────
@@ -461,268 +468,51 @@ private fun PinKey(label: String, isDelete: Boolean, onClick: () -> Unit) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// REAL VAULT GALLERY
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Vault storage placeholder ─────────────────────────────────────────────────
+// There is currently no encrypted media repository; never fabricate protected
+// thumbnails, a file count or an "AES-256 encrypted" badge in the UI.
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RealVaultGallery() {
-    val placeholderCount = 7
+fun RealVaultGallery() { VaultStorageUnavailable() }
 
+@Composable
+fun DecoyVaultGallery() { VaultStorageUnavailable() }
+
+@Composable
+private fun VaultStorageUnavailable() {
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        LazyVerticalGrid(
-            columns               = GridCells.Fixed(3),
-            contentPadding        = PaddingValues(
-                top    = 0.dp,
-                bottom = 100.dp,
-                start  = 3.dp,
-                end    = 3.dp
-            ),
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalArrangement   = Arrangement.spacedBy(3.dp),
-            modifier              = Modifier.fillMaxSize()
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                VaultGalleryHeader(isDecoy = false, count = placeholderCount)
-            }
-            items(placeholderCount) { idx ->
-                EncryptedPhotoCell(index = idx)
-            }
-            item {
-                AddToVaultCell()
-            }
-        }
-
-        VaultSecurityBanner(
-            isDecoy  = false,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 90.dp)
-        )
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DECOY VAULT GALLERY
-// ─────────────────────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun DecoyVaultGallery() {
-    val placeholderCount = 3
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        LazyVerticalGrid(
-            columns               = GridCells.Fixed(3),
-            contentPadding        = PaddingValues(
-                top    = 0.dp,
-                bottom = 100.dp,
-                start  = 3.dp,
-                end    = 3.dp
-            ),
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalArrangement   = Arrangement.spacedBy(3.dp),
-            modifier              = Modifier.fillMaxSize()
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                VaultGalleryHeader(isDecoy = true, count = placeholderCount)
-            }
-            items(placeholderCount) { idx ->
-                NormalDecoyCell(index = idx)
-            }
-            item { AddToVaultCell() }
-        }
-
-        VaultSecurityBanner(
-            isDecoy  = true,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 90.dp)
-        )
-    }
-}
-
-// ── Shared sub-composables ─────────────────────────────────────────────────────
-
-@Composable
-private fun VaultGalleryHeader(isDecoy: Boolean, count: Int) {
-    val shieldIcon = if (isDecoy) Icons.Outlined.LockOpen else Icons.Outlined.Shield
-    val tint       = if (isDecoy) Color(0xFF50C878) else Color(0xFF8B7FF5)
-    val badgeText  = if (isDecoy) "Unlocked" else "AES-256 Encrypted"
-    val badgeBg    = if (isDecoy) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer
-    val badgeFg    = if (isDecoy) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment     = Alignment.CenterVertically
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(tint.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(shieldIcon, null, tint = tint, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.width(10.dp))
-            Column {
-                Text(
-                    "Vault",
-                    style      = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color      = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    "$count photo${if (count != 1) "s" else ""}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(badgeBg)
-                .border(1.dp, badgeFg.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
-                .padding(horizontal = 12.dp, vertical = 5.dp)
-        ) {
-            Text(
-                badgeText,
-                style      = MaterialTheme.typography.labelSmall,
-                color      = badgeFg,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
-}
-
-@Composable
-private fun VaultSecurityBanner(isDecoy: Boolean, modifier: Modifier = Modifier) {
-    val bg   = if (isDecoy) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant
-    val icon = if (isDecoy) Icons.Outlined.LockOpen else Icons.Outlined.Shield
-    val tint = if (isDecoy) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.primary
-    val text = if (isDecoy) "Showing decoy photos"
-               else "AES-256 · Screenshots blocked"
-
-    Box(modifier = modifier.padding(horizontal = 16.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(bg)
-                .border(1.dp, tint.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))
-            Text(
-                text,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isDecoy) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun EncryptedPhotoCell(index: Int) {
-    val tones = listOf(
-        Color(0xFF12213A), Color(0xFF20123A), Color(0xFF12221A),
-        Color(0xFF22180A), Color(0xFF0A2018), Color(0xFF181820), Color(0xFF220F18)
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(6.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(tones[index % tones.size], tones[index % tones.size].copy(alpha = 0.7f))
-                )
-            )
-    ) {
-        Icon(
-            Icons.Outlined.Shield,
-            null,
-            tint     = Color(0xFF8B7FF5).copy(alpha = 0.35f),
-            modifier = Modifier
-                .size(16.dp)
-                .align(Alignment.TopEnd)
-                .padding(top = 5.dp, end = 5.dp)
-        )
-    }
-}
-
-@Composable
-private fun NormalDecoyCell(index: Int) {
-    val tones = listOf(
-        Color(0xFF0D3020), Color(0xFF1A0D3A), Color(0xFF3A1A0D)
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(6.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(tones[index % tones.size], tones[index % tones.size].copy(alpha = 0.6f))
-                )
-            )
-    )
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun AddToVaultCell() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(6.dp))
-            .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.25f), RoundedCornerShape(6.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .combinedClickable(onClick = {}),
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
             Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF8B7FF5).copy(alpha = 0.16f))
-                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.25f), CircleShape),
+                modifier = Modifier.size(72.dp).clip(RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Filled.Add,
-                    null,
-                    tint     = Color(0xFF8B7FF5),
-                    modifier = Modifier.size(18.dp)
+                    Icons.Outlined.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(32.dp)
                 )
             }
-            Spacer(Modifier.height(5.dp))
             Text(
-                "Add",
-                style  = MaterialTheme.typography.labelSmall,
-                color  = Color(0xFF8B7FF5)
+                "Private gallery is not ready",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                "PIN verification is only a preview. Encrypted photo storage and import are not implemented. Your existing gallery photos haven't been moved or hidden.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
         }
     }
