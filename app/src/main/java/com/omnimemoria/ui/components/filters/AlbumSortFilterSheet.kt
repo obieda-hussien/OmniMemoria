@@ -22,7 +22,8 @@ fun AlbumSortFilterSheetContent(
 
     OmniSortFilterSheet(
         title = "Sort Albums",
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        footer = { ApplyButton(onApply = { onApply(FolderSortConfig(sortBy = sortBy, sortOrder = sortOrder)) }, onCancel = onDismiss) }
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val options = listOf(
@@ -31,18 +32,12 @@ fun AlbumSortFilterSheetContent(
                 FolderSortBy.PHOTO_COUNT to "Photo Count"
             )
 
-            options.forEach { (optionSortBy, label) ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clickable { sortBy = optionSortBy },
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(label)
-                    RadioButton(
-                        selected = sortBy == optionSortBy,
-                        onClick = { sortBy = optionSortBy }
-                    )
-                }
+            options.forEach { (candidate, label) ->
+                SortOptionRow(
+                    label = label,
+                    selected = sortBy == candidate,
+                    onClick = { sortBy = candidate }
+                )
             }
         }
 
@@ -51,11 +46,5 @@ fun AlbumSortFilterSheetContent(
         Spacer(Modifier.height(12.dp))
         SortOrderRow(currentOrder = sortOrder, onOrderChanged = { sortOrder = it })
 
-        ApplyButton(
-            onApply = {
-                onApply(FolderSortConfig(sortBy = sortBy, sortOrder = sortOrder))
-            },
-            onCancel = onDismiss
-        )
     }
 }
