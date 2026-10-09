@@ -193,7 +193,7 @@ private fun VibesSection() {
 
         Spacer(Modifier.height(12.dp))
         HorizontalDivider(
-            color     = Color.White.copy(alpha = 0.05f),
+            color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
             thickness = 0.5.dp
         )
         Spacer(Modifier.height(4.dp))
@@ -328,7 +328,7 @@ private fun AlbumCard(folder: MediaFolder, index: Int, onClick: () -> Unit) {
             DropdownMenu(
                 expanded         = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
-                containerColor   = Color(0xFF1E1C30)
+                containerColor   = MaterialTheme.colorScheme.surface
             ) {
                 DropdownMenuItem(
                     text    = { Text("Share All", color = MaterialTheme.colorScheme.onSurface) },
