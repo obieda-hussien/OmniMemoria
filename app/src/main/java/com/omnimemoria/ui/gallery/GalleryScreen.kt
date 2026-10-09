@@ -46,7 +46,6 @@ import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import coil3.size.Size
 import com.omnimemoria.domain.model.GroupBy
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
@@ -55,6 +54,7 @@ import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
 import com.omnimemoria.ui.components.OmniSectionHeader
 import com.omnimemoria.ui.components.OmniSelectionBar
+import com.omnimemoria.ui.components.OmniEmptyState
 import com.omnimemoria.ui.components.ShimmerBox
 import com.omnimemoria.ui.detail.photosBoundsTransform
 import com.omnimemoria.ui.photoSharedKey
@@ -180,6 +180,18 @@ fun GalleryScreen(
                 items(count = 30, span = { GridItemSpan(1) }) {
                     SkeletonPhotoCell()
                 }
+            } else if (groupedPhotos.loadState.refresh is LoadState.Error) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    GalleryLoadError(onRetry = { groupedPhotos.retry() })
+                }
+            } else if (groupedPhotos.itemCount == 0) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    OmniEmptyState(
+                        icon = Icons.Outlined.PhotoLibrary,
+                        title = "No media to show",
+                        subtitle = "Photos and videos will appear here when available."
+                    )
+                }
             } else {
                 items(
                     count = groupedPhotos.itemCount,
@@ -191,7 +203,7 @@ fun GalleryScreen(
                         }
                     },
                     span = { index ->
-                        when (groupedPhotos[index]) {
+                        when (groupedPhotos.peek(index)) {
                             is GalleryItem.DateHeader -> GridItemSpan(maxLineSpan)
                             else                      -> GridItemSpan(1)
                         }
@@ -206,8 +218,8 @@ fun GalleryScreen(
                                 fadeInSpec = androidx.compose.animation.core.tween(250),
                                 fadeOutSpec = androidx.compose.animation.core.tween(250),
                                 placementSpec = androidx.compose.animation.core.spring(
-                                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                                    stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+                                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                                    stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
                                 )
                             )) {
                             PhotoCell(
@@ -233,6 +245,15 @@ fun GalleryScreen(
                         null -> Box(modifier = Modifier.animateItem()) { SkeletonPhotoCell() }
                     }
                 }
+            }
+            when (groupedPhotos.loadState.append) {
+                is LoadState.Loading -> item(span = { GridItemSpan(maxLineSpan) }) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 12.dp))
+                }
+                is LoadState.Error -> item(span = { GridItemSpan(maxLineSpan) }) {
+                    GalleryLoadError(onRetry = { groupedPhotos.retry() })
+                }
+                else -> Unit
             }
         }
 
@@ -275,6 +296,17 @@ fun GalleryScreen(
                 showSortFilterSheet = false
             }
         )
+    }
+}
+
+@Composable
+private fun GalleryLoadError(onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 36.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Couldn't load media", color = MaterialTheme.colorScheme.onSurface)
+        TextButton(onClick = onRetry) { Text("Try again") }
     }
 }
 
@@ -402,8 +434,11 @@ internal fun PhotoCell(
 @Composable
 internal fun CachedThumbnail(uri: String, modifier: Modifier) {
     val context = LocalContext.current
+    // Let Coil resolve the real cell dimensions (including pinch-to-zoom grid changes)
+    // instead of decoding every thumbnail at a fixed 512 x 512 resolution.
+    val request = remember(uri, context) { ImageRequest.Builder(context).data(uri).build() }
     AsyncImage(
-        model              = ImageRequest.Builder(context).data(uri).size(Size(512, 512)).build(),
+        model              = request,
         contentDescription = null,
         contentScale       = ContentScale.Crop,
         modifier           = modifier
