@@ -25,6 +25,7 @@ fun OmniSortFilterSheet(
     content: @Composable ColumnScope.() -> Unit
 ) {
     ModalBottomSheet(
+        dragHandle = null,
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = OmniSheetContainerColor,
