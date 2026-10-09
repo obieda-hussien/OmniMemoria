@@ -333,7 +333,8 @@ internal fun PhotoCell(
     sharedTransitionScope:   SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     onClick:                 () -> Unit,
-    onLongClick:             () -> Unit
+    onLongClick:             () -> Unit,
+    modifier:                Modifier = Modifier
 ) {
     val scale by animateFloatAsState(
         targetValue   = if (isSelected) 0.88f else 1f,
@@ -355,7 +356,7 @@ internal fun PhotoCell(
     } else Modifier
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .aspectRatio(1f)
             .scale(scale)
             .clip(RoundedCornerShape(if (isSelected) 14.dp else 10.dp))

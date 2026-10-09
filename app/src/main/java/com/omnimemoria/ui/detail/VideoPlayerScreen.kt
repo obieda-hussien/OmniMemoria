@@ -25,6 +25,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -91,6 +93,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -339,8 +342,8 @@ fun VideoPlayerScreen(
     }
 
     // Auto-hide controls
-    LaunchedEffect(showControls, isPlaying, isLocked, isInPiP) {
-        if (!showControls || !isPlaying || isLocked || isInPiP) return@LaunchedEffect
+    LaunchedEffect(showControls, isPlaying, isLocked, isInPiP, showSpeedPanel, showInfoCard, isSeeking) {
+        if (!showControls || !isPlaying || isLocked || isInPiP || showSpeedPanel || showInfoCard || isSeeking) return@LaunchedEffect
         delay(AUTO_HIDE_DELAY_MS)
         showControls   = false
         showSpeedPanel = false
@@ -383,7 +386,7 @@ fun VideoPlayerScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)    // ← أسود خالص في PiP وخارجه
+            .background(if (isInPiP) Color.Black else MaterialTheme.colorScheme.background)
     ) {
         val item = mediaItem
 
@@ -394,14 +397,14 @@ fun VideoPlayerScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 CircularProgressIndicator(
-                    color       = Color(0xFF8B7FF5),
+                    color       = MaterialTheme.colorScheme.primary,
                     strokeWidth = 2.dp,
                     modifier    = Modifier.size(36.dp)
                 )
                 Spacer(Modifier.height(14.dp))
                 Text(
                     "...Loading video",
-                    color = Color.White.copy(alpha = 0.45f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -587,10 +590,10 @@ fun VideoPlayerScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF8B7FF5).copy(alpha = 0.92f))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.92f))
                         .padding(horizontal = 16.dp, vertical = 7.dp)
                 ) {
-                    Text("2x Speed Boost", color = Color.White,
+                    Text("2x Speed Boost", color = MaterialTheme.colorScheme.onPrimary,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.ExtraBold)
                 }
@@ -636,13 +639,13 @@ fun VideoPlayerScreen(
                         .size(44.dp)
                         .clip(CircleShape)
                         .background(
-                            if (isLocked) Color(0xFF2D26A0).copy(alpha = 0.9f)
-                            else          Color.Black.copy(alpha = 0.40f)
+                            if (isLocked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
+                            else          MediaChromeSurfaceColor
                         )
                         .border(
                             1.dp,
-                            if (isLocked) Color(0xFF8B7FF5).copy(alpha = 0.65f)
-                            else          Color.White.copy(alpha = 0.14f),
+                            if (isLocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)
+                            else          MaterialTheme.colorScheme.outlineVariant,
                             CircleShape
                         )
                         .clickable {
@@ -654,7 +657,7 @@ fun VideoPlayerScreen(
                     Icon(
                         imageVector        = if (isLocked) Icons.Filled.Lock else Icons.Outlined.LockOpen,
                         contentDescription = if (isLocked) "Unlock screen" else "Lock screen",
-                        tint               = if (isLocked) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.65f),
+                        tint               = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier           = Modifier.size(20.dp)
                     )
                 }
@@ -668,7 +671,6 @@ fun VideoPlayerScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .statusBarsPadding()
             ) {
                 OmniMediaTopBar(
                     leading = {
@@ -680,10 +682,11 @@ fun VideoPlayerScreen(
                         ) {
                             Text(
                                 item.name.substringBeforeLast('.'),
-                                color      = Color.White.copy(alpha = 0.94f),
+                                color      = MaterialTheme.colorScheme.onSurface,
                                 style      = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines   = 1,
+                                overflow   = TextOverflow.Ellipsis,
                                 textAlign  = TextAlign.Center
                             )
                             val subtitle = buildString {
@@ -693,7 +696,7 @@ fun VideoPlayerScreen(
                             if (subtitle.isNotBlank()) {
                                 Text(
                                     subtitle,
-                                    color = Color.White.copy(alpha = 0.40f),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.labelSmall
                                 )
                             }
@@ -708,31 +711,19 @@ fun VideoPlayerScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(9.dp))
-                                    .background(Color(0xFF2D26A0))
-                                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.42f), RoundedCornerShape(9.dp))
+                                    .background(MaterialTheme.colorScheme.primaryContainer)
+                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.42f), RoundedCornerShape(9.dp))
                                     .clickable { showSpeedPanel = !showSpeedPanel; showInfoCard = false }
                                     .padding(horizontal = 9.dp, vertical = 4.dp)
                             ) {
                                 Text(
                                     playbackSpeed.toSpeedLabel(),
-                                    color      = Color.White,
+                                    color      = MaterialTheme.colorScheme.onPrimaryContainer,
                                     style      = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.ExtraBold
                                 )
                             }
                         }
-                        if (castState == CastState.CONNECTED)
-                            TopBarButton(icon = Icons.Filled.Cast, desc = "Casting", tint = Color(0xFF8B7FF5), onClick = { showSpeedPanel = !showSpeedPanel; showInfoCard = false })
-                        if (supportsPiP)
-                            TopBarButton(icon = Icons.Filled.PictureInPicture, desc = "Picture in picture", onClick = { enterPiP() })
-                        TopBarButton(icon = Icons.Outlined.Share, desc = "Share", onClick = {
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = item.mimeType.ifBlank { "video/*" }
-                                putExtra(Intent.EXTRA_STREAM, item.uri)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "Share Video"))
-                        })
                         TopBarButton(icon = Icons.Outlined.Info,    desc = "Video info",  onClick = { showInfoCard = !showInfoCard; showSpeedPanel = false })
                         TopBarButton(icon = Icons.Filled.MoreVert,  desc = "Options",     onClick = { showSpeedPanel = !showSpeedPanel; showInfoCard = false })
                         }
@@ -797,6 +788,26 @@ fun VideoPlayerScreen(
                             }
                         }
                     },
+                    extraActions = {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                        TopBarButton(icon = Icons.Outlined.Share, desc = "Share", onClick = {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = item.mimeType.ifBlank { "video/*" }
+                                putExtra(Intent.EXTRA_STREAM, item.uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Share Video"))
+                        })
+                            if (supportsPiP) TopBarButton(
+                                icon = Icons.Filled.PictureInPicture,
+                                desc = "Picture in picture",
+                                onClick = { enterPiP() }
+                            )
+                        }
+                    },
                     onScanForDevices = { startCastDiscovery() }
                 )
             }
@@ -827,13 +838,13 @@ fun VideoPlayerScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF141220).copy(alpha = 0.88f))
-                        .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+                        .background(MediaChromeSurfaceColor)
+                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
                         .padding(horizontal = 20.dp, vertical = 9.dp)
                 ) {
                     Text(
                         "Screen locked · Tap the lock to unlock",
-                        color = Color.White.copy(alpha = 0.65f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelMedium
                     )
                 }
@@ -854,21 +865,21 @@ private fun GestureIndicatorBubble(indicator: GestureIndicator) {
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier            = Modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF1A1830).copy(alpha = 0.93f))
-            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(18.dp))
+            .background(MediaChromeSurfaceColor)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(18.dp))
             .padding(horizontal = 14.dp, vertical = 14.dp)
             .width(92.dp)
     ) {
-        Icon(indicator.icon, null, tint = Color(0xFF8B7FF5), modifier = Modifier.size(22.dp))
+        Icon(indicator.icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
         Spacer(Modifier.height(8.dp))
         LinearProgressIndicator(
             progress   = { indicator.value },
-            color      = Color(0xFF8B7FF5),
-            trackColor = Color.White.copy(alpha = 0.14f),
+            color      = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.outlineVariant,
             modifier   = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
         )
         Spacer(Modifier.height(6.dp))
-        Text(indicator.label, color = Color.White.copy(alpha = 0.82f),
+        Text(indicator.label, color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
     }
 }
@@ -882,13 +893,13 @@ private fun SeekFeedbackBubble(feedback: SeekFeedback) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.Black.copy(alpha = 0.65f))
-            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(14.dp))
+            .background(MediaChromeSurfaceColor)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
             .padding(horizontal = 22.dp, vertical = 12.dp)
     ) {
         Text(
             text       = "${if (feedback.forward) "+${feedback.seconds}" else "-${feedback.seconds}"}s",
-            color      = Color.White,
+            color      = MaterialTheme.colorScheme.onSurface,
             style      = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Bold
         )
@@ -903,14 +914,14 @@ private fun SeekFeedbackBubble(feedback: SeekFeedback) {
 private fun TopBarButton(
     icon:    ImageVector,
     desc:    String,
-    tint:    Color = Color.White.copy(alpha = 0.88f),
+    tint:    Color = MaterialTheme.colorScheme.onSurfaceVariant,
     onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
             .size(44.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White.copy(alpha = 0.07f))
+            .background(MaterialTheme.colorScheme.outlineVariant)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -934,7 +945,7 @@ private fun VideoSeekBar(
             .fillMaxWidth()
             .clip(RoundedCornerShape(MediaChromeCorner))
             .background(MediaChromeSurfaceColor)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(MediaChromeCorner))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(MediaChromeCorner))
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Slider(
@@ -943,18 +954,18 @@ private fun VideoSeekBar(
             onValueChangeFinished = onSeekFinished,
             valueRange            = 0f..durationMs.coerceAtLeast(1).toFloat(),
             colors                = SliderDefaults.colors(
-                thumbColor         = Color(0xFF8B7FF5),
-                activeTrackColor   = Color(0xFF8B7FF5),
-                inactiveTrackColor = Color.White.copy(alpha = 0.18f)
+                thumbColor         = MaterialTheme.colorScheme.primary,
+                activeTrackColor   = MaterialTheme.colorScheme.primary,
+                inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant
             ),
             modifier = Modifier.fillMaxWidth()
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(formatTime(positionMs), color = Color.White.copy(alpha = 0.68f),
+            Text(formatTime(positionMs), color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelMedium)
             Text(
                 if (durationMs > 0) "-${formatTime((durationMs - positionMs).coerceAtLeast(0))}" else "--:--",
-                color = Color.White.copy(alpha = 0.68f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelMedium
             )
         }
@@ -971,12 +982,12 @@ private fun VideoControlButton(icon: ImageVector, size: Dp = 56.dp, onClick: () 
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.46f))
-            .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+            .background(MediaChromeSurfaceColor)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, null, tint = Color.White.copy(alpha = 0.94f), modifier = Modifier.size(size * 0.50f))
+        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(size * 0.50f))
     }
 }
 
@@ -994,11 +1005,13 @@ private fun SpeedPanel(
     onSpeedSelect:    (Float) -> Unit,
     onRepeatToggle:   () -> Unit,
     onCastAction:     () -> Unit,
-    onScanForDevices: () -> Unit
+    onScanForDevices: () -> Unit,
+    extraActions: @Composable () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
             .width(240.dp)
+            .verticalScroll(rememberScrollState())
             .clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.98f))
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
@@ -1011,11 +1024,11 @@ private fun SpeedPanel(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(9.dp))
-                    .background(Color(0xFF2D26A0))
+                    .background(MaterialTheme.colorScheme.primaryContainer)
                     .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f), RoundedCornerShape(9.dp))
                     .padding(horizontal = 12.dp, vertical = 5.dp)
             ) {
-                Text(currentSpeed.toSpeedLabel(), color = Color.White,
+                Text(currentSpeed.toSpeedLabel(), color = MaterialTheme.colorScheme.onPrimaryContainer,
                     style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
             }
             Text("Speed", color = MaterialTheme.colorScheme.onSurface,
@@ -1087,6 +1100,7 @@ private fun SpeedPanel(
                     Text("Scanning for cast receivers...", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
             }
         }
+        extraActions()
     }
 }
 
@@ -1102,6 +1116,7 @@ private fun VideoInfoCard(
     Column(
         modifier = Modifier
             .width(224.dp)
+            .verticalScroll(rememberScrollState())
             .clip(RoundedCornerShape(18.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.98f))
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f), RoundedCornerShape(18.dp))

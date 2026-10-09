@@ -8,5 +8,6 @@ import androidx.compose.ui.graphics.Color
 val NavigationSurfaceColor: Color
     @Composable get() = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
 
-// On top of a photo or video, controls intentionally stay dark for legibility.
-val MediaChromeSurfaceColor = Color(0xFF141220).copy(alpha = 0.90f)
+// Near-opaque theme surfaces keep controls readable over any media content.
+val MediaChromeSurfaceColor: Color
+    @Composable get() = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f)
