@@ -80,8 +80,8 @@ fun AlbumsScreen(
         LazyVerticalGrid(
             columns               = GridCells.Fixed(2),
             contentPadding        = PaddingValues(
-                top    = 112.dp,   // clearance for floating OmniTopBar
-                bottom = 100.dp,   // clearance for bottom nav pill
+                top    = 12.dp,   // app shell reserves room for the header
+                bottom = 24.dp,   // app shell reserves room for bottom navigation
                 start  = 12.dp,
                 end    = 12.dp
             ),
