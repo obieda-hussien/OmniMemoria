@@ -215,7 +215,7 @@ private fun OmniFeatureToggleItem(
                         if (checked)
                             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f * contentAlpha)
                         else
-                            Color(0xFF1E1C30).copy(alpha = contentAlpha)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = contentAlpha)
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -256,7 +256,7 @@ private fun OmniFeatureToggleItem(
                 colors          = SwitchDefaults.colors(
                     checkedThumbColor  = MaterialTheme.colorScheme.onPrimary,
                     checkedTrackColor  = MaterialTheme.colorScheme.primary,
-                    uncheckedTrackColor = Color(0xFF2A2840)
+                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             )
         }
@@ -265,7 +265,7 @@ private fun OmniFeatureToggleItem(
             HorizontalDivider(
                 modifier  = Modifier.padding(start = 70.dp, end = 18.dp),
                 thickness = 0.5.dp,
-                color     = Color.White.copy(alpha = 0.05f)
+                color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
         }
     }
@@ -292,7 +292,7 @@ private fun OmniModelDownloadItem(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF1E1C30)),
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -346,14 +346,14 @@ private fun OmniModelDownloadItem(
                         Icon(
                             Icons.Outlined.CloudDownload,
                             null,
-                            tint     = Color.White,
+                            tint     = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(15.dp)
                         )
                         Spacer(Modifier.width(5.dp))
                         Text(
                             "Get",
                             style      = MaterialTheme.typography.labelMedium,
-                            color      = Color.White,
+                            color      = MaterialTheme.colorScheme.onPrimary,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -365,7 +365,7 @@ private fun OmniModelDownloadItem(
             HorizontalDivider(
                 modifier  = Modifier.padding(start = 70.dp, end = 18.dp),
                 thickness = 0.5.dp,
-                color     = Color.White.copy(alpha = 0.05f)
+                color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
         }
     }
@@ -403,7 +403,7 @@ private fun OmniAboutItems() {
         HorizontalDivider(
             modifier  = Modifier.padding(horizontal = 18.dp),
             thickness = 0.5.dp,
-            color     = Color.White.copy(alpha = 0.05f)
+            color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
         )
 
         Row(
