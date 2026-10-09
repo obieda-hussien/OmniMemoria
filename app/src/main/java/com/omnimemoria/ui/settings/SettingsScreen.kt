@@ -364,21 +364,21 @@ private fun OmniModelDownloadItem(
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF1A3A1A))
+                        .background(MaterialTheme.colorScheme.tertiaryContainer)
                         .padding(horizontal = 10.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         Icons.Outlined.CheckCircle,
                         null,
-                        tint     = Color(0xFF4CAF50),
+                        tint     = MaterialTheme.colorScheme.onTertiaryContainer,
                         modifier = Modifier.size(15.dp)
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
                         "Ready",
                         style      = MaterialTheme.typography.labelSmall,
-                        color      = Color(0xFF4CAF50),
+                        color      = MaterialTheme.colorScheme.onTertiaryContainer,
                         fontWeight = FontWeight.Bold
                     )
                 }
