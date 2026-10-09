@@ -125,7 +125,7 @@ fun HomeScreen(
         NavHost(
             navController = homeNavController,
             startDestination = HomeTab.GALLERY.route,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(top = 136.dp, bottom = 104.dp),
             enterTransition = { fadeIn(tween(200)) },
             exitTransition = { fadeOut(tween(200)) },
             popEnterTransition = { fadeIn(tween(200)) },
@@ -168,7 +168,7 @@ fun HomeScreen(
             summaryLoadFailed = summaryLoadFailed,
             onRetrySummary = galleryViewModel::retryHomeSummary,
             dynamicAccent = dynamicAccent,
-            compactMode = compactTopBar || currentTab != HomeTab.GALLERY,
+            compactMode = true,
             onSettingsClick = onSettingsClick,
             modifier = Modifier.align(Alignment.TopCenter)
         )
