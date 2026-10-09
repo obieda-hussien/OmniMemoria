@@ -8,7 +8,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
-import androidx.paging.filter
 import androidx.paging.insertSeparators
 import androidx.paging.map
 import com.omnimemoria.data.repository.FavoritesRepository
@@ -32,7 +31,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import com.omnimemoria.domain.model.GroupBy
 import kotlinx.coroutines.flow.combine
@@ -66,7 +64,7 @@ sealed class GalleryUiEvent {
 
 sealed class GalleryItem {
     data class DateHeader(val label: String, val anchorPhotoId: Long) : GalleryItem()
-    data class Photo(val photo: MediaPhoto, val isFavorite: Boolean = false) : GalleryItem()
+    data class Photo(val photo: MediaPhoto) : GalleryItem()
 }
 
 
@@ -170,19 +168,22 @@ class GalleryViewModel @Inject constructor(
     val uiEvents: Flow<GalleryUiEvent> = _uiEvents.receiveAsFlow()
 
     // ── Paging flow ────────────────────────────────────────────────────────────
-    private data class QuerySettings(val sort: SortConfig, val filter: FilterConfig, val version: Int, val favorites: Set<Long>)
-    private val querySettings = combine(activeSortConfig, _currentFilter, mediaStoreVersion, favoriteIds) { sort, filter, version, favorites ->
-        QuerySettings(sort, filter, version, if (filter.isFavorite != null || sort.sortBy == com.omnimemoria.domain.model.SortBy.FAVORITES_FIRST) favorites else emptySet())
-    }.distinctUntilChanged()
+    private val querySettings = galleryQuerySettings(
+        activeSortConfig, _currentFilter, mediaStoreVersion, favoriteIds
+    )
 
+    // Favorite badges observe favoriteIds directly in the UI. Never combine an
+    // uncached PagingData with badge state: submitting it again collects its
+    // single-use pageEventFlow twice and crashes when a favorite changes.
     val groupedPhotos: Flow<PagingData<GalleryItem>> = querySettings.flatMapLatest { settings ->
-        mediaStoreRepository.getPhotosPaged(settings.sort, settings.filter).map { data -> settings.sort to data }
-    }.combine(favoriteIds) { (sort, data), favorites ->
-        val mapped = data.map { GalleryItem.Photo(it, it.id in favorites) as GalleryItem }
-        if (sort.groupBy == null) mapped else mapped.insertSeparators { before, after ->
-            val previous = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel(sort.groupBy)
-            val next = (after as? GalleryItem.Photo)?.photo?.toDateGroupLabel(sort.groupBy)
-            if (after is GalleryItem.Photo && previous != next) GalleryItem.DateHeader(next.orEmpty(), after.photo.id) else null
+        mediaStoreRepository.getPhotosPaged(settings.sort, settings.filter).map { data ->
+            val mapped = data.map { GalleryItem.Photo(it) as GalleryItem }
+            val group = settings.sort.groupBy
+            if (group == null) mapped else mapped.insertSeparators { before, after ->
+                val previous = (before as? GalleryItem.Photo)?.photo?.toDateGroupLabel(group)
+                val next = (after as? GalleryItem.Photo)?.photo?.toDateGroupLabel(group)
+                if (after is GalleryItem.Photo && previous != next) GalleryItem.DateHeader(next.orEmpty(), after.photo.id) else null
+            }
         }
     }.cachedIn(viewModelScope)
 

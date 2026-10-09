@@ -70,6 +70,7 @@ fun GalleryScreen(
 ) {
     val haptic        = LocalHapticFeedback.current
     val groupedPhotos = viewModel.groupedPhotos.collectAsLazyPagingItems()
+    val favoriteIds   by viewModel.favoriteIds.collectAsState()
     val selectedIds   by viewModel.selectedIds.collectAsState()
     val isSelecting   by viewModel.isInSelectionMode.collectAsState()
     val columnCount   by viewModel.columnCount.collectAsState()
@@ -229,7 +230,7 @@ fun GalleryScreen(
                                 isVideo                 = photo.mimeType.startsWith("video/", ignoreCase = true),
                                 isSelected              = isSelected,
                                 isSelecting             = isSelecting,
-                                isFavorite              = item.isFavorite,
+                                isFavorite              = item.photo.id in favoriteIds,
                                 sharedTransitionScope   = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,
                                 onClick = {
