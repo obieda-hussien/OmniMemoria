@@ -8,32 +8,26 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import com.omnimemoria.ui.components.OmniEmptyState
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
@@ -41,7 +35,6 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Size
-import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
 import com.omnimemoria.domain.model.SortOrder
@@ -52,8 +45,6 @@ import com.omnimemoria.ui.components.OmniDetailTopBar
 import com.omnimemoria.ui.components.OmniSelectionBar
 import com.omnimemoria.ui.components.OmniSurface
 import com.omnimemoria.ui.components.ShimmerBox
-import com.omnimemoria.ui.detail.photosBoundsTransform
-import com.omnimemoria.ui.photoSharedKey
 import com.omnimemoria.ui.theme.OmniSheetContainerColor
 import kotlinx.coroutines.launch
 
@@ -122,108 +113,90 @@ fun FolderDetailScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Atmospheric blurred banner
-        folder?.let { f ->
-            AsyncImage(
-                model              = f.coverUri,
-                contentDescription = null,
-                contentScale       = ContentScale.Crop,
-                modifier           = Modifier
-                    .fillMaxWidth()
-                    .height(300.dp)
-                    .blur(40.dp)
-                    .scale(1.2f)
-                    .alpha(0.28f)
+        Column(Modifier.fillMaxSize()) {
+            OmniDetailTopBar(
+                title = folder?.name?.ifBlank { "Album" } ?: "Album",
+                subtitle = if (photos.itemCount > 0) "${photos.itemCount} items" else null,
+                onBack = { if (isSelecting) viewModel.clearSelection() else onBack() },
+                actions = {
+                    OmniActionChip(label = "Sort", icon = Icons.Outlined.Sort,
+                        onClick = { showSortSheet = true })
+                }
             )
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(320.dp)
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to Color.Transparent,
-                        0.6f to MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
-                        1.0f to MaterialTheme.colorScheme.background
-                    )
-                )
-        )
-
-        LazyVerticalGrid(
-            state                 = gridState,
-            columns               = GridCells.Fixed(3),
-            contentPadding        = PaddingValues(
-                top    = 130.dp,
-                bottom = 140.dp,
-                start  = 6.dp,
-                end    = 6.dp
-            ),
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalArrangement   = Arrangement.spacedBy(3.dp),
-            modifier              = Modifier.fillMaxSize()
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                FolderHeroCard(folder = folder, photoCount = photos.itemCount)
-            }
-
-            if (photos.loadState.refresh is LoadState.Loading) {
-                items(24) {
-                    ShimmerBox(modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp)))
+            LazyVerticalGrid(
+                state                 = gridState,
+                columns               = GridCells.Fixed(3),
+                contentPadding        = PaddingValues(
+                    top    = 8.dp,
+                    bottom = if (isSelecting) 104.dp else 24.dp,
+                    start  = 12.dp,
+                    end    = 12.dp
+                ),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement   = Arrangement.spacedBy(6.dp),
+                modifier              = Modifier.weight(1f).fillMaxWidth().navigationBarsPadding()
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    FolderHeroCard(folder = folder, photoCount = photos.itemCount)
                 }
-            } else {
-                items(
-                    count = photos.itemCount,
-                    key   = { i -> photos[i]?.id ?: "p_$i" }
-                ) { index ->
-                    photos[index]?.let { photo ->
-                        com.omnimemoria.ui.gallery.PhotoCell(
-                            uri                     = photo.uri.toString(),
-                            photoId                 = photo.id,
-                            isVideo                 = photo.mimeType.startsWith("video/", ignoreCase = true),
-                            isSelected              = photo.id in selectedIds,
-                            isSelecting             = isSelecting,
-                            isFavorite              = false,
-                            sharedTransitionScope   = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            onClick                 = {
-                                if (isSelecting) viewModel.toggleSelection(photo.id)
-                                else { viewModel.prepareForNavigation(photo); onPhotoClick(photo.id) }
-                            },
-                            onLongClick             = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.toggleSelection(photo.id)
-                            }
+
+                if (photos.loadState.refresh is LoadState.Loading) {
+                    items(24) {
+                        ShimmerBox(modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp)))
+                    }
+                } else if (photos.loadState.refresh is LoadState.Error) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        OmniEmptyState(
+                            icon = Icons.Outlined.ErrorOutline,
+                            title = "Could not load this album",
+                            subtitle = "Try loading your photos and videos again.",
+                            actionLabel = "Retry",
+                            actionIcon = Icons.Outlined.Refresh,
+                            onAction = { photos.retry() }
                         )
-                    } ?: ShimmerBox(
-                        modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp))
-                    )
+                    }
+                } else if (photos.itemCount == 0) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        OmniEmptyState(
+                            icon = Icons.Outlined.PhotoLibrary,
+                            title = "This album is empty",
+                            subtitle = "Photos and videos in this folder will appear here.",
+                            floating = true
+                        )
+                    }
+                } else {
+                    items(
+                        count = photos.itemCount,
+                        key   = { i -> photos[i]?.id ?: "p_$i" }
+                    ) { index ->
+                        photos[index]?.let { photo ->
+                            com.omnimemoria.ui.gallery.PhotoCell(
+                                modifier                = Modifier.animateItem(),
+                                uri                     = photo.uri.toString(),
+                                photoId                 = photo.id,
+                                isVideo                 = photo.mimeType.startsWith("video/", ignoreCase = true),
+                                isSelected              = photo.id in selectedIds,
+                                isSelecting             = isSelecting,
+                                isFavorite              = false,
+                                sharedTransitionScope   = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                                onClick                 = {
+                                    if (isSelecting) viewModel.toggleSelection(photo.id)
+                                    else { viewModel.prepareForNavigation(photo); onPhotoClick(photo.id) }
+                                },
+                                onLongClick             = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    viewModel.toggleSelection(photo.id)
+                                }
+                            )
+                        } ?: ShimmerBox(
+                            modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp))
+                        )
+                    }
                 }
             }
+
         }
-
-        // Top bar scrim
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(130.dp)
-                .align(Alignment.TopCenter)
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
-                        0.7f to MaterialTheme.colorScheme.background.copy(alpha = 0.6f),
-                        1.0f to Color.Transparent
-                    )
-                )
-        )
-
-        OmniDetailTopBar(
-            title    = folder?.name?.ifBlank { "Album" } ?: "Album",
-            subtitle = if (photos.itemCount > 0) "${photos.itemCount} items" else null,
-            onBack   = onBack,
-            actions  = { OmniActionChip(label = "Sort", icon = Icons.Outlined.Sort, onClick = { showSortSheet = true }) },
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
 
         // Selection bar
         AnimatedVisibility(
@@ -281,7 +254,7 @@ private fun FolderHeroCard(
             modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-        Box(modifier = Modifier.size(80.dp).clip(RoundedCornerShape(16.dp))) {
+        Box(modifier = Modifier.size(64.dp).clip(RoundedCornerShape(16.dp))) {
             if (folder != null) {
                 // Bound decode to 2x the displayed size (80dp * 2 = ~160dp at mdpi)
                 AsyncImage(
@@ -305,7 +278,8 @@ private fun FolderHeroCard(
                 ShimmerBox(modifier = Modifier.width(120.dp).height(18.dp).clip(RoundedCornerShape(6.dp)))
             } else {
                 Text(folder.name, style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Spacer(Modifier.height(5.dp))
             Text(
@@ -319,7 +293,7 @@ private fun FolderHeroCard(
                     .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f))
                     .padding(horizontal = 8.dp, vertical = 3.dp)
             ) {
-                Text("Local Storage", style = MaterialTheme.typography.labelSmall,
+                Text("On this device", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
             }
         }
@@ -411,7 +385,3 @@ private fun FolderSortBottomSheet(
         }
     }
 }
-
-@OptIn(ExperimentalFoundationApi::class)
-private fun Modifier.combinedClickable(onClick: () -> Unit) =
-    this.combinedClickable(onClick = onClick)

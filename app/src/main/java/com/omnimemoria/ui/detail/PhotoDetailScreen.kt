@@ -34,6 +34,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -101,7 +104,7 @@ fun PhotoDetailScreen(
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator(
-                color       = Color(0xFF8B7FF5),
+                color       = MaterialTheme.colorScheme.primary,
                 strokeWidth = 2.dp,
                 modifier    = Modifier.size(32.dp)
             )
@@ -126,7 +129,7 @@ fun PhotoDetailScreen(
     )
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun PhotoPager(
     photoList:       List<MediaPhoto>,
@@ -159,11 +162,11 @@ private fun PhotoPager(
         )
     }
 
-    val currentPhoto by remember(photoList) {
+    val currentPhoto by remember(photoList, pagerState) {
         derivedStateOf { photoList.getOrNull(pagerState.currentPage) }
     }
 
-    LaunchedEffect(pagerState.currentPage) {
+    LaunchedEffect(pagerState, pagerState.currentPage, photoList) {
         photoList.getOrNull(pagerState.currentPage)?.id?.let { onPageChanged(it) }
     }
 
@@ -213,15 +216,15 @@ private fun PhotoPager(
                             .align(Alignment.Center)
                             .size(80.dp)
                             .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .border(1.5.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                            .background(com.omnimemoria.ui.navigation.MediaChromeSurfaceColor)
+                            .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                             .clickable {
                                 onOpenVideo(photo.id, if (photo.id == -1L) photo.uri.toString() else null)
                             },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Filled.PlayCircleFilled, "Play video",
-                            tint = Color.White, modifier = Modifier.size(48.dp))
+                            tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(48.dp))
                     }
                 }
             } else {
@@ -243,9 +246,9 @@ private fun PhotoPager(
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Box(modifier = Modifier.fillMaxWidth().height(180.dp).align(Alignment.TopCenter)
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent))))
+                    .background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background.copy(alpha = 0.88f), Color.Transparent))))
                 Box(modifier = Modifier.fillMaxWidth().height(240.dp).align(Alignment.BottomCenter)
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f)))))
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, MaterialTheme.colorScheme.background.copy(alpha = 0.94f)))))
             }
         }
 
@@ -260,21 +263,22 @@ private fun PhotoPager(
                 leading = {
                     Box(
                         modifier = Modifier.size(44.dp).clip(RoundedCornerShape(16.dp))
-                            .background(Color.White.copy(alpha = 0.08f)).clickable(onClick = onBack),
+                            .background(MaterialTheme.colorScheme.surfaceVariant).clickable(onClick = onBack),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back",
-                            tint = Color.White, modifier = Modifier.size(20.dp))
+                            tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
                     }
                 },
                 center = {
                     currentPhoto?.name?.let { name ->
                         Text(
                             text       = name.substringBeforeLast('.'),
-                            color      = Color.White.copy(alpha = 0.9f),
+                            color      = MaterialTheme.colorScheme.onSurface,
                             style      = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             maxLines   = 1,
+                            overflow   = TextOverflow.Ellipsis,
                             textAlign  = TextAlign.Center,
                             modifier   = Modifier.padding(horizontal = 10.dp)
                         )
@@ -284,15 +288,15 @@ private fun PhotoPager(
                     Box(
                         modifier = Modifier.size(44.dp).clip(RoundedCornerShape(16.dp))
                             .background(
-                                if (showMetadata) Color(0xFF8B7FF5).copy(alpha = 0.2f)
-                                else Color.White.copy(alpha = 0.08f)
+                                if (showMetadata) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                else MaterialTheme.colorScheme.surfaceVariant
                             ).clickable { showMetadata = !showMetadata },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector        = if (showMetadata) Icons.Filled.Info else Icons.Outlined.Info,
                             contentDescription = "Info",
-                            tint               = if (showMetadata) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.9f),
+                            tint               = if (showMetadata) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                             modifier           = Modifier.size(20.dp)
                         )
                     }
@@ -311,12 +315,12 @@ private fun PhotoPager(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .background(com.omnimemoria.ui.navigation.MediaChromeSurfaceColor)
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(
                     "${pagerState.currentPage + 1} / ${photoList.size}",
-                    color      = Color.White.copy(alpha = 0.9f),
+                    color      = MaterialTheme.colorScheme.onSurface,
                     style      = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Medium
                 )
@@ -325,27 +329,16 @@ private fun PhotoPager(
 
         // Loading bar
         AnimatedVisibility(
-            visible  = !isTrulyReady && photoList.size == 1,
+            visible  = !isFullListReady,
             enter    = fadeIn(tween(200)),
             exit     = fadeOut(tween(600)),
             modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
         ) {
             LinearProgressIndicator(
-                color      = Color(0xFF8B7FF5),
+                color      = MaterialTheme.colorScheme.primary,
                 trackColor = Color.Transparent,
                 modifier   = Modifier.fillMaxWidth().height(2.dp)
             )
-        }
-
-        // Metadata card
-        AnimatedVisibility(
-            visible  = showMetadata,
-            enter    = slideInVertically { it / 2 } + fadeIn(tween(240)),
-            exit     = slideOutVertically { it / 2 } + fadeOut(tween(200)),
-            modifier = Modifier.align(Alignment.BottomCenter)
-                .padding(bottom = 120.dp, start = 16.dp, end = 16.dp)
-        ) {
-            PhotoMetadataCard(photo = currentPhoto)
         }
 
         // Bottom actions
@@ -361,7 +354,7 @@ private fun PhotoPager(
                 label         = "heart_scale"
             )
             OmniMediaBottomBar {
-                DetailAction(Icons.Outlined.Share, "Share", Color.White.copy(alpha = 0.85f), onClick = {
+                DetailAction(Icons.Outlined.Share, "Share", MaterialTheme.colorScheme.onSurfaceVariant, onClick = {
                     val shareIntent = android.content.Intent().apply {
                         action = android.content.Intent.ACTION_SEND
                         putExtra(android.content.Intent.EXTRA_STREAM, currentPhoto?.uri)
@@ -372,16 +365,25 @@ private fun PhotoPager(
                 })
                 DetailAction(
                     icon    = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                    label   = if (isFavorite) "Saved" else "Save",
-                    tint    = if (isFavorite) Color(0xFFFF4B6E) else Color.White.copy(alpha = 0.85f),
+                    label   = if (isFavorite) "Favorited" else "Favorite",
+                    tint    = if (isFavorite) Color(0xFFFF4B6E) else MaterialTheme.colorScheme.onSurfaceVariant,
                     scale   = heartScale,
                     onClick = { currentPhoto?.id?.let { onFavorite(it) } }
                 )
-                DetailAction(Icons.Outlined.Edit,          "Edit",   Color.White.copy(alpha = 0.85f), onClick = { })
-                DetailAction(Icons.Outlined.DeleteOutline, "Delete", Color(0xFFFF6B6B),               onClick = { currentPhoto?.id?.let { onDelete(it) } })
+                DetailAction(Icons.Outlined.DeleteOutline, "Delete", MaterialTheme.colorScheme.error,               onClick = { currentPhoto?.id?.let { onDelete(it) } })
             }
         }
     }
+    if (showMetadata) {
+        ModalBottomSheet(
+            onDismissRequest = { showMetadata = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            PhotoMetadataCard(photo = currentPhoto)
+        }
+    }
+
 }
 
 @Composable
@@ -405,6 +407,8 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
             .clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.97f))
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f), RoundedCornerShape(20.dp))
+            .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
@@ -414,7 +418,7 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
         ) {
             Box(
                 modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF8B7FF5).copy(alpha = 0.18f)),
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
@@ -478,5 +482,5 @@ private fun DetailAction(
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 internal val photosBoundsTransform = BoundsTransform { _, _ ->
-    spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
+    spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
 }
