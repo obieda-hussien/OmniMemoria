@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.navigation.NavType
@@ -57,7 +58,7 @@ object AppRoutes {
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
+fun AppNavGraph(externalUri: String? = null, intentType: String? = null, reminderRequests: Int = 0) {
     val navController = rememberNavController()
 
     val startDestination = remember(externalUri, intentType) {
@@ -70,6 +71,15 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
             }
         } else {
             AppRoutes.Home
+        }
+    }
+
+    LaunchedEffect(navController, reminderRequests) {
+        if (reminderRequests > 0) {
+            navController.navigate(AppRoutes.Home) {
+                popUpTo(AppRoutes.Home) { inclusive = false }
+                launchSingleTop = true
+            }
         }
     }
 
@@ -87,6 +97,7 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null) {
                 composable(AppRoutes.Home) {
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                         HomeScreen(
+                            reminderRequests = reminderRequests,
                             onPhotoClick = { photoId ->
                                 navController.navigate(AppRoutes.detail(photoId))
                             },
