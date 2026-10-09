@@ -72,6 +72,7 @@ enum class HomeTab(val route: String, val label: String, val icon: ImageVector) 
 @Composable
 fun HomeScreen(
     onPhotoClick: (Long) -> Unit,
+    reminderRequests: Int = 0,
     onFolderClick: (String) -> Unit,
     onSettingsClick: () -> Unit,
     onFavoritesClick: () -> Unit,
@@ -102,6 +103,17 @@ fun HomeScreen(
 
     var showSmartSheet by rememberSaveable { mutableStateOf(false) }
     var showOnThisDay by rememberSaveable { mutableStateOf(true) }
+
+    LaunchedEffect(reminderRequests) {
+        if (reminderRequests > 0) {
+            showOnThisDay = true
+            homeNavController.navigate(HomeTab.GALLERY.route) {
+                popUpTo(homeNavController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
