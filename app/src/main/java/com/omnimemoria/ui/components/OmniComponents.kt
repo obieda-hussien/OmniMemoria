@@ -459,7 +459,7 @@ fun OmniMediaTopBar(
             .statusBarsPadding()
             .padding(horizontal = 20.dp, vertical = 10.dp)
             .clip(RoundedCornerShape(MediaChromeCorner))
-            .background(com.omnimemoria.ui.navigation.NavigationSurfaceColor)
+            .background(com.omnimemoria.ui.navigation.MediaChromeSurfaceColor)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(MediaChromeCorner))
             .height(MediaChromeHeight)
             .padding(horizontal = 8.dp),
