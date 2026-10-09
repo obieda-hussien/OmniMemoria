@@ -125,12 +125,12 @@ fun HomeScreen(
             ) { GalleryScreen(onPhotoClick = onPhotoClick, viewModel = galleryViewModel) }
             composable(
                 route = HomeTab.ALBUMS.route,
-                enterTransition = { slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(220)) }
+                enterTransition = { slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(220)) },
                 exitTransition = { slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing)) { -it / 10 } + fadeOut(tween(180)) }
             ) { AlbumsScreen(onFolderClick = onFolderClick) }
             composable(
                 route = HomeTab.SEARCH.route,
-                enterTransition = { slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(220)) }
+                enterTransition = { slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(220)) },
                 exitTransition = { slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing)) { -it / 10 } + fadeOut(tween(180)) }
             ) {
                 SearchScreen(
