@@ -83,7 +83,7 @@ private fun VaultDisabledState(onGoToSettings: () -> Unit) {
                     .clip(RoundedCornerShape(26.dp))
                     .background(
                         Brush.linearGradient(
-                            listOf(Color(0xFF1E1C30), Color(0xFF1A1830))
+                            listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.primaryContainer)
                         )
                     )
                     .border(
@@ -234,7 +234,7 @@ fun VaultPinScreen(
                     .clip(RoundedCornerShape(22.dp))
                     .background(
                         Brush.linearGradient(
-                            listOf(Color(0xFF2D26A0), Color(0xFF1E1C30))
+                            listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surfaceVariant)
                         )
                     )
                     .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.3f), RoundedCornerShape(22.dp)),
@@ -285,7 +285,7 @@ fun VaultPinScreen(
                         progress    = { progress },
                         modifier    = Modifier.fillMaxSize(),
                         color       = Color(0xFF8B7FF5),
-                        trackColor  = Color(0xFF1E1C30),
+                        trackColor  = MaterialTheme.colorScheme.surfaceVariant,
                         strokeWidth = 5.dp
                     )
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -432,12 +432,12 @@ private fun PinKey(label: String, isDelete: Boolean, onClick: () -> Unit) {
             .clip(CircleShape)
             .background(
                 if (isDelete) Color.Transparent
-                else Color(0xFF1E1C30)
+                else MaterialTheme.colorScheme.surfaceVariant
             )
             .border(
                 1.dp,
                 if (isDelete) Color.Transparent
-                else Color.White.copy(alpha = 0.06f),
+                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 CircleShape
             )
             .clickable {
@@ -613,7 +613,7 @@ private fun VaultGalleryHeader(isDecoy: Boolean, count: Int) {
 
 @Composable
 private fun VaultSecurityBanner(isDecoy: Boolean, modifier: Modifier = Modifier) {
-    val bg   = if (isDecoy) Color(0xFF0D2A14) else Color(0xFF1E1C30)
+    val bg   = if (isDecoy) Color(0xFF0D2A14) else MaterialTheme.colorScheme.surfaceVariant
     val icon = if (isDecoy) Icons.Outlined.LockOpen else Icons.Outlined.Shield
     val tint = if (isDecoy) Color(0xFF50C878) else Color(0xFF8B7FF5)
     val text = if (isDecoy) "Showing decoy photos"
@@ -696,7 +696,7 @@ private fun AddToVaultCell() {
             .aspectRatio(1f)
             .clip(RoundedCornerShape(6.dp))
             .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.25f), RoundedCornerShape(6.dp))
-            .background(Color(0xFF1E1C30))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .combinedClickable(onClick = {}),
         contentAlignment = Alignment.Center
     ) {
