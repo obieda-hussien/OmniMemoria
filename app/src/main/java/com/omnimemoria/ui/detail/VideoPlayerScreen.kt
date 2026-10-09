@@ -99,7 +99,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.omnimemoria.ui.components.MediaChromeCorner
 import com.omnimemoria.ui.components.OmniMediaTopBar
-import com.omnimemoria.ui.navigation.NavigationSurfaceColor
+import com.omnimemoria.ui.navigation.MediaChromeSurfaceColor
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -933,7 +933,7 @@ private fun VideoSeekBar(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(MediaChromeCorner))
-            .background(NavigationSurfaceColor)
+            .background(MediaChromeSurfaceColor)
             .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(MediaChromeCorner))
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
