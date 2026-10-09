@@ -2,11 +2,15 @@ package com.omnimemoria.data.worker
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.Manifest
+import android.content.pm.PackageManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -31,6 +35,8 @@ class OnThisDayWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        // An OS-disabled channel or a missing Android 13+ runtime grant is not a retryable error.
+        if (!isEnabled(appContext) || !canPostNotifications()) return@withContext Result.success()
         val memories = mediaStoreRepository.getPhotosOnThisDay()
         if (memories.isEmpty()) return@withContext Result.success()
 
@@ -46,8 +52,20 @@ class OnThisDayWorker @AssistedInject constructor(
             else               -> "${memories.size} memories from the past are waiting for you"
         }
 
-        showNotification(title, body)
-        Result.success()
+        try {
+            showNotification(title, body)
+            Result.success()
+        } catch (denied: SecurityException) {
+            // Permission can be revoked between the check and NotificationManager.notify().
+            Result.success()
+        }
+    }
+
+    private fun canPostNotifications(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(appContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return false
+        return NotificationManagerCompat.from(appContext).areNotificationsEnabled()
     }
 
     private fun showNotification(title: String, body: String) {
@@ -72,14 +90,14 @@ class OnThisDayWorker @AssistedInject constructor(
             appContext,
             0,
             Intent(appContext, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra(EXTRA_OPEN_ON_THIS_DAY, true)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_gallery) // استبدل بأيقونة التطبيق
+            .setSmallIcon(android.R.drawable.ic_menu_gallery)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -96,6 +114,18 @@ class OnThisDayWorker @AssistedInject constructor(
         const val NOTIFICATION_ID     = 1001
         const val EXTRA_OPEN_ON_THIS_DAY = "open_on_this_day"
         private const val WORK_NAME   = "omnimemoria_on_this_day_daily"
+        private const val PREFS_NAME = "memory_notifications"
+        private const val PREF_ENABLED = "on_this_day_enabled"
+
+        fun isEnabled(context: Context): Boolean =
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(PREF_ENABLED, true)
+
+        fun setEnabled(context: Context, enabled: Boolean) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putBoolean(PREF_ENABLED, enabled).apply()
+            if (enabled) scheduleDaily(context) else cancel(context)
+        }
 
         // ── جدولة يومية — بيشتغل كل 24 ساعة ────────────────────────────────
         // استدعاء من Application.onCreate أو Settings

@@ -110,7 +110,8 @@ class WorkManagerScheduler @Inject constructor(
     // ── On This Day (daily at 9 AM) ───────────────────────────────────────────
 
     fun scheduleOnThisDay() {
-        OnThisDayWorker.scheduleDaily(context)
+        if (OnThisDayWorker.isEnabled(context)) OnThisDayWorker.scheduleDaily(context)
+        else OnThisDayWorker.cancel(context)
     }
 
     fun cancelOnThisDay() {

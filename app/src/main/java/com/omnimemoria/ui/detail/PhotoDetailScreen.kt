@@ -97,7 +97,7 @@ fun PhotoDetailScreen(
 
     if (photoList.isEmpty()) {
         Box(
-            modifier         = Modifier.fillMaxSize().background(Color(0xFF090810)),
+            modifier         = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator(
@@ -170,7 +170,7 @@ private fun PhotoPager(
     var showChrome   by remember { mutableStateOf(true) }
     var showMetadata by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF090810))) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
         HorizontalPager(
             state                   = pagerState,
@@ -310,8 +310,8 @@ private fun PhotoPager(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color.White.copy(alpha = 0.12f))
-                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
+                    .background(com.omnimemoria.ui.navigation.MediaChromeSurfaceColor)
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(
@@ -403,8 +403,8 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF1A1830).copy(alpha = 0.95f))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.97f))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f), RoundedCornerShape(20.dp))
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
@@ -417,14 +417,14 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
                     .background(Color(0xFF8B7FF5).copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Outlined.Info, null, tint = Color(0xFF8B7FF5), modifier = Modifier.size(15.dp))
+                Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
             }
             Spacer(Modifier.width(10.dp))
-            Text("Photo Details", color = Color.White.copy(alpha = 0.55f),
+            Text("Photo Details", color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.8.sp)
         }
-        HorizontalDivider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(bottom = 14.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(bottom = 14.dp))
         MetaRow(Icons.Outlined.CalendarMonth, "Date",       dateText)
         Spacer(Modifier.height(12.dp))
         MetaRow(Icons.Outlined.SdStorage,     "File Size",  sizeText)
@@ -444,12 +444,12 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
 @Composable
 private fun MetaRow(icon: ImageVector, label: String, value: String) {
     Row(verticalAlignment = Alignment.Top) {
-        Icon(icon, null, tint = Color(0xFF8B7FF5).copy(alpha = 0.7f),
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(18.dp).padding(top = 1.dp))
         Spacer(Modifier.width(12.dp))
         Column {
-            Text(label, color = Color.White.copy(alpha = 0.38f), style = MaterialTheme.typography.labelSmall)
-            Text(value, color = Color.White.copy(alpha = 0.88f),
+            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+            Text(value, color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
         }
     }

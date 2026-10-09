@@ -1,6 +1,5 @@
 package com.omnimemoria.ui.gallery
 import com.omnimemoria.domain.model.FilterConfig
-import com.omnimemoria.domain.model.MediaType
 
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -16,8 +15,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -46,8 +43,6 @@ import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import coil3.size.Size
-import com.omnimemoria.domain.model.GroupBy
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
 import com.omnimemoria.domain.model.SortOrder
@@ -55,10 +50,10 @@ import com.omnimemoria.ui.LocalNavAnimatedVisibilityScope
 import com.omnimemoria.ui.LocalSharedTransitionScope
 import com.omnimemoria.ui.components.OmniSectionHeader
 import com.omnimemoria.ui.components.OmniSelectionBar
+import com.omnimemoria.ui.components.OmniEmptyState
 import com.omnimemoria.ui.components.ShimmerBox
 import com.omnimemoria.ui.detail.photosBoundsTransform
 import com.omnimemoria.ui.photoSharedKey
-import com.omnimemoria.ui.theme.OmniSheetContainerColor
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import kotlinx.coroutines.launch
@@ -153,8 +148,8 @@ fun GalleryScreen(
             state             = gridState,
             columns           = GridCells.Fixed(columnCount),
             contentPadding    = PaddingValues(
-                top    = 112.dp,
-                bottom = 130.dp,
+                top    = 12.dp,
+                bottom = 24.dp,
                 start  = 6.dp,
                 end    = 6.dp
             ),
@@ -180,6 +175,18 @@ fun GalleryScreen(
                 items(count = 30, span = { GridItemSpan(1) }) {
                     SkeletonPhotoCell()
                 }
+            } else if (groupedPhotos.loadState.refresh is LoadState.Error) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    GalleryLoadError(onRetry = { groupedPhotos.retry() })
+                }
+            } else if (groupedPhotos.itemCount == 0) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    OmniEmptyState(
+                        icon = Icons.Outlined.PhotoLibrary,
+                        title = "No media to show",
+                        subtitle = "Photos and videos will appear here when available."
+                    )
+                }
             } else {
                 items(
                     count = groupedPhotos.itemCount,
@@ -191,7 +198,7 @@ fun GalleryScreen(
                         }
                     },
                     span = { index ->
-                        when (groupedPhotos[index]) {
+                        when (groupedPhotos.peek(index)) {
                             is GalleryItem.DateHeader -> GridItemSpan(maxLineSpan)
                             else                      -> GridItemSpan(1)
                         }
@@ -206,8 +213,8 @@ fun GalleryScreen(
                                 fadeInSpec = androidx.compose.animation.core.tween(250),
                                 fadeOutSpec = androidx.compose.animation.core.tween(250),
                                 placementSpec = androidx.compose.animation.core.spring(
-                                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                                    stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+                                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                                    stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
                                 )
                             )) {
                             PhotoCell(
@@ -233,6 +240,15 @@ fun GalleryScreen(
                         null -> Box(modifier = Modifier.animateItem()) { SkeletonPhotoCell() }
                     }
                 }
+            }
+            when (groupedPhotos.loadState.append) {
+                is LoadState.Loading -> item(span = { GridItemSpan(maxLineSpan) }) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 12.dp))
+                }
+                is LoadState.Error -> item(span = { GridItemSpan(maxLineSpan) }) {
+                    GalleryLoadError(onRetry = { groupedPhotos.retry() })
+                }
+                else -> Unit
             }
         }
 
@@ -275,6 +291,17 @@ fun GalleryScreen(
                 showSortFilterSheet = false
             }
         )
+    }
+}
+
+@Composable
+private fun GalleryLoadError(onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 36.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Couldn't load media", color = MaterialTheme.colorScheme.onSurface)
+        TextButton(onClick = onRetry) { Text("Try again") }
     }
 }
 
@@ -402,8 +429,11 @@ internal fun PhotoCell(
 @Composable
 internal fun CachedThumbnail(uri: String, modifier: Modifier) {
     val context = LocalContext.current
+    // Let Coil resolve the real cell dimensions (including pinch-to-zoom grid changes)
+    // instead of decoding every thumbnail at a fixed 512 x 512 resolution.
+    val request = remember(uri, context) { ImageRequest.Builder(context).data(uri).build() }
     AsyncImage(
-        model              = ImageRequest.Builder(context).data(uri).size(Size(512, 512)).build(),
+        model              = request,
         contentDescription = null,
         contentScale       = ContentScale.Crop,
         modifier           = modifier
@@ -415,189 +445,21 @@ private fun SkeletonPhotoCell() {
     ShimmerBox(modifier = Modifier.aspectRatio(1f).clip(RoundedCornerShape(10.dp)))
 }
 
-// ── Sort / filter bottom sheet ─────────────────────────────────────────────────
+// ── Unified sort / filter bottom sheet (shared with Omni albums) ──────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun GallerySortFilterSheet(
     currentFilter: FilterConfig,
-    currentSort:   SortConfig,
-    onDismiss:     () -> Unit,
-    onApply:       (SortConfig, FilterConfig) -> Unit
+    currentSort: SortConfig,
+    onDismiss: () -> Unit,
+    onApply: (SortConfig, FilterConfig) -> Unit
 ) {
-    var sortBy   by remember { mutableStateOf(currentSort.sortBy) }
-    var sortOrder by remember { mutableStateOf(currentSort.sortOrder) }
-    var groupBy  by remember { mutableStateOf(currentSort.groupBy) }
-    var filterBy by remember { mutableStateOf(currentFilter) }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor   = OmniSheetContainerColor,
-        shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-    ) {
-        Column(
-            modifier            = Modifier
-                .fillMaxWidth()
-                .verticalScroll(androidx.compose.foundation.rememberScrollState())
-                .navigationBarsPadding()
-                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .width(36.dp).height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFF3A3860))
-            )
-            Spacer(Modifier.height(20.dp))
-
-            Text("Filter & Sort",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground)
-            Spacer(Modifier.height(18.dp))
-
-            Text("Show", style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MediaType.entries.forEach { target ->
-                    FilterChip(
-                        selected = filterBy.mediaTypes.contains(target),
-                        onClick  = {
-                            val newTypes = if (filterBy.mediaTypes.contains(target)) {
-                                filterBy.mediaTypes - target
-                            } else {
-                                filterBy.mediaTypes + target
-                            }
-                            filterBy = filterBy.copy(mediaTypes = newTypes)
-                        },
-                        label    = {
-                            Text(when (target) {
-                                MediaType.IMAGE -> "Photos"
-                                MediaType.VIDEO -> "Videos"
-                                MediaType.GIF -> "GIFs"
-                                MediaType.RAW -> "RAW"
-                            })
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                            selectedLabelColor     = MaterialTheme.colorScheme.primary
-                        )
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(20.dp))
-            Text("Sort by", style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-
-            listOf(
-                SortBy.DATE_TAKEN      to "Date Taken",
-                SortBy.DATE_MODIFIED   to "Date Modified",
-                SortBy.SIZE            to "Storage Size",
-                SortBy.NAME            to "File Name",
-                SortBy.TYPE            to "File Type",
-                SortBy.RESOLUTION      to "Resolution",
-                SortBy.DURATION        to "Duration",
-                SortBy.FAVORITES_FIRST to "Favorites First"
-            ).forEach { (candidate, label) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (sortBy == candidate)
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                            else Color.Transparent
-                        )
-                        .clickable { sortBy = candidate }
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = sortBy == candidate,
-                        onClick  = { sortBy = candidate },
-                        colors   = RadioButtonDefaults.colors(
-                            selectedColor = MaterialTheme.colorScheme.primary)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(label, color = MaterialTheme.colorScheme.onBackground,
-                        style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-            Text("Direction", style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(SortOrder.DESCENDING to "Descending ↓", SortOrder.ASCENDING to "Ascending ↑")
-                    .forEach { (ord, lbl) ->
-                        FilterChip(
-                            selected = sortOrder == ord,
-                            onClick  = { sortOrder = ord },
-                            label    = { Text(lbl) },
-                            colors   = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                                selectedLabelColor     = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                    }
-            }
-
-            Spacer(Modifier.height(16.dp))
-            Text("Group by", style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())
-            ) {
-                listOf(
-                    null             to "None",
-                    GroupBy.DAY      to "Day",
-                    GroupBy.MONTH    to "Month",
-                    GroupBy.YEAR     to "Year",
-                    GroupBy.LOCATION to "Location"
-                ).forEach { (candidate, lbl) ->
-                    FilterChip(
-                        selected = groupBy == candidate,
-                        onClick  = { groupBy = candidate },
-                        label    = { Text(lbl) },
-                        colors   = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                            selectedLabelColor     = MaterialTheme.colorScheme.primary
-                        )
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(28.dp))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.primary)
-                    .clickable {
-                        onApply(
-                            SortConfig(sortBy = sortBy, sortOrder = sortOrder, groupBy = groupBy),
-                            filterBy
-                        )
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Apply", color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleSmall)
-            }
-        }
-    }
+    com.omnimemoria.ui.components.filters.GallerySortFilterSheetContent(
+        currentFilter = currentFilter,
+        currentSort = currentSort,
+        onDismiss = onDismiss,
+        onApply = onApply
+    )
 }
 
 private fun SortConfig.toDisplayLabel(): String {

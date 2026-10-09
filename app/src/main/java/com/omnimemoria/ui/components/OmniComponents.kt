@@ -81,8 +81,8 @@ fun OmniDetailTopBar(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF1E1C30))
-                .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), CircleShape)
                 .combinedClickable(onClick = onBack),
             contentAlignment = Alignment.Center
         ) {
@@ -219,8 +219,8 @@ fun OmniIconAction(
         modifier = modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(Color(0xFF1E1C30))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), CircleShape)
             .combinedClickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -273,8 +273,8 @@ fun OmniEmptyState(
                 .offset(y = floatY.dp)
                 .size(72.dp)
                 .clip(RoundedCornerShape(22.dp))
-                .background(Color(0xFF1E1C30))
-                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(22.dp)),
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(22.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -344,12 +344,12 @@ fun OmniSelectionBar(
             .background(
                 Brush.horizontalGradient(
                     listOf(
-                        Color(0xFF1E1C30).copy(alpha = 0.97f),
-                        Color(0xFF2D26A0).copy(alpha = 0.93f)
+                        MaterialTheme.colorScheme.primary,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.88f)
                     )
                 )
             )
-            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(24.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
     ) {
         Row(
             modifier              = Modifier
@@ -360,19 +360,19 @@ fun OmniSelectionBar(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) {
-                    Icon(Icons.Outlined.Close, null, tint = Color.White)
+                    Icon(Icons.Outlined.Close, null, tint = MaterialTheme.colorScheme.onPrimary)
                 }
                 Text(
                     text       = "$count selected",
                     style      = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color      = Color.White
+                    color      = MaterialTheme.colorScheme.onPrimary
                 )
             }
             Row {
                 if (onShare != null) {
                     IconButton(onClick = onShare) {
-                        Icon(Icons.Outlined.Share, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Outlined.Share, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(22.dp))
                     }
                 }
                 if (onDelete != null) {
@@ -382,7 +382,7 @@ fun OmniSelectionBar(
                 }
                 if (onMore != null) {
                     IconButton(onClick = onMore) {
-                        Icon(Icons.Outlined.MoreVert, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Outlined.MoreVert, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(22.dp))
                     }
                 }
             }
@@ -405,8 +405,8 @@ fun OmniInfoBanner(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF1E1C30))
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -430,8 +430,8 @@ fun OmniSurface(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(cornerRadius))
-            .background(Color(0xFF1E1C30))
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(cornerRadius))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(cornerRadius))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         content = content
     )
@@ -459,8 +459,8 @@ fun OmniMediaTopBar(
             .statusBarsPadding()
             .padding(horizontal = 20.dp, vertical = 10.dp)
             .clip(RoundedCornerShape(MediaChromeCorner))
-            .background(com.omnimemoria.ui.navigation.NavigationSurfaceColor)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(MediaChromeCorner))
+            .background(com.omnimemoria.ui.navigation.MediaChromeSurfaceColor)
+            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(MediaChromeCorner))
             .height(MediaChromeHeight)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -488,8 +488,8 @@ fun OmniMediaBottomBar(
             .navigationBarsPadding()
             .padding(bottom = 12.dp)
             .clip(RoundedCornerShape(MediaChromeCorner))
-            .background(com.omnimemoria.ui.navigation.NavigationSurfaceColor)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(MediaChromeCorner))
+            .background(com.omnimemoria.ui.navigation.MediaChromeSurfaceColor)
+            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(MediaChromeCorner))
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().height(MediaChromeHeight).padding(horizontal = 8.dp),
@@ -543,8 +543,8 @@ fun OmniSettingsGroup(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFF141220))
-                .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
         ) {
             Column(content = content)
         }

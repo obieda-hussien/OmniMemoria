@@ -343,6 +343,7 @@ private fun FolderSortBottomSheet(
     var sortOrder by remember(current) { mutableStateOf(current.sortOrder) }
 
     ModalBottomSheet(
+        dragHandle = null,
         onDismissRequest = onDismiss,
         sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor   = OmniSheetContainerColor,
@@ -354,7 +355,7 @@ private fun FolderSortBottomSheet(
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             Box(modifier = Modifier.align(Alignment.CenterHorizontally).width(36.dp).height(4.dp)
-                .clip(RoundedCornerShape(2.dp)).background(Color(0xFF3A3860)))
+                .clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.outlineVariant))
             Spacer(Modifier.height(20.dp))
             Text("Sort photos", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)

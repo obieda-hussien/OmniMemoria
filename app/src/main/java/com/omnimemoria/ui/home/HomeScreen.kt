@@ -72,6 +72,7 @@ enum class HomeTab(val route: String, val label: String, val icon: ImageVector) 
 @Composable
 fun HomeScreen(
     onPhotoClick: (Long) -> Unit,
+    reminderRequests: Int = 0,
     onFolderClick: (String) -> Unit,
     onSettingsClick: () -> Unit,
     onFavoritesClick: () -> Unit,
@@ -79,6 +80,8 @@ fun HomeScreen(
 ) {
     val galleryViewModel: GalleryViewModel = hiltViewModel()
     val mediaStats by galleryViewModel.mediaStats.collectAsState()
+    val summaryLoaded by galleryViewModel.summaryLoaded.collectAsState()
+    val summaryLoadFailed by galleryViewModel.summaryLoadFailed.collectAsState()
     val isSelecting by galleryViewModel.isInSelectionMode.collectAsState()
     val dynamicAccent by galleryViewModel.dynamicAccent.collectAsState()
     val compactTopBar by galleryViewModel.compactTopBar.collectAsState()
@@ -102,6 +105,17 @@ fun HomeScreen(
     var showSmartSheet by rememberSaveable { mutableStateOf(false) }
     var showOnThisDay by rememberSaveable { mutableStateOf(true) }
 
+    LaunchedEffect(reminderRequests) {
+        if (reminderRequests > 0) {
+            showOnThisDay = true
+            homeNavController.navigate(HomeTab.GALLERY.route) {
+                popUpTo(homeNavController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -111,7 +125,7 @@ fun HomeScreen(
         NavHost(
             navController = homeNavController,
             startDestination = HomeTab.GALLERY.route,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(top = 136.dp, bottom = 104.dp),
             enterTransition = { fadeIn(tween(200)) },
             exitTransition = { fadeOut(tween(200)) },
             popEnterTransition = { fadeIn(tween(200)) },
@@ -119,18 +133,18 @@ fun HomeScreen(
         ) {
             composable(
                 route = HomeTab.GALLERY.route,
-                enterTransition = { slideInHorizontally { -it / 4 } + fadeIn(tween(200)) },
-                exitTransition = { slideOutHorizontally { it / 4 } + fadeOut(tween(200)) }
+                enterTransition = { slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { -it / 10 } + fadeIn(tween(220)) },
+                exitTransition = { slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing)) { it / 10 } + fadeOut(tween(180)) }
             ) { GalleryScreen(onPhotoClick = onPhotoClick, viewModel = galleryViewModel) }
             composable(
                 route = HomeTab.ALBUMS.route,
-                enterTransition = { slideInHorizontally { it / 4 } + fadeIn(tween(200)) },
-                exitTransition = { slideOutHorizontally { -it / 4 } + fadeOut(tween(200)) }
+                enterTransition = { slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(220)) },
+                exitTransition = { slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing)) { -it / 10 } + fadeOut(tween(180)) }
             ) { AlbumsScreen(onFolderClick = onFolderClick) }
             composable(
                 route = HomeTab.SEARCH.route,
-                enterTransition = { slideInHorizontally { it / 4 } + fadeIn(tween(200)) },
-                exitTransition = { slideOutHorizontally { -it / 4 } + fadeOut(tween(200)) }
+                enterTransition = { slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(220)) },
+                exitTransition = { slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing)) { -it / 10 } + fadeOut(tween(180)) }
             ) {
                 SearchScreen(
                     onPhotoClick = { onPhotoClick(it) },
@@ -144,15 +158,18 @@ fun HomeScreen(
 
         // ── Floating Top Bar ─────────────────────────────────────────────────
         OmniTopBar(
+            page = currentTab,
             photoCount = mediaStats.photoCount,
             videoCount = mediaStats.videoCount,
             photosFormattedSize = photosFormattedSize,
             videosFormattedSize = videosFormattedSize,
             totalFormattedSize = totalFormattedSize,
             albumCount = mediaStats.albumCount,
-            isLoading = mediaStats.totalCount == 0 && mediaStats.totalSizeBytes == 0L,
+            isLoading = !summaryLoaded && !summaryLoadFailed,
+            summaryLoadFailed = summaryLoadFailed,
+            onRetrySummary = galleryViewModel::retryHomeSummary,
             dynamicAccent = dynamicAccent,
-            compactMode = compactTopBar || currentTab != HomeTab.GALLERY,
+            compactMode = true,
             onSettingsClick = onSettingsClick,
             modifier = Modifier.align(Alignment.TopCenter)
         )
@@ -181,7 +198,7 @@ fun HomeScreen(
                 )
             }
 
-            // Smart FAB + Favorites chip
+            // One entry point for working library management actions
             AnimatedVisibility(
                 visible = currentTab == HomeTab.GALLERY,
                 enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
@@ -192,10 +209,9 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FavoritesChip(onClick = onFavoritesClick)
                     SmartFab(
                         accent = dynamicAccent,
                         onClick = { showSmartSheet = true }
@@ -230,6 +246,10 @@ fun HomeScreen(
     if (showSmartSheet) {
         SmartActionsSheet(
             onDismiss = { showSmartSheet = false },
+            onFavoritesClick = {
+                showSmartSheet = false
+                onFavoritesClick()
+            },
             onTrashClick = {
                 showSmartSheet = false
                 onTrashClick()
@@ -242,6 +262,7 @@ fun HomeScreen(
 
 @Composable
 private fun OmniTopBar(
+    page: HomeTab,
     photoCount: Int,
     videoCount: Int,
     photosFormattedSize: String,
@@ -249,6 +270,8 @@ private fun OmniTopBar(
     totalFormattedSize: String,
     albumCount: Int,
     isLoading: Boolean,
+    summaryLoadFailed: Boolean,
+    onRetrySummary: () -> Unit,
     dynamicAccent: Color?,
     compactMode: Boolean,
     onSettingsClick: () -> Unit,
@@ -291,14 +314,19 @@ private fun OmniTopBar(
             Spacer(modifier = Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Outlined.AutoAwesome,
+                    imageVector = page.icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onBackground,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(7.dp))
                 Text(
-                    text = dynamicGreeting(),
+                    text = when (page) {
+                        HomeTab.GALLERY -> dynamicGreeting()
+                        HomeTab.ALBUMS -> "Albums"
+                        HomeTab.SEARCH -> "Search"
+                        HomeTab.VAULT -> "Private Vault"
+                    },
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -306,7 +334,13 @@ private fun OmniTopBar(
             }
             Spacer(modifier = Modifier.height(8.dp))
             if (isLoading) StatsShimmerRow()
-            else {
+            else if (summaryLoadFailed) {
+                TextButton(onClick = onRetrySummary) {
+                    Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Library unavailable · Retry")
+                }
+            } else {
                 AnimatedVisibility(
                     visible = !isLoading && !compactMode,
                     enter = fadeIn(tween(400)) + expandVertically()
@@ -323,7 +357,12 @@ private fun OmniTopBar(
                 }
                 AnimatedVisibility(visible = compactMode) {
                     Text(
-                        "Your memories, organized",
+                        when (page) {
+                            HomeTab.GALLERY -> "${photoCount} photos · ${videoCount} videos"
+                            HomeTab.ALBUMS -> "$albumCount albums"
+                            HomeTab.SEARCH -> "Find photos and text"
+                            HomeTab.VAULT -> "Your private space"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -581,9 +620,9 @@ private fun SmartFab(accent: Color?, onClick: () -> Unit) {
         shape = RoundedCornerShape(18.dp),
         elevation = FloatingActionButtonDefaults.elevation(6.dp, 2.dp)
     ) {
-        Icon(Icons.Outlined.AutoAwesome, null, modifier = Modifier.size(20.dp))
+        Icon(Icons.Outlined.Tune, null, modifier = Modifier.size(20.dp))
         Spacer(modifier = Modifier.width(8.dp))
-        Text("Smart", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text("Library Tools", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
     }
 }
 
@@ -649,8 +688,8 @@ private fun OmniBottomNav(
                     onClick = { onTabSelected(tab) },
                     icon = {
                         val scale by animateFloatAsState(
-                            targetValue = if (selected) 1.15f else 1f,
-                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                            targetValue = if (selected) 1.08f else 1f,
+                            animationSpec = tween(180, easing = FastOutSlowInEasing),
                             label = "tab_scale_${tab.route}"
                         )
                         Icon(
@@ -661,7 +700,7 @@ private fun OmniBottomNav(
                                 HomeTab.VAULT -> if (selected) Icons.Filled.Lock else Icons.Outlined.Lock
                             },
                             contentDescription = tab.label,
-                            modifier = Modifier.size(if (selected) 24.dp else 22.dp).scale(scale),
+                            modifier = Modifier.size(24.dp).scale(scale),
                             tint = if (selected) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -698,21 +737,13 @@ private data class SmartActionItem(
 @Composable
 private fun SmartActionsSheet(
     onDismiss: () -> Unit,
-    onTrashClick: () -> Unit // ← new
+    onFavoritesClick: () -> Unit,
+    onTrashClick: () -> Unit
 ) {
+    // Do not present unimplemented tools as clickable actions.
     val items = listOf(
-        SmartActionItem(
-            icon = Icons.Outlined.Delete,
-            title = "Recycle Bin",
-            subtitle = "Manage deleted photos",
-            color = Color(0xFFFF6B6B),
-            dismissOnClick = true,
-            onClick = onTrashClick
-        ),
-        SmartActionItem(Icons.Outlined.Compress, "Smart Compress", "Free up space intelligently", Color(0xFF8B7FF5)),
-        SmartActionItem(Icons.Outlined.ContentCopy, "Photo DNA", "Find & remove duplicates", Color(0xFFFFB300)),
-        SmartActionItem(Icons.Outlined.Refresh, "Re-Index", "Rebuild photo intelligence", Color(0xFFFF5252)),
-        SmartActionItem(Icons.Outlined.BarChart, "Memoria Stats", "Visualize your memory patterns", Color(0xFF7C4DFF))
+        SmartActionItem(Icons.Outlined.FavoriteBorder, "Favorites", "See saved photos", Color(0xFFFF4B6E), onClick = onFavoritesClick),
+        SmartActionItem(Icons.Outlined.Delete, "Recycle Bin", "Manage recently deleted photos", Color(0xFFFF6B6B), onClick = onTrashClick)
     )
 
     ModalBottomSheet(
@@ -747,12 +778,12 @@ private fun SmartActionsSheet(
                 Spacer(modifier = Modifier.width(14.dp))
                 Column {
                     Text(
-                        "Smart Actions",
+                        "Library Tools",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "AI-powered tools for your memories",
+                        "Your saved and deleted media",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

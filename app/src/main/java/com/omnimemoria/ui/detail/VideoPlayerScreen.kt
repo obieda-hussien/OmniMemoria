@@ -99,7 +99,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.omnimemoria.ui.components.MediaChromeCorner
 import com.omnimemoria.ui.components.OmniMediaTopBar
-import com.omnimemoria.ui.navigation.NavigationSurfaceColor
+import com.omnimemoria.ui.navigation.MediaChromeSurfaceColor
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -933,7 +933,7 @@ private fun VideoSeekBar(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(MediaChromeCorner))
-            .background(NavigationSurfaceColor)
+            .background(MediaChromeSurfaceColor)
             .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(MediaChromeCorner))
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
@@ -1000,8 +1000,8 @@ private fun SpeedPanel(
         modifier = Modifier
             .width(240.dp)
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF1A1830).copy(alpha = 0.97f))
-            .border(1.dp, Color.White.copy(alpha = 0.09f), RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.98f))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -1012,57 +1012,57 @@ private fun SpeedPanel(
                 modifier = Modifier
                     .clip(RoundedCornerShape(9.dp))
                     .background(Color(0xFF2D26A0))
-                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.45f), RoundedCornerShape(9.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f), RoundedCornerShape(9.dp))
                     .padding(horizontal = 12.dp, vertical = 5.dp)
             ) {
                 Text(currentSpeed.toSpeedLabel(), color = Color.White,
                     style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
             }
-            Text("Speed", color = Color.White.copy(alpha = 0.92f),
+            Text("Speed", color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         }
-        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 0.5.dp)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
         SPEED_OPTIONS.forEach { opt ->
             val isSelected = currentSpeed == opt.speed
             val enabled    = canSetSpeed || opt.speed == 1f
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(if (isSelected) Color(0xFF2D26A0).copy(alpha = 0.32f) else Color.Transparent)
+                    .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f) else Color.Transparent)
                     .clickable(enabled = enabled) { onSpeedSelect(opt.speed) }
                     .padding(horizontal = 16.dp, vertical = 13.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment     = Alignment.CenterVertically
             ) {
-                if (isSelected) Icon(Icons.Filled.Check, null, tint = Color(0xFF8B7FF5), modifier = Modifier.size(16.dp))
+                if (isSelected) Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                 else Spacer(Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(opt.label,
-                    color = when { isSelected -> Color(0xFF8B7FF5).copy(alpha = 0.9f); !enabled -> Color.White.copy(alpha = 0.20f); else -> Color.White.copy(alpha = 0.55f) },
+                    color = when { isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.9f); !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.50f); else -> MaterialTheme.colorScheme.onSurfaceVariant },
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
                 Text(opt.speed.toSpeedLabel(),
-                    color = when { isSelected -> Color(0xFF8B7FF5); !enabled -> Color.White.copy(alpha = 0.18f); else -> Color.White.copy(alpha = 0.60f) },
+                    color = when { isSelected -> MaterialTheme.colorScheme.primary; !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.50f); else -> MaterialTheme.colorScheme.onSurfaceVariant },
                     style = MaterialTheme.typography.bodyMedium, fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Normal)
             }
         }
-        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 0.5.dp)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
         Row(
             modifier = Modifier.fillMaxWidth()
-                .background(if (isRepeatMode) Color(0xFF2D26A0).copy(alpha = 0.22f) else Color.Transparent)
+                .background(if (isRepeatMode) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f) else Color.Transparent)
                 .clickable(onClick = onRepeatToggle)
                 .padding(horizontal = 16.dp, vertical = 13.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment     = Alignment.CenterVertically
         ) {
             Icon(if (isRepeatMode) Icons.Filled.Repeat else Icons.Outlined.Repeat, "Repeat",
-                tint = if (isRepeatMode) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.50f), modifier = Modifier.size(20.dp))
-            Text("Repeat", color = if (isRepeatMode) Color(0xFF8B7FF5) else Color.White.copy(alpha = 0.50f),
+                tint = if (isRepeatMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            Text("Repeat", color = if (isRepeatMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium, fontWeight = if (isRepeatMode) FontWeight.SemiBold else FontWeight.Normal)
         }
-        HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
         val castIconTint = when (castState) {
-            CastState.CONNECTED   -> Color(0xFF8B7FF5); CastState.AVAILABLE -> Color.White.copy(alpha = 0.72f)
-            CastState.SEARCHING   -> Color.White.copy(alpha = 0.45f); CastState.UNAVAILABLE -> Color.White.copy(alpha = 0.25f)
+            CastState.CONNECTED   -> MaterialTheme.colorScheme.primary; CastState.AVAILABLE -> MaterialTheme.colorScheme.onSurface
+            CastState.SEARCHING   -> MaterialTheme.colorScheme.onSurfaceVariant; CastState.UNAVAILABLE -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.60f)
         }
         val castLabel = when (castState) {
             CastState.CONNECTED   -> castDeviceName ?: "Connected"; CastState.AVAILABLE -> "Cast to device"
@@ -1070,7 +1070,7 @@ private fun SpeedPanel(
         }
         Row(
             modifier = Modifier.fillMaxWidth()
-                .background(if (castState == CastState.CONNECTED) Color(0xFF2D26A0).copy(alpha = 0.28f) else Color.Transparent)
+                .background(if (castState == CastState.CONNECTED) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f) else Color.Transparent)
                 .clickable(enabled = castState != CastState.SEARCHING) {
                     if (castState == CastState.UNAVAILABLE) onScanForDevices() else onCastAction()
                 }
@@ -1084,7 +1084,7 @@ private fun SpeedPanel(
                 Text(castLabel, color = castIconTint, style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (castState == CastState.CONNECTED) FontWeight.SemiBold else FontWeight.Normal)
                 if (castState == CastState.SEARCHING)
-                    Text("Scanning for cast receivers...", color = Color.White.copy(alpha = 0.32f), style = MaterialTheme.typography.labelSmall)
+                    Text("Scanning for cast receivers...", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
             }
         }
     }
@@ -1103,14 +1103,14 @@ private fun VideoInfoCard(
         modifier = Modifier
             .width(224.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF1A1830).copy(alpha = 0.96f))
-            .border(1.dp, Color.White.copy(alpha = 0.09f), RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.98f))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f), RoundedCornerShape(18.dp))
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("Video Info", color = Color.White.copy(alpha = 0.55f),
+        Text("Video Info", color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 0.5.dp)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
         if (item.width > 0 && item.height > 0) InfoRow("Resolution", "${item.width} × ${item.height}")
         if (durationMs > 0)                     InfoRow("Duration",   formatTime(durationMs))
         if (item.size > 0) {
@@ -1129,8 +1129,8 @@ private fun InfoRow(label: String, value: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment     = Alignment.CenterVertically
     ) {
-        Text(label, color = Color.White.copy(alpha = 0.36f), style = MaterialTheme.typography.labelSmall)
-        Text(value, color = Color.White.copy(alpha = 0.85f),
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+        Text(value, color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
     }
 }

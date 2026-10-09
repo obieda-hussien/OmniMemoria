@@ -3,6 +3,7 @@ package com.omnimemoria.ui.search
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -82,8 +83,6 @@ fun SearchScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .padding(top = HomeTopOverlaySpacing)
         ) {
 
             // ── Search bar (تغليف احترافي يمنع تداخل العناصر أثناء التمرير) ──
@@ -159,15 +158,14 @@ private fun OmniSearchBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding() // يعطي الطول المناسب التلقائي بناءً على حجم شريط حالة نظام أندرويد لحمايته بالكامل
             .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp) // تقليل الـ padding الفوق ليتناسق بدقة وبدون تباعد عشوائي
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(18.dp))
-                .background(Color(0xFF1E1C30))
-                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
                 .padding(horizontal = 16.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -194,7 +192,7 @@ private fun OmniSearchBar(
                         Text(
                             HintTexts[idx],
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF5A587A)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -226,7 +224,7 @@ private fun OmniSearchBar(
                     modifier = Modifier
                         .size(28.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF2D2B45))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                         .clickable(onClick = onClear),
                     contentAlignment = Alignment.Center
                 ) {
@@ -339,7 +337,7 @@ private fun IdleState(
                 .clip(RoundedCornerShape(20.dp))
                 .background(
                     Brush.horizontalGradient(
-                        listOf(Color(0xFF1A1830), Color(0xFF1E1C38))
+                        listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f))
                     )
                 )
                 .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.15f), RoundedCornerShape(20.dp))
@@ -366,7 +364,7 @@ private fun IdleState(
                         "Smarter search with AI",
                         style      = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color      = MaterialTheme.colorScheme.onBackground
+                        color      = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -394,7 +392,7 @@ private fun IdleState(
                         Text(
                             "Enable in Settings",
                             style      = MaterialTheme.typography.labelMedium,
-                            color      = Color(0xFF8B7FF5),
+                            color      = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -412,8 +410,8 @@ private fun RecentChip(term: String, onClick: () -> Unit, onDelete: () -> Unit) 
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF1E1C30))
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
             .combinedClickable(onClick = onClick)
             .padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -435,7 +433,7 @@ private fun RecentChip(term: String, onClick: () -> Unit, onDelete: () -> Unit) 
             modifier = Modifier
                 .size(20.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF2D2B45))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
                 .clickable(onClick = onDelete),
             contentAlignment = Alignment.Center
         ) {
@@ -462,12 +460,21 @@ private fun QuickFilterCard(
     modifier: Modifier = Modifier,
     onClick:  () -> Unit
 ) {
+    val darkTheme = isSystemInDarkTheme()
+    // Light system themes need readable surfaces and text, not nighttime gradients.
+    val colors = if (darkTheme) gradient else listOf(
+        accent.copy(alpha = 0.18f),
+        accent.copy(alpha = 0.08f)
+    )
+    val contentColor = if (darkTheme) Color.White else MaterialTheme.colorScheme.onSurface
+    val secondaryColor = if (darkTheme) accent else MaterialTheme.colorScheme.onSurfaceVariant
+    val iconColor = if (darkTheme) accent else MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
             .aspectRatio(1.6f)
             .clip(RoundedCornerShape(18.dp))
-            .background(Brush.linearGradient(gradient))
-            .border(1.dp, accent.copy(alpha = 0.15f), RoundedCornerShape(18.dp))
+            .background(Brush.linearGradient(colors))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(18.dp))
             .combinedClickable(onClick = onClick)
             .padding(14.dp)
     ) {
@@ -483,7 +490,7 @@ private fun QuickFilterCard(
             Icon(
                 icon,
                 null,
-                tint     = accent,
+                tint     = iconColor,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -494,13 +501,13 @@ private fun QuickFilterCard(
                 title,
                 style      = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color      = Color.White
+                color      = contentColor
             )
             if (count != null) {
                 Text(
                     text  = "$count found",
                     style = MaterialTheme.typography.labelSmall,
-                    color = accent.copy(alpha = 0.8f)
+                    color = secondaryColor
                 )
             }
         }
@@ -509,7 +516,7 @@ private fun QuickFilterCard(
         Icon(
             Icons.Outlined.ChevronRight,
             null,
-            tint     = accent.copy(alpha = 0.4f),
+            tint     = secondaryColor,
             modifier = Modifier
                 .size(16.dp)
                 .align(Alignment.TopEnd)

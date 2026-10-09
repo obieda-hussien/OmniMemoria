@@ -1,5 +1,12 @@
 package com.omnimemoria.ui.settings
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.omnimemoria.data.worker.ModelDownloadWorker
+import com.omnimemoria.data.worker.OnThisDayWorker
 import com.omnimemoria.domain.flags.FeatureFlag
 import com.omnimemoria.ui.components.OmniDetailTopBar
 import com.omnimemoria.ui.components.OmniSettingsGroup
@@ -40,6 +48,33 @@ fun SettingsScreen(
     val modelDownloadStates by viewModel.modelDownloadStates.collectAsState()
     val ocrEnabled          = featureStates[FeatureFlag.OCR] == true
     var activeDownloadModel by remember { mutableStateOf<String?>(null) }
+    val appContext = LocalContext.current
+    var remindersEnabled by remember(appContext) {
+        mutableStateOf(
+            OnThisDayWorker.isEnabled(appContext) &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(appContext, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+        )
+    }
+    val requestNotificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            OnThisDayWorker.setEnabled(appContext, true)
+            remindersEnabled = true
+        }
+    }
+
+    fun setReminders(enabled: Boolean) {
+        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(appContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            OnThisDayWorker.setEnabled(appContext, enabled)
+            remindersEnabled = enabled
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -70,6 +105,19 @@ fun SettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+
+            item {
+                OmniSettingsGroup(title = "Notifications", icon = Icons.Outlined.NotificationsActive) {
+                    OmniFeatureToggleItem(
+                        title = "On This Day reminders",
+                        subtitle = "Optional daily memories. Android notification access is required.",
+                        icon = Icons.Outlined.Notifications,
+                        checked = remindersEnabled,
+                        onCheckedChange = ::setReminders,
+                        isLast = true
+                    )
+                }
+            }
 
             item {
                 OmniSettingsGroup(title = "AI Features", icon = Icons.Outlined.AutoAwesome) {
@@ -215,7 +263,7 @@ private fun OmniFeatureToggleItem(
                         if (checked)
                             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f * contentAlpha)
                         else
-                            Color(0xFF1E1C30).copy(alpha = contentAlpha)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = contentAlpha)
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -256,7 +304,7 @@ private fun OmniFeatureToggleItem(
                 colors          = SwitchDefaults.colors(
                     checkedThumbColor  = MaterialTheme.colorScheme.onPrimary,
                     checkedTrackColor  = MaterialTheme.colorScheme.primary,
-                    uncheckedTrackColor = Color(0xFF2A2840)
+                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             )
         }
@@ -265,7 +313,7 @@ private fun OmniFeatureToggleItem(
             HorizontalDivider(
                 modifier  = Modifier.padding(start = 70.dp, end = 18.dp),
                 thickness = 0.5.dp,
-                color     = Color.White.copy(alpha = 0.05f)
+                color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
         }
     }
@@ -292,7 +340,7 @@ private fun OmniModelDownloadItem(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF1E1C30)),
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -316,21 +364,21 @@ private fun OmniModelDownloadItem(
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF1A3A1A))
+                        .background(MaterialTheme.colorScheme.tertiaryContainer)
                         .padding(horizontal = 10.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         Icons.Outlined.CheckCircle,
                         null,
-                        tint     = Color(0xFF4CAF50),
+                        tint     = MaterialTheme.colorScheme.onTertiaryContainer,
                         modifier = Modifier.size(15.dp)
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
                         "Ready",
                         style      = MaterialTheme.typography.labelSmall,
-                        color      = Color(0xFF4CAF50),
+                        color      = MaterialTheme.colorScheme.onTertiaryContainer,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -346,14 +394,14 @@ private fun OmniModelDownloadItem(
                         Icon(
                             Icons.Outlined.CloudDownload,
                             null,
-                            tint     = Color.White,
+                            tint     = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(15.dp)
                         )
                         Spacer(Modifier.width(5.dp))
                         Text(
                             "Get",
                             style      = MaterialTheme.typography.labelMedium,
-                            color      = Color.White,
+                            color      = MaterialTheme.colorScheme.onPrimary,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -365,7 +413,7 @@ private fun OmniModelDownloadItem(
             HorizontalDivider(
                 modifier  = Modifier.padding(start = 70.dp, end = 18.dp),
                 thickness = 0.5.dp,
-                color     = Color.White.copy(alpha = 0.05f)
+                color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
         }
     }
@@ -403,7 +451,7 @@ private fun OmniAboutItems() {
         HorizontalDivider(
             modifier  = Modifier.padding(horizontal = 18.dp),
             thickness = 0.5.dp,
-            color     = Color.White.copy(alpha = 0.05f)
+            color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
         )
 
         Row(
@@ -481,7 +529,7 @@ private val AI_MODEL_ITEMS = listOf(
 )
 
 private val SECURITY_FEATURE_ITEMS = listOf(
-    FeatureItem("Encrypted Vault",          FeatureFlag.VAULT,          Icons.Outlined.Lock),
+    FeatureItem("Vault PIN Preview",       FeatureFlag.VAULT,          Icons.Outlined.Lock, "PIN demo only · encrypted photo storage unavailable"),
     FeatureItem("Hidden Photo Notes",       FeatureFlag.SILENT_STORY,   Icons.Outlined.VisibilityOff),
     FeatureItem("Memory Map",               FeatureFlag.MEMORY_MAP,     Icons.Outlined.Map)
 )
