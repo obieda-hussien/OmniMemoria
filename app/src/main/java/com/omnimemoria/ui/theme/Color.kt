@@ -1,6 +1,8 @@
 package com.omnimemoria.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 
 // ─── Primary — Electric Indigo ────────────────────────────────────────────────
 val PrimaryLight            = Color(0xFF5548D9)
@@ -51,7 +53,7 @@ val AmberVibe   = Color(0xFFD97706)   // Vibe Albums -- golden hour
 val RoseMemory  = Color(0xFFBE4B8A)  // Favorites / emotional
 val IndigoDeep  = Color(0xFF2D26A0)  // Surface accents
 
-// ─── Sheet / Modal tokens ──────────────────────────────────────────────────────
-// Shared by AlbumsScreen, GalleryScreen, FolderDetailScreen bottom sheets.
-// Previously each hardcoded Color(0xFF141220) independently.
-val OmniSheetContainerColor = Color(0xFF141220)
+// Use the active Material theme so modal sheets change with the system's day/night mode.
+// Call sites already use this from @Composable functions.
+val OmniSheetContainerColor: Color
+    @Composable get() = MaterialTheme.colorScheme.surface
