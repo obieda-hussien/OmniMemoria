@@ -2,6 +2,7 @@ package com.omnimemoria.ui.gallery
 
 import android.app.PendingIntent
 import android.content.Context
+import android.util.Log
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -22,6 +23,7 @@ import com.omnimemoria.domain.model.SortConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -103,6 +105,8 @@ class GalleryViewModel @Inject constructor(
     // A zero-item library is a valid loaded state, not an endless loading state.
     private val _summaryLoaded = MutableStateFlow(false)
     val summaryLoaded: StateFlow<Boolean> = _summaryLoaded.asStateFlow()
+    private val _summaryLoadFailed = MutableStateFlow(false)
+    val summaryLoadFailed: StateFlow<Boolean> = _summaryLoadFailed.asStateFlow()
 
     private val _onThisDayPhotos = MutableStateFlow<List<MediaPhoto>>(emptyList())
     val onThisDayPhotos: StateFlow<List<MediaPhoto>> = _onThisDayPhotos.asStateFlow()
@@ -200,14 +204,27 @@ class GalleryViewModel @Inject constructor(
         }
     }
 
+    fun retryHomeSummary() {
+        viewModelScope.launch { refreshHomeSummary() }
+    }
+
     private suspend fun refreshHomeSummary() = withContext(Dispatchers.IO) {
+        _summaryLoadFailed.value = false
         try {
-            _mediaStats.value = mediaStoreRepository.getMediaStats()
-            _onThisDayPhotos.value = mediaStoreRepository.getPhotosOnThisDay()
+            // Stage results before publishing: a failed partial scan cannot look like an empty library.
+            val stats = mediaStoreRepository.getMediaStats()
+            val memories = mediaStoreRepository.getPhotosOnThisDay()
             val uri = mediaStoreRepository.getMostRecentPhotoUri()
-            _dynamicAccent.value = uri?.let { mediaStoreRepository.extractDominantColor(it) }
-        } finally {
+            val accent = uri?.let { mediaStoreRepository.extractDominantColor(it) }
+            _mediaStats.value = stats
+            _onThisDayPhotos.value = memories
+            _dynamicAccent.value = accent
             _summaryLoaded.value = true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w("OmniMemoriaGallery", "Unable to load media summary", error)
+            _summaryLoadFailed.value = true
         }
     }
 
