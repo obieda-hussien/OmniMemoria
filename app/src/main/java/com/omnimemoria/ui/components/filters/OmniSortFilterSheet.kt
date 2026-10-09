@@ -14,6 +14,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.layout.heightIn
 import com.omnimemoria.domain.model.SortOrder
 import com.omnimemoria.ui.theme.OmniSheetContainerColor
 
@@ -22,41 +27,49 @@ import com.omnimemoria.ui.theme.OmniSheetContainerColor
 fun OmniSortFilterSheet(
     title: String = "Sort & Filter",
     onDismiss: () -> Unit,
+    footer: @Composable () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit
 ) {
-    ModalBottomSheet(
-        dragHandle = null,
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = OmniSheetContainerColor,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
+    // The app's control labels are English, even when the device's system language is RTL.
+    // Keep option controls predictable; media captions still handle their own bidirectional text.
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        val maxSheetHeight = (LocalConfiguration.current.screenHeightDp * 0.82f).dp
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            dragHandle = { BottomSheetDefaults.DragHandle() },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) {
-            Box(
+            Column(
                 modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .width(36.dp)
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(MaterialTheme.colorScheme.outlineVariant)
-            )
-            Spacer(Modifier.height(20.dp))
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(Modifier.height(24.dp))
-
-            content()
+                    .fillMaxWidth()
+                    .heightIn(max = maxSheetHeight)
+                    .padding(horizontal = 20.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                // The body scrolls independently so Apply/Cancel never disappear below the screen.
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState()),
+                    content = content
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(top = 8.dp, bottom = 16.dp)
+                ) {
+                    footer()
+                }
+            }
         }
     }
 }
