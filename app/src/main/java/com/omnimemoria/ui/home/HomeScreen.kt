@@ -158,6 +158,7 @@ fun HomeScreen(
 
         // ── Floating Top Bar ─────────────────────────────────────────────────
         OmniTopBar(
+            page = currentTab,
             photoCount = mediaStats.photoCount,
             videoCount = mediaStats.videoCount,
             photosFormattedSize = photosFormattedSize,
@@ -258,6 +259,7 @@ fun HomeScreen(
 
 @Composable
 private fun OmniTopBar(
+    page: HomeTab,
     photoCount: Int,
     videoCount: Int,
     photosFormattedSize: String,
@@ -309,14 +311,19 @@ private fun OmniTopBar(
             Spacer(modifier = Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Outlined.AutoAwesome,
+                    imageVector = page.icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onBackground,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(7.dp))
                 Text(
-                    text = dynamicGreeting(),
+                    text = when (page) {
+                        HomeTab.GALLERY -> dynamicGreeting()
+                        HomeTab.ALBUMS -> "Albums"
+                        HomeTab.SEARCH -> "Search"
+                        HomeTab.VAULT -> "Private Vault"
+                    },
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -347,7 +354,12 @@ private fun OmniTopBar(
                 }
                 AnimatedVisibility(visible = compactMode) {
                     Text(
-                        "Your memories, organized",
+                        when (page) {
+                            HomeTab.GALLERY -> "${photoCount} photos · ${videoCount} videos"
+                            HomeTab.ALBUMS -> "$albumCount albums"
+                            HomeTab.SEARCH -> "Find photos and text"
+                            HomeTab.VAULT -> "Your private space"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
