@@ -404,7 +404,7 @@ private fun TrashItemCard(
 ) {
     val expiryColor = when {
         item.daysUntilExpiry <= 3 -> MaterialTheme.colorScheme.error
-        item.daysUntilExpiry <= 7 -> Color(0xFFFBC02D)
+        item.daysUntilExpiry <= 7 -> MaterialTheme.colorScheme.secondary
         else                      -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val isVideo = item.mediaType.startsWith("video/", ignoreCase = true)

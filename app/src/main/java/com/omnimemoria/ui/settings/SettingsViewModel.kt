@@ -58,7 +58,13 @@ class SettingsViewModel @Inject constructor(
                 ?: jobs.lastOrNull { !it.state.isFinished } ?: jobs.lastOrNull()
             when (active?.state) {
                 androidx.work.WorkInfo.State.RUNNING -> "Analyzing · ${active.progress.getInt("processed", 0)} completed · ${active.progress.getInt("failed", 0)} need attention"
-                androidx.work.WorkInfo.State.ENQUEUED -> "Waiting for idle device and sufficient battery"
+                androidx.work.WorkInfo.State.ENQUEUED -> when {
+                    active.constraints.requiresDeviceIdle() -> "Scheduled · waits for idle device and sufficient battery"
+                    active.runAttemptCount > 0 -> "Retry scheduled · check library access"
+                    else -> "Queued · starting photo analysis"
+                }
+                androidx.work.WorkInfo.State.BLOCKED -> "Waiting for the previous batch"
+                androidx.work.WorkInfo.State.CANCELLED -> "Scan stopped"
                 androidx.work.WorkInfo.State.SUCCEEDED -> when (active.outputData.getString(com.omnimemoria.data.worker.PhotoIndexWorker.OUTPUT_STATUS)) {
                     "disabled" -> "Enable an analysis feature to scan photos"
                     "continuing", "preferences_changed" -> "Continuing with the next batch"
