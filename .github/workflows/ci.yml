@@ -145,8 +145,8 @@ jobs:
             :app:compileDebugKotlin :app:testDebugUnitTest \
             --continue
 
-      - name: Verify trash repository regressions
-        run: ./gradlew --no-daemon :app:verifyTrashRepository
+      - name: Verify repository and worker regressions
+        run: ./gradlew --no-daemon :app:verifyTrashRepository :app:verifyPhotoIndexWorker
 
       - name: Upload test reports
         if: always()

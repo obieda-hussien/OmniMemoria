@@ -37,6 +37,7 @@ open class Context(val contentResolver: ContentResolver = ContentResolver()) {
 class ContentResolver {
  val items = linkedMapOf<String, Boolean>()
  var nullQuery = false; var refuseDelete = false; var deletes = 0
+ val unreadable = mutableSetOf<String>()
  fun delete(uri: android.net.Uri, selection: String?, args: Array<String>?): Int {
   deletes++
   return if (!refuseDelete && items.remove(uri.value) != null) 1 else 0
@@ -44,7 +45,7 @@ class ContentResolver {
  fun query(uri: android.net.Uri, projection: Array<String>, bundle: android.os.Bundle?, signal: Any?) = read(uri)
  fun query(uri: android.net.Uri, projection: Array<String>, selection: String?, args: Array<String>?, sort: String?) = read(uri)
  private fun read(uri: android.net.Uri): android.database.Cursor? =
-  if (nullQuery) null else android.database.Cursor(items.containsKey(uri.value), items[uri.value] == true)
+  if (nullQuery || uri.value in unreadable) null else android.database.Cursor(items.containsKey(uri.value), items[uri.value] == true)
 }
 object ContentUris { fun withAppendedId(uri: android.net.Uri, id: Long) = android.net.Uri(uri.value + "/" + id) }
 ''',
@@ -199,6 +200,42 @@ fun main() = runBlocking {
   Environment.allFiles = false; f.context.permission = -1
   check(runCatching { f.repository.confirmPermanentlyDelete(f.item) }.isFailure)
   check(f.dao.rows.size == 1)
+ }
+ // A bad first entry must not leave later confirmed entries out of sync.
+ test {
+  val f = Fixture(30); val next = f.item.copy(id = 43, mediaStoreId = 43)
+  f.dao.upsert(f.item); f.dao.upsert(next)
+  f.context.contentResolver.items["content://media/external/images/media/43"] = false
+  f.context.contentResolver.unreadable += f.photo.uri.value
+  val error = runCatching { f.repository.confirmRestoreFromTrash(listOf(f.item, next)) }.exceptionOrNull()
+  check(error?.message?.startsWith("1 of 2") == true && f.dao.rows.keys == setOf(42L))
+ }
+ test {
+  val f = Fixture(30); val next = f.item.copy(id = 43, mediaStoreId = 43)
+  f.dao.upsert(f.item); f.dao.upsert(next)
+  check(runCatching { f.repository.confirmPermanentlyDelete(listOf(f.item, next)) }.isFailure)
+  check(f.dao.rows.keys == setOf(42L))
+ }
+ test {
+  val f = Fixture(30); val next = f.item.copy(id = 43, mediaStoreId = 43)
+  f.dao.upsert(f.item); f.dao.upsert(next)
+  f.context.contentResolver.unreadable += f.photo.uri.value
+  check(runCatching { f.repository.cleanExpired() }.isFailure)
+  check(f.dao.rows.keys == setOf(42L))
+ }
+ test {
+  val f = Fixture(); val next = f.item.copy(id = 43, mediaStoreId = 43)
+  f.dao.upsert(f.item); f.dao.upsert(next)
+  f.context.contentResolver.items["content://media/external/images/media/43"] = false
+  f.context.contentResolver.unreadable += f.photo.uri.value
+  check(runCatching { f.repository.confirmPermanentlyDelete(listOf(f.item, next)) }.isFailure)
+  check(f.dao.rows.keys == setOf(42L) && !f.context.contentResolver.items.containsKey("content://media/external/images/media/43"))
+ }
+ test {
+  val f = Fixture(30); val next = f.photo.copy(id = 43, uri = Uri("content://media/external/images/media/43"))
+  f.context.contentResolver.items[next.uri.value] = true
+  check(runCatching { f.repository.confirmMoveToTrash(listOf(f.photo, next)) }.isFailure)
+  check(f.dao.rows.keys == setOf(43L))
  }
  println("Passed production TrashRepository: " + cases + " regression scenarios.")
 }

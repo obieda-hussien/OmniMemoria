@@ -60,7 +60,7 @@ class SettingsViewModel @Inject constructor(
                 androidx.work.WorkInfo.State.RUNNING -> "Analyzing · ${active.progress.getInt("processed", 0)} completed · ${active.progress.getInt("failed", 0)} need attention"
                 androidx.work.WorkInfo.State.ENQUEUED -> when {
                     active.constraints.requiresDeviceIdle() -> "Scheduled · waits for idle device and sufficient battery"
-                    active.runAttemptCount > 0 -> "Retry scheduled · check library access"
+                    active.runAttemptCount > 0 -> "Retry scheduled · a photo changed or library access was interrupted"
                     else -> "Queued · starting photo analysis"
                 }
                 androidx.work.WorkInfo.State.BLOCKED -> "Waiting for the previous batch"
@@ -70,7 +70,10 @@ class SettingsViewModel @Inject constructor(
                     "continuing", "preferences_changed" -> "Continuing with the next batch"
                     else -> "Scan complete · ${active.outputData.getInt("processed", 0)} analyzed · ${active.outputData.getInt("failed", 0)} need attention in last batch"
                 }
-                androidx.work.WorkInfo.State.FAILED -> "Scan needs storage access or retry"
+                androidx.work.WorkInfo.State.FAILED -> when (active.outputData.getString(com.omnimemoria.data.worker.PhotoIndexWorker.OUTPUT_STATUS)) {
+                    "photo_changed" -> "A photo kept changing during analysis. Finish editing, then scan again."
+                    else -> "Scan needs storage access or retry"
+                }
                 else -> "Off"
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Loading")

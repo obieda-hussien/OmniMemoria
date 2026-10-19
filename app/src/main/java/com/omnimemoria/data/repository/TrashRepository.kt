@@ -70,7 +70,7 @@ class TrashRepository @Inject constructor(
 
     suspend fun confirmMoveToTrash(photos: List<MediaPhoto>) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            photos.forEach { photo ->
+            reconcile(photos) { photo ->
                 val state = readState(photo.uri)
                 if (!state.exists || (Build.VERSION.SDK_INT >= 30 && !state.trashed))
                     throw IOException("The media was not moved to trash. Please try again.")
@@ -89,7 +89,7 @@ class TrashRepository @Inject constructor(
 
     suspend fun confirmRestoreFromTrash(items: List<TrashItem>) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            items.forEach { item ->
+            reconcile(items) { item ->
                 val state = readState(buildUriForItem(item))
                 if (!state.exists || (Build.VERSION.SDK_INT >= 30 && state.trashed))
                     throw IOException("The original file is unavailable or has not been restored.")
@@ -108,7 +108,7 @@ class TrashRepository @Inject constructor(
 
     suspend fun confirmPermanentlyDelete(items: List<TrashItem>) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            items.forEach { item ->
+            reconcile(items) { item ->
                 val uri = buildUriForItem(item)
                 if (Build.VERSION.SDK_INT < 30 && readState(uri).exists) contentResolver.delete(uri, null, null)
                 if (readState(uri).exists) throw IOException("The file was not deleted. It remains in trash.")
@@ -125,8 +125,29 @@ class TrashRepository @Inject constructor(
         // Android 11+ owns expiry. Keep records until the system actually removes
         // the file; permission errors never become evidence of deletion.
         if (Build.VERSION.SDK_INT >= 30) {
-            for (item in expired) if (!readState(buildUriForItem(item)).exists) trashDao.delete(item.id)
+            mutex.withLock {
+                reconcile(expired) { item ->
+                    if (!readState(buildUriForItem(item)).exists) trashDao.delete(item.id)
+                }
+            }
         } else confirmPermanentlyDelete(expired)
+    }
+
+    // A system approval applies to the entire batch. Verify every item even if
+    // an earlier one is unreadable, then report the entries retained for retry.
+    private suspend fun <T> reconcile(items: List<T>, action: suspend (T) -> Unit) {
+        var failed = 0
+        var firstError: Exception? = null
+        for (item in items) {
+            try { action(item) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                failed++
+                if (firstError == null) firstError = error
+            }
+        }
+        if (failed > 0) throw IOException(
+            "$failed of ${items.size} items could not be verified. ${firstError?.message.orEmpty()}", firstError)
     }
 
     private data class MediaState(val exists: Boolean, val trashed: Boolean = false)

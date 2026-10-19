@@ -61,7 +61,16 @@ class PhotoIndexWorker @AssistedInject constructor(
                     try {
                         val result = analyzer.analyze(image, old, required, arabicReady)
                         val fresh = source.page(image.id - 1, listOf(image.id)).firstOrNull()
-                        if (fresh == image && AnalysisPolicy.required(flags.featureStates.first()) == required) database.withTransaction {
+                        if (AnalysisPolicy.required(flags.featureStates.first()) != required) {
+                            scheduler.scheduleBackgroundIndex(0, ids, append = true, userInitiated = userInitiated)
+                            return@withContext Result.success(workDataOf(OUTPUT_STATUS to "preferences_changed"))
+                        }
+                        // Retry from this request's original cursor so an edit
+                        // during inference cannot be skipped by pagination.
+                        if (fresh != null && fresh != image) return@withContext if (runAttemptCount < 3)
+                            Result.retry() else Result.failure(workDataOf(OUTPUT_STATUS to "photo_changed"))
+                        if (fresh == null) continue // Removed or trashed during analysis.
+                        database.withTransaction {
                             val latest = dao.getById(image.id)
                             if (latest?.isVaultItem != true && trash.getById(image.id) == null &&
                                 !(latest != null && latest.sourceModified == image.modified && latest.sourceSize == image.size &&
