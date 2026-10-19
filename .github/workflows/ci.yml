@@ -146,11 +146,7 @@ jobs:
             --continue
 
       - name: Verify trash repository regressions
-        run: |
-          COMPILER_LIB="$(find ~/.gradle/wrapper/dists -path '*/gradle-8.10.2/lib' -type d -print -quit)"
-          COROUTINES_JAR="$(find "$COMPILER_LIB" -name 'kotlinx-coroutines-core-jvm-*.jar' -print -quit)"
-          test -n "$COMPILER_LIB" && test -n "$COROUTINES_JAR"
-          python3 scripts/test_trash_repository.py --compiler-lib "$COMPILER_LIB" --coroutines "$COROUTINES_JAR"
+        run: ./gradlew --no-daemon :app:verifyTrashRepository
 
       - name: Upload test reports
         if: always()

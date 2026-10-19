@@ -10,12 +10,22 @@ import tempfile
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--compiler-lib', required=True)
+compiler = parser.add_mutually_exclusive_group(required=True)
+compiler.add_argument('--compiler-lib')
+compiler.add_argument('--compiler-classpath')
+parser.add_argument('--stdlib')
 parser.add_argument('--coroutines', required=True)
 args = parser.parse_args()
-lib = Path(args.compiler_lib)
-stdlib = next(p for p in lib.glob('kotlin-stdlib*.jar')
-              if not any(part in p.name for part in ('jdk', 'extensions', 'sources', 'javadoc', 'common')))
+if args.compiler_lib:
+    lib = Path(args.compiler_lib)
+    compiler_classpath = str(lib / '*')
+    stdlib = next(p for p in lib.glob('kotlin-stdlib*.jar')
+                  if not any(part in p.name for part in ('jdk', 'extensions', 'sources', 'javadoc', 'common')))
+else:
+    if not args.stdlib:
+        parser.error('--stdlib is required with --compiler-classpath')
+    compiler_classpath = args.compiler_classpath
+    stdlib = Path(args.stdlib)
 root = Path(__file__).resolve().parents[1]
 production = root / 'app/src/main/java/com/omnimemoria'
 stubs = {
@@ -200,7 +210,7 @@ with tempfile.TemporaryDirectory() as scratch:
         (temp / name).write_text(contents)
     jar = temp / 'trash-tests.jar'
     cp = str(stdlib) + ':' + args.coroutines
-    subprocess.run(['java', '-cp', str(lib / '*'), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
+    subprocess.run(['java', '-cp', compiler_classpath, 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
                     '-nowarn', '-no-stdlib', '-no-reflect', '-classpath', cp,
                     *map(str, temp.glob('*.kt')),
                     str(production / 'data/repository/TrashRepository.kt'),

@@ -8,6 +8,22 @@ plugins {
     id("org.owasp.dependencycheck") version "12.1.0"
 }
 
+// Resolve the same compiler/runtime used by the project instead of relying on
+// a runner-specific Gradle installation or cache layout.
+tasks.register<Exec>("verifyTrashRepository") {
+    group = "verification"
+    description = "Run production trash repository regressions with Android boundary doubles"
+    workingDir(rootDir)
+    doFirst {
+        val runtime = configurations.getByName("debugUnitTestRuntimeClasspath").files
+        val stdlib = runtime.single { it.name.matches(Regex("kotlin-stdlib-[0-9].*\\.jar")) }
+        val coroutines = runtime.single { it.name.startsWith("kotlinx-coroutines-core-jvm-") && it.extension == "jar" }
+        commandLine("python3", "scripts/test_trash_repository.py",
+            "--compiler-classpath", configurations.getByName("kotlinCompilerClasspath").asPath,
+            "--stdlib", stdlib.absolutePath, "--coroutines", coroutines.absolutePath)
+    }
+}
+
 apply(plugin = "io.objectbox")
 
 android {
