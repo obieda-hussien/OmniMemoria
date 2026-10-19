@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,7 +58,7 @@ fun SettingsScreen(onBack: () -> Unit = {}, viewModel: SettingsViewModel = hiltV
         contentWindowInsets = WindowInsets.safeDrawing
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
+            modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).testTag("settings-list"),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {

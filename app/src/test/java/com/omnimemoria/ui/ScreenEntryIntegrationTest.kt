@@ -82,13 +82,29 @@ class ScreenEntryIntegrationTest {
 
     @Test fun confirmingArabicSetupEnqueuesTheActualModelRequest() {
         show { SettingsScreen() }
-        compose.onNodeWithText("Arabic OCR (Tesseract)").performScrollTo().performClick()
+        compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Arabic OCR (Tesseract)"))
+        compose.onNodeWithText("Arabic OCR (Tesseract)").performClick()
         compose.onNodeWithText("Download").assertIsDisplayed().performClick()
         compose.waitUntil(5_000) {
             androidx.work.WorkManager.getInstance(compose.activity).getWorkInfosForUniqueWork(
                 com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD
             ).get().isNotEmpty()
         }
+    }
+
+    @Test fun animatedNavigationCreatesViewModelsInsideSharedTransitionLayout() {
+        show { com.omnimemoria.ui.navigation.AppNavGraph() }
+        compose.onNodeWithContentDescription("Search").performClick()
+        compose.onNodeWithText("Quick Filters").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Vault").performClick()
+        compose.onNodeWithText("Vault is disabled").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Settings").performClick()
+        compose.onNodeWithText("Scan library now").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithContentDescription("Albums").performClick()
+        compose.onNodeWithText("Albums").assertExists()
+        compose.onNodeWithContentDescription("Search").performClick()
+        compose.onNodeWithText("Quick Filters").assertIsDisplayed()
     }
 
     @Test fun disabledVaultOpensWithRealViewModel() {

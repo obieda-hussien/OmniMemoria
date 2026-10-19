@@ -23,6 +23,11 @@ def alive():
         raise AssertionError('Application process exited; see logcat-crash.txt')
 
 
+def animations(enabled):
+    for name in ('window_animation_scale', 'transition_animation_scale', 'animator_duration_scale'):
+        adb('shell', 'settings', 'put', 'global', name, '1' if enabled else '0')
+
+
 def tree():
     alive()
     adb('shell', 'uiautomator', 'dump', '/sdcard/omni-ui.xml')
@@ -55,8 +60,13 @@ def wait(label, seconds=30, partial=False):
 
 def tap(label, partial=False):
     _, (left, top, right, bottom) = wait(label, partial=partial)
+    # Exercise the real animated transition, then disable animations only so
+    # UIAutomator can become idle even on screens with an infinite pulse.
+    animations(True)
     adb('shell', 'input', 'tap', str((left + right)//2), str((top + bottom)//2))
-    time.sleep(0.5)
+    time.sleep(1.2)
+    alive()
+    animations(False)
 
 
 def swipe(up=True):
@@ -81,9 +91,20 @@ def capture(name):
     (OUTPUT / f'{name}.xml').write_text(ET.tostring(tree(), encoding='unicode'))
 
 
+def back():
+    animations(True)
+    adb('shell', 'input', 'keyevent', '4')
+    time.sleep(1.2)
+    alive()
+    animations(False)
+
+
 def home():
     adb('shell', 'am', 'force-stop', PACKAGE)
+    animations(True)
     adb('shell', 'am', 'start', '-W', '-n', PACKAGE+'/.MainActivity')
+    time.sleep(1.2)
+    animations(False)
     wait('All Media', seconds=45)
 
 
@@ -106,14 +127,17 @@ try:
     for mode in ('no', 'yes'):
         adb('shell', 'cmd', 'uimode', 'night', mode)
         home()
+        tap('Albums'); wait('Albums'); tap('Gallery')
+        tap('Library Tools'); tap('Favorites'); wait('No favorites yet'); back()
+        tap('Library Tools'); tap('Recycle Bin'); wait('Recycle Bin is empty'); back()
         tap('Search'); wait('Quick Filters'); capture(f'search-{mode}')
         tap('Vault'); wait('Vault is disabled'); capture(f'vault-{mode}')
         tap('Settings'); wait('Scan library now'); capture(f'settings-{mode}')
         tap('Back')
         tap('Gallery'); tap('omni-ocr-check.png')
         tap('Info'); wait('Media details'); capture(f'details-{mode}')
-        adb('shell', 'input', 'keyevent', '4'); time.sleep(0.5)
-        adb('shell', 'input', 'keyevent', '4'); wait('All Media')
+        back()
+        back(); wait('All Media')
 
     tap('Settings')
     scroll_to('Arabic OCR (Tesseract)')

@@ -108,6 +108,7 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
 
     override fun onCreate() {
         super.onCreate()
+        com.omnimemoria.diagnostics.CrashReport.install(this)
 
         // ObjectBox initialization
         boxStore = MyObjectBox.builder().androidContext(this).build()
