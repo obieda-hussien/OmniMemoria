@@ -30,11 +30,22 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
+
+// Robolectric 4.14 has no API-30 shadow for this no-arg framework method.
+// Keep the initial permission gate closed before replacing Activity content.
+@Implements(android.os.Environment::class)
+class ScreenEntryStorageShadow {
+    companion object {
+        @JvmStatic @Implementation fun isExternalStorageManager() = false
+    }
+}
 
 /** Exercises real Hilt factories, Room and preference flows, not just UI fixtures. */
 @HiltAndroidTest
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [30], application = HiltTestApplication::class)
+@Config(sdk = [30], application = HiltTestApplication::class, shadows = [ScreenEntryStorageShadow::class])
 class ScreenEntryIntegrationTest {
     @get:Rule(order = 0) val hilt = HiltAndroidRule(this)
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
