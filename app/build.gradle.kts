@@ -69,6 +69,17 @@ android {
         compose = true
     }
 
+    // Native OCR and image codecs are large. Ship a complete APK per supported
+    // CPU instead of making each device download four copies of native code.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
