@@ -15,6 +15,9 @@ interface SortPresetDao {
     @Query("SELECT * FROM sort_presets WHERE isDefault = 1 LIMIT 1")
     fun getDefault(): Flow<SortPreset?>
 
+    @Query("SELECT * FROM sort_presets WHERE isDefault = 1 LIMIT 1")
+    suspend fun getDefaultOnce(): SortPreset?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(preset: SortPreset)
 

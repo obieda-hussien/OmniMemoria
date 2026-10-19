@@ -47,7 +47,7 @@ class SortPresetRepository @Inject constructor(
     suspend fun updateActive(config: SortConfig, filter: FilterConfig = FilterConfig()) = mutex.withLock {
         database.withTransaction {
             seedIfEmpty()
-            val active = sortPresetDao.getDefault().first()
+            val active = sortPresetDao.getDefaultOnce()
             if (active != null && active.name == ACTIVE_NAME) {
                 sortPresetDao.insert(makePreset(ACTIVE_NAME, config, filter, true).copy(id = active.id))
             } else {
