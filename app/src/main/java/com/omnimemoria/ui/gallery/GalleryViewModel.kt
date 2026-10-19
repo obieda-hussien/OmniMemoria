@@ -14,6 +14,9 @@ import com.omnimemoria.data.repository.FavoritesRepository
 import com.omnimemoria.data.repository.MediaStats
 import com.omnimemoria.data.repository.MediaStoreRepository
 import com.omnimemoria.data.repository.SortPresetRepository
+import com.omnimemoria.data.repository.toSortConfig
+import com.omnimemoria.data.repository.toFilterConfig
+import com.omnimemoria.domain.model.MediaQueryConfig
 import com.omnimemoria.data.repository.TrashRepository
 import com.omnimemoria.domain.model.MediaPhoto
 import com.omnimemoria.domain.model.FilterConfig
@@ -135,10 +138,13 @@ class GalleryViewModel @Inject constructor(
     val compactTopBar: StateFlow<Boolean> = _compactTopBar.asStateFlow()
 
     // ── Filter / sort ──────────────────────────────────────────────────────────
-    private val _currentFilter = MutableStateFlow(FilterConfig())
-    val currentFilter: StateFlow<FilterConfig> = _currentFilter.asStateFlow()
+    private val localQuery = MutableStateFlow<MediaQueryConfig?>(null)
+    private val activeQuery = combine(localQuery, sortPresetRepository.getCurrentPreset()) { local, saved ->
+        local ?: MediaQueryConfig(saved.toSortConfig(), saved.toFilterConfig())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, MediaQueryConfig())
+    val currentFilter = activeQuery.map { it.filter }.stateIn(viewModelScope, SharingStarted.Eagerly, FilterConfig())
 
-    val activeFilterCount: StateFlow<Int> = _currentFilter.map { config ->
+    val activeFilterCount: StateFlow<Int> = currentFilter.map { config ->
         var count = 0
         if (config.mediaTypes != setOf(MediaType.IMAGE, MediaType.VIDEO)) count++
         if (config.mimeFormats.isNotEmpty()) count++
@@ -152,9 +158,7 @@ class GalleryViewModel @Inject constructor(
         count
     }.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
-    private val _localSortConfig = MutableStateFlow<SortConfig?>(null)
-
-    val activeSortConfig: StateFlow<SortConfig> = combine(_localSortConfig, sortPresetRepository.getCurrentSort()) { local, saved -> local ?: saved }
+    val activeSortConfig = activeQuery.map { it.sort }
         .stateIn(viewModelScope, SharingStarted.Eagerly, SortConfig())
 
     // ── Favorites ──────────────────────────────────────────────────────────────
@@ -169,7 +173,7 @@ class GalleryViewModel @Inject constructor(
 
     // ── Paging flow ────────────────────────────────────────────────────────────
     private val querySettings = galleryQuerySettings(
-        activeSortConfig, _currentFilter, mediaStoreVersion, favoriteIds
+        activeQuery, mediaStoreVersion, favoriteIds
     )
 
     // Favorite badges observe favoriteIds directly in the UI. Never combine an
@@ -226,16 +230,21 @@ class GalleryViewModel @Inject constructor(
     // ── Navigation ─────────────────────────────────────────────────────────────
 
     fun prepareForNavigation(photo: MediaPhoto) {
-        galleryStateHolder.prepare(PreviewCollection(photo, activeSortConfig.value, _currentFilter.value))
+        galleryStateHolder.prepare(PreviewCollection(photo, activeQuery.value.sort, activeQuery.value.filter))
     }
 
     fun updateSortAndFilter(config: SortConfig, filter: FilterConfig) {
-        _localSortConfig.value   = config
-        _currentFilter.value     = filter
+        localQuery.value = MediaQueryConfig(config, filter)
         galleryStateHolder.activeSortConfig.value = config
         galleryStateHolder.activeFilter.value     = filter
-        viewModelScope.launch(Dispatchers.IO) {
-            sortPresetRepository.updateActive(config)
+        viewModelScope.launch {
+            try {
+                sortPresetRepository.updateActive(config, filter)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _uiEvents.send(GalleryUiEvent.ShowSnackbar("Unable to save sort and filter preferences"))
+            }
         }
     }
 

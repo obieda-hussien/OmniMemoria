@@ -5,32 +5,14 @@ import com.omnimemoria.data.preferences.AppPreferences
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
-
-enum class FeatureFlag {
-    OCR,
-    ARABIC_OCR,
-    ML_LABELS,
-    FACE_DETECTION,
-    EMBEDDINGS,
-    PIXEL_PALETTE,
-    PHOTO_DNA,
-    VIBE_ALBUMS,
-    TEMPORAL_WAVE,
-    MEMORIA_STATS,
-    SMART_COMPRESSION,
-    VIDEO_COMPRESSION,
-    VAULT,
-    SILENT_STORY,
-    MEMORY_MAP,
-    RAG_SEARCH,
-    SMART_FILTERS,
-    ULTRA_HDR
-}
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 
 enum class AiModelState {
     NONE,
     TESSERACT_ONLY,
+    EMBEDDER_ONLY,
     FULL
 }
 
@@ -38,26 +20,23 @@ enum class AiModelState {
 class FeatureFlagManager @Inject constructor(
     private val appPreferences: AppPreferences
 ) {
-    fun isEnabled(flag: FeatureFlag): Flow<Boolean> {
-        return appPreferences.getBoolean(flagKey(flag))
-    }
+    val featureStates: Flow<Map<FeatureFlag, Boolean>> = appPreferences.snapshots.map { preferences ->
+        val requested = FeatureFlag.entries.associateWith { preferences[flagKey(it)] ?: false }
+        FeatureFlag.entries.associateWith { FeaturePolicy.enabled(requested, it) }
+    }.distinctUntilChanged()
+
+    fun isEnabled(flag: FeatureFlag): Flow<Boolean> = featureStates.map { it[flag] == true }.distinctUntilChanged()
 
     suspend fun setEnabled(flag: FeatureFlag, value: Boolean) {
-        appPreferences.setBoolean(flagKey(flag), value)
-    }
-
-    fun areAiModelsDownloaded(): Flow<AiModelState> {
-        return combine(
-            appPreferences.getBoolean(AppPreferences.PreferencesKeys.MODEL_TESSERACT_ARA_DOWNLOADED),
-            appPreferences.getBoolean(AppPreferences.PreferencesKeys.MODEL_MEDIAPIPE_EMBEDDER_DOWNLOADED)
-        ) { tesseractDownloaded, embedderDownloaded ->
-            when {
-                !tesseractDownloaded && !embedderDownloaded -> AiModelState.NONE
-                tesseractDownloaded && embedderDownloaded -> AiModelState.FULL
-                else -> AiModelState.TESSERACT_ONLY
-            }
+        appPreferences.updateBooleans { preferences ->
+            val current = FeatureFlag.entries.associateWith { preferences[flagKey(it)] ?: false }
+            FeaturePolicy.update(current, flag, value).mapKeys { flagKey(it.key) }
         }
     }
+
+    // Phase 2 has no inference artifacts. Legacy booleans written by the old stub
+    // are never evidence that a model is installed. Phase 4 supplies verified files.
+    fun areAiModelsDownloaded(): Flow<AiModelState> = flowOf(AiModelState.NONE)
 
     private fun flagKey(flag: FeatureFlag): Preferences.Key<Boolean> {
         return when (flag) {

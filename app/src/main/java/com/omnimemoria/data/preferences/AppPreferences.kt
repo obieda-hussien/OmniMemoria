@@ -6,6 +6,9 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.retryWhen
+import kotlinx.coroutines.delay
+import java.io.IOException
 
 private const val APP_PREFERENCES_NAME = "omnimemoria_settings"
 private val Context.appDataStore: DataStore<Preferences> by preferencesDataStore(name = APP_PREFERENCES_NAME)
@@ -15,8 +18,20 @@ class AppPreferences constructor(
 ) {
     private val dataStore = context.appDataStore
 
+    val snapshots: Flow<Preferences> = dataStore.data.retryWhen { cause, _ ->
+        if (cause is IOException) { delay(1_000); true } else false
+    }
+
+    suspend fun updateBooleans(transform: (Preferences) -> Map<Preferences.Key<Boolean>, Boolean>) {
+        dataStore.updateData { current ->
+            transform(current).entries.fold(current) { result, (key, value) ->
+                DataStoreCompat.withBoolean(result, key, value)
+            }
+        }
+    }
+
     fun getBoolean(key: Preferences.Key<Boolean>, default: Boolean = false): Flow<Boolean> {
-        return dataStore.data.map { preferences -> preferences[key] ?: default }
+        return snapshots.map { preferences -> preferences[key] ?: default }
     }
 
     suspend fun setBoolean(key: Preferences.Key<Boolean>, value: Boolean) {
@@ -26,7 +41,7 @@ class AppPreferences constructor(
     }
 
     fun getString(key: Preferences.Key<String>, default: String = ""): Flow<String> {
-        return dataStore.data.map { preferences -> preferences[key] ?: default }
+        return snapshots.map { preferences -> preferences[key] ?: default }
     }
 
     suspend fun setString(key: Preferences.Key<String>, value: String) {
@@ -58,6 +73,9 @@ class AppPreferences constructor(
         val MODEL_MEDIAPIPE_EMBEDDER_DOWNLOADED =
             DataStoreCompat.booleanKey("model_mediapipe_embedder_downloaded")
         val ARE_AI_MODELS_DOWNLOADED = DataStoreCompat.booleanKey("are_ai_models_downloaded")
+
+        val REQUEST_TESSERACT_DOWNLOAD = DataStoreCompat.booleanKey("request_tesseract_download")
+        val REQUEST_EMBEDDER_DOWNLOAD = DataStoreCompat.booleanKey("request_embedder_download")
 
         val VAULT_PIN_HASH = DataStoreCompat.stringKey("vault_pin_hash")
         val SORT_PRESETS_JSON = DataStoreCompat.stringKey("sort_presets_json")

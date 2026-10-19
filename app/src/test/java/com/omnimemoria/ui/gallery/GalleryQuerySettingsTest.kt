@@ -3,6 +3,7 @@ package com.omnimemoria.ui.gallery
 import com.omnimemoria.domain.model.FilterConfig
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
+import com.omnimemoria.domain.model.MediaQueryConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,5 +78,23 @@ class GalleryQuerySettingsTest {
         assertEquals(generations + 1, queries.emitted.size)
         queries.sort.value = SortConfig(sortBy = SortBy.NAME)
         assertEquals(generations + 2, queries.emitted.size)
+    }
+
+    @Test
+    fun applyingPresetEmitsOnlyItsCompleteSortAndFilterPair() = runBlocking {
+        val query = MutableStateFlow(MediaQueryConfig())
+        val versions = MutableStateFlow(0)
+        val favorites = MutableStateFlow<Set<Long>>(emptySet())
+        val emitted = mutableListOf<GalleryQuerySettings>()
+        val collector = launch(Dispatchers.Unconfined) {
+            galleryQuerySettings(query, versions, favorites).collect { emitted.add(it) }
+        }
+        try {
+            val preset = MediaQueryConfig(SortConfig(SortBy.SIZE), FilterConfig(isFavorite = false))
+            query.value = preset
+            assertEquals(2, emitted.size)
+            assertEquals(preset.sort, emitted.last().sort)
+            assertEquals(preset.filter, emitted.last().filter)
+        } finally { collector.cancelAndJoin() }
     }
 }

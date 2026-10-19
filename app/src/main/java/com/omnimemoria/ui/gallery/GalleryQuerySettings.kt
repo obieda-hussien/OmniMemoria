@@ -3,6 +3,7 @@ package com.omnimemoria.ui.gallery
 import com.omnimemoria.domain.model.FilterConfig
 import com.omnimemoria.domain.model.SortBy
 import com.omnimemoria.domain.model.SortConfig
+import com.omnimemoria.domain.model.MediaQueryConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -28,4 +29,13 @@ internal fun galleryQuerySettings(
         currentVersion,
         if (currentFilter.isFavorite != null || currentSort.sortBy == SortBy.FAVORITES_FIRST) ids else emptySet()
     )
+}.distinctUntilChanged()
+
+internal fun galleryQuerySettings(
+    query: Flow<MediaQueryConfig>,
+    version: Flow<Int>,
+    favorites: Flow<Set<Long>>
+): Flow<GalleryQuerySettings> = combine(query, version, favorites) { current, generation, ids ->
+    GalleryQuerySettings(current.sort, current.filter, generation,
+        if (current.filter.isFavorite != null || current.sort.sortBy == SortBy.FAVORITES_FIRST) ids else emptySet())
 }.distinctUntilChanged()

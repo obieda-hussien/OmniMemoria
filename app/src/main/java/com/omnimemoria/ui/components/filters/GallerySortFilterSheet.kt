@@ -15,6 +15,9 @@ import com.omnimemoria.domain.model.SortOrder
 import com.omnimemoria.domain.model.MediaType
 import com.omnimemoria.domain.model.GroupBy
 import androidx.compose.foundation.clickable
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.omnimemoria.data.repository.toSortConfig
+import com.omnimemoria.data.repository.toFilterConfig
 
 @Composable
 fun GallerySortFilterSheetContent(
@@ -22,18 +25,53 @@ fun GallerySortFilterSheetContent(
     currentFilter: FilterConfig,
     showGrouping: Boolean = true,
     onDismiss: () -> Unit,
-    onApply: (SortConfig, FilterConfig) -> Unit
+    onApply: (SortConfig, FilterConfig) -> Unit,
+    presetsViewModel: SortPresetsViewModel = hiltViewModel()
 ) {
     var sortBy by remember(currentSort) { mutableStateOf(currentSort.sortBy) }
     var sortOrder by remember(currentSort) { mutableStateOf(currentSort.sortOrder) }
     var groupBy by remember(currentSort) { mutableStateOf(currentSort.groupBy) }
     var filterBy by remember(currentFilter) { mutableStateOf(currentFilter) }
 
+    val presets by presetsViewModel.presets.collectAsState()
+    val error by presetsViewModel.error.collectAsState()
+    var presetName by remember { mutableStateOf("") }
+    var showSave by remember { mutableStateOf(false) }
+
+    if (showSave) AlertDialog(
+        onDismissRequest = { showSave = false },
+        title = { Text("Save sort & filter preset") },
+        text = { OutlinedTextField(value = presetName, onValueChange = { presetName = it.take(60) }, label = { Text("Preset name") }, singleLine = true) },
+        confirmButton = { TextButton(enabled = presetName.isNotBlank(), onClick = {
+            presetsViewModel.save(presetName, currentSort.copy(sortBy = sortBy, sortOrder = sortOrder, groupBy = if (showGrouping) groupBy else null), filterBy)
+            showSave = false
+            presetName = ""
+        }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = { showSave = false }) { Text("Cancel") } }
+    )
+
     OmniSortFilterSheet(
         title = "Sort & Filter",
         onDismiss = onDismiss,
         footer = { ApplyButton(onApply = { onApply(currentSort.copy(sortBy = sortBy, sortOrder = sortOrder, groupBy = if (showGrouping) groupBy else null), filterBy) }, onCancel = onDismiss) }
     ) {
+        Text("Saved presets", style = MaterialTheme.typography.labelLarge)
+        presets.forEach { preset ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(modifier = Modifier.weight(1f), onClick = {
+                    val sort = preset.toSortConfig()
+                    sortBy = sort.sortBy
+                    sortOrder = sort.sortOrder
+                    groupBy = if (showGrouping) sort.groupBy else null
+                    filterBy = preset.toFilterConfig()
+                }) { Text(preset.name) }
+                if (!preset.isDefault) TextButton(onClick = { presetsViewModel.delete(preset.id) }) { Text("Delete") }
+            }
+        }
+        TextButton(onClick = { presetsViewModel.clearError(); showSave = true }) { Text("Save current settings as preset") }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
         // --- SORTING SECTION ---
         Text("Sort By", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))

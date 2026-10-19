@@ -1563,15 +1563,29 @@ fun schedulePeriodicIndex() {
 
 **الهدف:** بناء لوحة التحكم قبل بناء الميزات الثقيلة
 
-- [ ] **DataStore setup** + بناء `FeatureFlagManager` الكامل (كل الـ 18 feature)
-- [ ] **Settings Screen** بتصميم M3 Expressive
-- [ ] هيكل الـ **WorkManager** الأساسي — حتى لو الـ `PhotoIndexWorker` بيطبع Log فاضي في البداية، لازم يكون registered ومحضَّر للـ Phase 4
-- [ ] Download-on-demand dialog للـ Tesseract + EmbeddingGemma (الـ UI والمنطق بس، التنفيذ الفعلي في Phase 4)
-- [ ] Sort Presets: حفظ إعدادات الفلترة المفضلة في Room
+- [x] **DataStore setup** + بناء `FeatureFlagManager` الكامل (كل الـ 18 feature)
+- [x] **Settings Screen** بتصميم M3 Expressive
+- [x] هيكل الـ **WorkManager** الأساسي — حتى لو الـ `PhotoIndexWorker` بيطبع Log فاضي في البداية، لازم يكون registered ومحضَّر للـ Phase 4
+- [x] Download-on-demand preparation للـ Tesseract + EmbeddingGemma: حفظ/إلغاء الطلب وإظهار «غير مثبت» بوضوح؛ تنزيل الملفات والتحقق منها وتشغيل الاستدلال في Phase 4
+- [x] Sort Presets: حفظ إعدادات الفلترة المفضلة في Room
 
 > ⚠️ **سبب تقديم Feature Flags للـ Phase 2:** الميزات الثقيلة في Phase 4 (OCR, Embeddings) بتحتاج toggles من أول يوم عشان الـ Testing يكون ممكن. لو بنيت الميزات بدون نظام Feature Flags، الـ Debugging هيكون جحيم ومش هتقدر تطفي ميزة بسرعة لو عملت مشكلة.
 
 **Deliverable:** المستخدم يتحكم في كل ميزة + WorkManager جاهز للتوسع
+
+
+**حالة التنفيذ — أكتوبر 2026:**
+
+- مصدر واحد لحالة الـ18 flag عبر DataStore، مع تحديث الاعتماديات بشكل ذري: Arabic OCR → OCR، Embeddings → OCR، RAG → Embeddings → OCR، وVibe Albums → Labels. إيقاف متطلب يوقف الميزات المعتمدة عليه، من غير إعادة تشغيلها تلقائيًا عند إعادة تفعيله.
+- ربط كل مستهلكي الفهرسة بجدولة WorkManager، بما فيهم Palette وPhoto DNA وVibe Albums؛ إلغاء الفهرسة الفورية والدورية عند إيقاف كل المستهلكين. worker الأساس يعيد `awaiting_phase_4_engines` ولا يدّعي تحليل الصور.
+- طلبات النماذج محفوظة ويمكن إلغاؤها. لا يتم تنزيل ملفات أو عرض Ready اعتمادًا على booleans قديمة؛ worker القديم لا يمكنه إعلان تنزيل وهمي. لا يوجد تقدير حجم قبل اختيار ملف النموذج في Phase 4.
+- الـpresets المسماة تحفظ الفرز **وكل حقول FilterConfig** في Room، ويمكن استدعاؤها من شاشة Sort & Filter المشتركة. التعديل اليومي يُحفظ في سجل عمل مستقل ويحافظ على الـpresets المسماة. آخر إعدادات المعرض تُستعاد كوحدة واحدة بعد إعادة الفتح.
+- ترحيلات `1→2→3` و`2→3` تحافظ على البيانات؛ أزيل المسار الذي كان يسمح بمسح قاعدة البيانات عند ترقية المخطط.
+- إصلاح رجوع صفحة Settings، وإظهار حالة مهام الخلفية وأخطاء حفظ الإعدادات والـpresets.
+
+**حدود المرحلة:** هذه لوحة التحكم والبنية الأساسية؛ استخراج OCR/Labels/Faces والـEmbeddings وتنزيل النماذج الحقيقي ما زال ضمن Phase 4A/4B. ميزات الضغط والميزات البصرية لها مراحلها اللاحقة، وتفعيل preference لا يعني اكتمال محرك الميزة.
+
+**التحقق:** `:app:testDebugUnitTest` لاختبارات الاعتماديات والـcodec وتحديث المعرض الذري، و`python3 scripts/test_database_migrations.py` لتنفيذ SQL الترحيلات على SQLite والتحقق من بقاء البيانات.
 
 ---
 

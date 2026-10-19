@@ -1,5 +1,6 @@
 package com.omnimemoria.data.local.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -11,5 +12,6 @@ data class SortPreset(
     val sortBy: String,
     val sortOrder: String,
     val groupBy: String?,
-    val isDefault: Boolean
+    val isDefault: Boolean,
+    @ColumnInfo(defaultValue = "''") val filterConfig: String = ""
 )
