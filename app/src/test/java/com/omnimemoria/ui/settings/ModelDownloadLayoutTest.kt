@@ -7,7 +7,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asAndroidBitmap
+import android.graphics.Canvas
+import android.view.View
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.SideEffect
 import android.graphics.Bitmap
 import java.io.File
 import androidx.compose.ui.platform.LocalDensity
@@ -31,9 +34,12 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ModelDownloadLayoutTest {
     @get:Rule val compose = createComposeRule()
+    private lateinit var renderedView: View
 
     private fun show(dark: Boolean, direction: LayoutDirection, phase: ModelPhase) {
         compose.setContent {
+            val view = LocalView.current
+            SideEffect { renderedView = view }
             CompositionLocalProvider(LocalLayoutDirection provides direction,
                 LocalDensity provides Density(1f, fontScale = 1.5f)) {
                 OmniMemoriaTheme(darkTheme = dark) {
@@ -46,9 +52,15 @@ class ModelDownloadLayoutTest {
         }
     }
     private fun savePreview(name: String) {
-        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
-        val directory = File("build/outputs/ui-previews").apply { mkdirs() }
-        File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        // PixelCopy requires a real window compositor. Draw the native-rendered
+        // view directly when running on Robolectric instead of timing out.
+        compose.runOnIdle {
+            val bitmap = Bitmap.createBitmap(renderedView.width, renderedView.height, Bitmap.Config.ARGB_8888)
+            renderedView.draw(Canvas(bitmap))
+            val directory = File("build/outputs/ui-previews").apply { mkdirs() }
+            File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
     }
     @Test fun darkRtlWithLargeTextDoesNotOverlapStatusAndActions() {
         show(true, LayoutDirection.Rtl, ModelPhase.QUEUED)
