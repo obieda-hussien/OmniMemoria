@@ -92,7 +92,7 @@ private fun VaultDisabledState(onGoToSettings: () -> Unit) {
                     )
                     .border(
                         1.dp,
-                        Color(0xFF8B7FF5).copy(alpha = 0.2f),
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
                         RoundedCornerShape(26.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -100,7 +100,7 @@ private fun VaultDisabledState(onGoToSettings: () -> Unit) {
                 Icon(
                     Icons.Outlined.Lock,
                     null,
-                    tint     = Color(0xFF8B7FF5),
+                    tint     = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(40.dp)
                 )
             }
@@ -129,7 +129,7 @@ private fun VaultDisabledState(onGoToSettings: () -> Unit) {
                     .clip(RoundedCornerShape(16.dp))
                     .background(
                         Brush.horizontalGradient(
-                            listOf(Color(0xFF5548D9), Color(0xFF8B7FF5))
+                            listOf(Color(0xFF5548D9), MaterialTheme.colorScheme.primary)
                         )
                     )
                     .clickable(onClick = onGoToSettings)
@@ -213,7 +213,7 @@ fun VaultPinScreen(
                 .background(
                     Brush.radialGradient(
                         listOf(
-                            Color(0xFF8B7FF5).copy(alpha = 0.06f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
                             Color.Transparent
                         )
                     )
@@ -238,13 +238,13 @@ fun VaultPinScreen(
                             listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surfaceVariant)
                         )
                     )
-                    .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.3f), RoundedCornerShape(22.dp)),
+                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), RoundedCornerShape(22.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.Outlined.Shield,
                     null,
-                    tint     = Color(0xFF8B7FF5),
+                    tint     = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(34.dp)
                 )
             }
@@ -292,7 +292,7 @@ fun VaultPinScreen(
                     CircularProgressIndicator(
                         progress    = { progress },
                         modifier    = Modifier.fillMaxSize(),
-                        color       = Color(0xFF8B7FF5),
+                        color       = MaterialTheme.colorScheme.primary,
                         trackColor  = MaterialTheme.colorScheme.surfaceVariant,
                         strokeWidth = 5.dp
                     )
@@ -300,7 +300,7 @@ fun VaultPinScreen(
                         Icon(
                             Icons.Outlined.LockClock,
                             null,
-                            tint     = Color(0xFF8B7FF5),
+                            tint     = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(22.dp)
                         )
                         Spacer(Modifier.height(3.dp))
@@ -333,13 +333,13 @@ fun VaultPinScreen(
                                 .background(
                                     if (filled)
                                         Brush.radialGradient(
-                                            listOf(Color(0xFFA89CF7), Color(0xFF8B7FF5))
+                                            listOf(Color(0xFFA89CF7), MaterialTheme.colorScheme.primary)
                                         )
                                     else Brush.radialGradient(listOf(Color.Transparent, Color.Transparent))
                                 )
                                 .border(
                                     2.dp,
-                                    if (filled) Color(0xFF8B7FF5)
+                                    if (filled) MaterialTheme.colorScheme.primary
                                     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
                                     CircleShape
                                 )
@@ -360,7 +360,7 @@ fun VaultPinScreen(
                         Text(
                             state.message ?: "",
                             style     = MaterialTheme.typography.bodySmall,
-                            color     = if (isError) Color(0xFFFF6B6B) else Color(0xFF8B7FF5),
+                            color     = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -372,7 +372,7 @@ fun VaultPinScreen(
                     Text(
                         "$attemptsLeft attempt${if (attemptsLeft != 1) "s" else ""} remaining",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (attemptsLeft <= 2) Color(0xFFFF6B6B)
+                        color = if (attemptsLeft <= 2) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -462,7 +462,7 @@ private fun PinKey(label: String, isDelete: Boolean, onClick: () -> Unit) {
             style      = if (isDelete) MaterialTheme.typography.titleLarge
                          else MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Medium,
-            color      = if (isDelete) Color(0xFF8B7FF5)
+            color      = if (isDelete) MaterialTheme.colorScheme.primary
                          else MaterialTheme.colorScheme.onBackground
         )
     }

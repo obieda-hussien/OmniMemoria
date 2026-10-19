@@ -52,7 +52,8 @@ class ModelDownloadWorker @AssistedInject constructor(
             }
             if (!store.isInstalled()) throw IOException("Installed model is invalid")
             preferences.setBoolean(AppPreferences.PreferencesKeys.MODEL_TESSERACT_ARA_DOWNLOADED, true)
-            scheduler.scheduleBackgroundIndex(append = true)
+            // Installation succeeded even if scheduling a later scan is unavailable.
+            runCatching { scheduler.scheduleBackgroundIndex(append = true) }
             Result.success()
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) {
@@ -65,5 +66,11 @@ class ModelDownloadWorker @AssistedInject constructor(
         const val MODEL_TESSERACT_ARA = "tesseract_ara"
         const val MODEL_MEDIAPIPE_EMBEDDER = "mediapipe_embedder"
         const val UNIQUE_ARABIC_DOWNLOAD = "model_download_tesseract_ara"
+        fun request(): OneTimeWorkRequest = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
+            .setInputData(workDataOf(MODEL_NAME to MODEL_TESSERACT_ARA))
+            // A user-requested 1.4 MB download must not wait for a full battery.
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
     }
 }

@@ -129,7 +129,7 @@ class PhotoAnalyzer @Inject constructor(
         resolver.openInputStream(image.uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Image cannot be decoded")
         var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1600) sample *= 2
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1280) sample *= 2
         val bitmap = resolver.openInputStream(image.uri)?.use {
             BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 })
         } ?: throw IOException("Image is unavailable")

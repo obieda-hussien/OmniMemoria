@@ -30,13 +30,14 @@ class PhotoIndexWorker @AssistedInject constructor(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         var examined = 0; var processed = 0; var failed = 0
         var after = inputData.getLong(WORK_INPUT_AFTER_ID, 0)
+        val userInitiated = inputData.getBoolean(WORK_INPUT_USER_INITIATED, false)
         val ids = inputData.getLongArray(WORK_INPUT_PHOTO_IDS)?.toList()
         val started = SystemClock.elapsedRealtime()
         val dao = database.photoIntelligenceDao()
         val trash = database.trashDao()
         try {
             val arabicReady = models.isInstalled()
-            while (examined < 300 && SystemClock.elapsedRealtime() - started < 120_000) {
+            while (examined < 80 && SystemClock.elapsedRealtime() - started < 45_000) {
                 currentCoroutineContext().ensureActive()
                 val required = AnalysisPolicy.required(flags.featureStates.first())
                 if (required == 0) return@withContext Result.success(workDataOf(OUTPUT_STATUS to "disabled"))
@@ -50,7 +51,7 @@ class PhotoIndexWorker @AssistedInject constructor(
                     after = image.id; examined++
                     val currentRequired = AnalysisPolicy.required(flags.featureStates.first())
                     if (currentRequired != required) {
-                        scheduler.scheduleBackgroundIndex(0, ids, append = true)
+                        scheduler.scheduleBackgroundIndex(0, ids, append = true, userInitiated = userInitiated)
                         return@withContext Result.success(workDataOf(OUTPUT_STATUS to "preferences_changed"))
                     }
                     val old = dao.getById(image.id)
@@ -83,11 +84,11 @@ class PhotoIndexWorker @AssistedInject constructor(
                     }
                     if (examined % 10 == 0) setProgress(workDataOf("processed" to processed, "failed" to failed, "examined" to examined))
                     yield()
-                    if (examined >= 300 || SystemClock.elapsedRealtime() - started >= 120_000) break
+                    if (examined >= 80 || SystemClock.elapsedRealtime() - started >= 45_000) break
                 }
             }
             currentCoroutineContext().ensureActive()
-            scheduler.scheduleBackgroundIndex(after, ids)
+            scheduler.scheduleBackgroundIndex(after, ids, userInitiated = userInitiated)
             Result.success(workDataOf(OUTPUT_STATUS to "continuing", "processed" to processed, "failed" to failed))
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: SecurityException) { Result.failure(workDataOf(OUTPUT_STATUS to "storage_permission_required")) }
@@ -96,6 +97,7 @@ class PhotoIndexWorker @AssistedInject constructor(
         } finally { analyzer.release() }
     }
     companion object {
+        const val WORK_INPUT_USER_INITIATED = "user_initiated"
         const val OUTPUT_STATUS = "index_status"
         const val WORK_INPUT_AFTER_ID = "after_id"
         const val WORK_INPUT_PHOTO_IDS = "work_input_photo_ids"

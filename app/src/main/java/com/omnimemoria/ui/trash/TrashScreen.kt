@@ -212,7 +212,7 @@ fun TrashScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = Color(0xFF8B7FF5))
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         }
 
@@ -232,7 +232,7 @@ fun TrashScreen(
                 text = { Text("All items will be permanently deleted. This action cannot be undone.") },
                 confirmButton = {
                     TextButton(onClick = { showEmptyConfirm = false; viewModel.emptyTrash() }) {
-                        Text("Empty", color = Color(0xFFFF6B6B), fontWeight = FontWeight.Bold)
+                        Text("Empty", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
@@ -260,7 +260,7 @@ fun TrashScreen(
                     text = { Text("This item will be permanently deleted and cannot be recovered.") },
                     confirmButton = {
                         TextButton(onClick = { viewModel.permanentlyDelete(item); itemToDelete = null }) {
-                            Text("Delete", color = Color(0xFFFF6B6B), fontWeight = FontWeight.Bold)
+                            Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                         }
                     },
                     dismissButton = {
@@ -371,9 +371,9 @@ private fun TrashPreviewOverlay(
                     .clickable(onClick = onRestore)
                     .padding(12.dp)
             ) {
-                Icon(Icons.Outlined.Restore, "Restore", tint = Color(0xFF8B7FF5))
+                Icon(Icons.Outlined.Restore, "Restore", tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(4.dp))
-                Text("Restore", color = Color(0xFF8B7FF5), style = MaterialTheme.typography.labelMedium)
+                Text("Restore", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
             }
 
             Column(
@@ -383,9 +383,9 @@ private fun TrashPreviewOverlay(
                     .clickable(onClick = onDelete)
                     .padding(12.dp)
             ) {
-                Icon(Icons.Outlined.DeleteForever, "Delete", tint = Color(0xFFFF6B6B))
+                Icon(Icons.Outlined.DeleteForever, "Delete", tint = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.height(4.dp))
-                Text("Delete", color = Color(0xFFFF6B6B), style = MaterialTheme.typography.labelMedium)
+                Text("Delete", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -403,7 +403,7 @@ private fun TrashItemCard(
     onDelete:  () -> Unit
 ) {
     val expiryColor = when {
-        item.daysUntilExpiry <= 3 -> Color(0xFFFF6B6B)
+        item.daysUntilExpiry <= 3 -> MaterialTheme.colorScheme.error
         item.daysUntilExpiry <= 7 -> Color(0xFFFBC02D)
         else                      -> MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -486,14 +486,14 @@ private fun TrashItemCard(
             modifier = Modifier
                 .size(38.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF8B7FF5).copy(alpha = 0.12f))
-                .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
                 .clickable(onClick = onRestore),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 Icons.Outlined.Restore, "Restore",
-                tint     = Color(0xFF8B7FF5),
+                tint     = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -505,14 +505,14 @@ private fun TrashItemCard(
             modifier = Modifier
                 .size(38.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFFF6B6B).copy(alpha = 0.10f))
-                .border(1.dp, Color(0xFFFF6B6B).copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.error.copy(alpha = 0.10f))
+                .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
                 .clickable(onClick = onDelete),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 Icons.Outlined.DeleteForever, "Delete permanently",
-                tint     = Color(0xFFFF6B6B),
+                tint     = MaterialTheme.colorScheme.error,
                 modifier = Modifier.size(18.dp)
             )
         }

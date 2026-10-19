@@ -9,6 +9,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.await
 import androidx.work.WorkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.TimeUnit
@@ -40,16 +41,32 @@ class WorkManagerScheduler @Inject constructor(
         }
     }
 
-    fun scheduleBackgroundIndex(afterId: Long = 0, ids: List<Long>? = null, append: Boolean = false) {
+    internal fun scanRequest(afterId: Long = 0, ids: List<Long>? = null, userInitiated: Boolean = false): androidx.work.OneTimeWorkRequest {
         val data = Data.Builder().putLong(PhotoIndexWorker.WORK_INPUT_AFTER_ID, afterId)
+            .putBoolean(PhotoIndexWorker.WORK_INPUT_USER_INITIATED, userInitiated)
         ids?.let { data.putLongArray(PhotoIndexWorker.WORK_INPUT_PHOTO_IDS, it.toLongArray()) }
-        val request = OneTimeWorkRequestBuilder<PhotoIndexWorker>()
+        val idle = !userInitiated && ids == null
+        val builder = OneTimeWorkRequestBuilder<PhotoIndexWorker>()
             .setInputData(data.build())
-            .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresDeviceIdle(ids == null).build())
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS).build()
-        WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_SCAN_WORK_NAME,
-            if (afterId == 0L && !append) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+            .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(!userInitiated).setRequiresDeviceIdle(idle).build())
+        // WorkManager throws when explicit backoff is combined with device idle.
+        if (!idle) builder.setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+        return builder.build()
     }
+
+    fun scheduleBackgroundIndex(afterId: Long = 0, ids: List<Long>? = null, append: Boolean = false, userInitiated: Boolean = false): androidx.work.Operation {
+        return WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_SCAN_WORK_NAME,
+            if (afterId == 0L && !append) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.APPEND_OR_REPLACE,
+            scanRequest(afterId, ids, userInitiated))
+    }
+
+    suspend fun startLibraryScan() {
+        // Replace an idle-waiting scan when the user explicitly chooses Scan now.
+        androidx.work.WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_SCAN_WORK_NAME,
+            ExistingWorkPolicy.REPLACE, scanRequest(userInitiated = true)).await()
+    }
+
+    fun cancelLibraryScan() = WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_SCAN_WORK_NAME)
 
     fun schedulePeriodicIndex() {
         val constraints = Constraints.Builder()

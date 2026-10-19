@@ -59,17 +59,18 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
                 else add(coil3.gif.GifDecoder.Factory())
             }
             // ── Memory cache ────────────────────────────────────────────────────
-            // 25% of available heap — keeps decoded Bitmaps warm while the user
+            // At most 12% of the heap or 32 MiB — keeps decoded Bitmaps warm while the user
             // scrolls. When the process is low on RAM, Android evicts entries
             // automatically via WeakReferences.
             .memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, percent = 0.25)
+                    .maxSizePercent(context, percent = 0.12)
+                    .maxSizeBytes(32L * 1024 * 1024)
                     .build()
             }
 
             // ── Disk cache ──────────────────────────────────────────────────────
-            // 256 MB in cacheDir (scoped storage, auto-cleaned by the OS if the
+            // 96 MB in cacheDir (scoped storage, auto-cleaned by the OS if the
             // device runs low on space). This is the main fix: on subsequent launches
             // Coil reads the already-decoded image from disk instead of re-decoding
             // from the MediaStore, dropping thumbnail load time from ~200–400ms to
@@ -80,7 +81,7 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("coil_image_cache").toOkioPath())
-                    .maxSizeBytes(256L * 1024 * 1024)   // 256 MB
+                    .maxSizeBytes(96L * 1024 * 1024)   // 96 MB
                     .build()
             }
 

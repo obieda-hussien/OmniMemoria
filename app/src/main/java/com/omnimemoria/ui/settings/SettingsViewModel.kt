@@ -15,6 +15,11 @@ import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import androidx.work.await
+import com.omnimemoria.domain.intelligence.AnalysisPolicy
+
+enum class ModelPhase { NOT_INSTALLED, QUEUED, DOWNLOADING, RETRYING, INSTALLED, FAILED, PLANNED }
+data class ModelStatus(val phase: ModelPhase, val message: String, val percent: Int = 0)
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -34,15 +39,17 @@ class SettingsViewModel @Inject constructor(
 
     val modelStatuses = combine(appPreferences.snapshots,
         workManager.getWorkInfosForUniqueWorkFlow(com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD)) { _, jobs ->
-        val job = jobs.lastOrNull()
+        val job = jobs.firstOrNull { it.state == androidx.work.WorkInfo.State.RUNNING }
+            ?: jobs.firstOrNull { !it.state.isFinished } ?: jobs.lastOrNull()
         val status = when {
-            models.isInstalled() -> "Installed · verified"
-            job?.state == androidx.work.WorkInfo.State.RUNNING -> "Downloading ${job.progress.getInt("percent", 0)}%"
-            job?.state == androidx.work.WorkInfo.State.ENQUEUED -> "Waiting for network / battery"
-            job?.state == androidx.work.WorkInfo.State.FAILED -> "Download failed · retry"
-            else -> "Not installed"
+            models.isInstalled() -> ModelStatus(ModelPhase.INSTALLED, "Installed · file verified")
+            job?.state == androidx.work.WorkInfo.State.RUNNING -> ModelStatus(ModelPhase.DOWNLOADING, "Downloading Arabic OCR", job.progress.getInt("percent", 0))
+            job?.state == androidx.work.WorkInfo.State.ENQUEUED && job.runAttemptCount > 0 -> ModelStatus(ModelPhase.RETRYING, "Download interrupted · retry scheduled. Tap Retry now to start again.")
+            job?.state == androidx.work.WorkInfo.State.ENQUEUED -> ModelStatus(ModelPhase.QUEUED, "Queued · internet access required")
+            job?.state == androidx.work.WorkInfo.State.FAILED -> ModelStatus(ModelPhase.FAILED, job.outputData.getString("error") ?: "Download failed. Please retry.")
+            else -> ModelStatus(ModelPhase.NOT_INSTALLED, "Optional · 1.4 MB download")
         }
-        mapOf(OfflineModel.TESSERACT_ARABIC.id to status, OfflineModel.EMBEDDING_GEMMA.id to "Semantic indexing update pending")
+        mapOf(OfflineModel.TESSERACT_ARABIC.id to status, OfflineModel.EMBEDDING_GEMMA.id to ModelStatus(ModelPhase.PLANNED, "Not included in this version. No Gemini Nano is required for photo analysis."))
     }.flowOn(kotlinx.coroutines.Dispatchers.IO).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     val indexingState = workManager.getWorkInfosForUniqueWorkFlow(WorkManagerScheduler.UNIQUE_SCAN_WORK_NAME)
@@ -52,13 +59,25 @@ class SettingsViewModel @Inject constructor(
             when (active?.state) {
                 androidx.work.WorkInfo.State.RUNNING -> "Analyzing · ${active.progress.getInt("processed", 0)} completed · ${active.progress.getInt("failed", 0)} need attention"
                 androidx.work.WorkInfo.State.ENQUEUED -> "Waiting for idle device and sufficient battery"
-                androidx.work.WorkInfo.State.SUCCEEDED -> "Scan complete · ${active.outputData.getInt("processed", 0)} completed in last batch"
+                androidx.work.WorkInfo.State.SUCCEEDED -> when (active.outputData.getString(com.omnimemoria.data.worker.PhotoIndexWorker.OUTPUT_STATUS)) {
+                    "disabled" -> "Enable an analysis feature to scan photos"
+                    "continuing", "preferences_changed" -> "Continuing with the next batch"
+                    else -> "Scan complete · ${active.outputData.getInt("processed", 0)} analyzed · ${active.outputData.getInt("failed", 0)} need attention in last batch"
+                }
                 androidx.work.WorkInfo.State.FAILED -> "Scan needs storage access or retry"
                 else -> "Off"
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Loading")
 
-    fun scanNow() { scheduler.scheduleBackgroundIndex() }
+    val scanEnabled = featureStates.map { AnalysisPolicy.required(it) != 0 }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun scanNow() { viewModelScope.launch { safely("Unable to start photo analysis. Please try again.") {
+        if (AnalysisPolicy.required(featureStates.value) == 0) {
+            _error.value = "Enable Text Extraction, Image Classification or another analysis feature first."
+        } else scheduler.startLibraryScan()
+    } } }
+    fun cancelScan() { viewModelScope.launch { safely("Unable to cancel the scan.") { scheduler.cancelLibraryScan().await() } } }
 
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
@@ -69,16 +88,14 @@ class SettingsViewModel @Inject constructor(
 
     fun requestModel(id: String, requested: Boolean = true) {
         val model = OfflineModel.fromId(id) ?: return
+        if (model != OfflineModel.TESSERACT_ARABIC) return
         viewModelScope.launch { safely {
             appPreferences.setBoolean(requestKey(model), requested)
             if (model == OfflineModel.TESSERACT_ARABIC) {
-                if (!requested) workManager.cancelUniqueWork(com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD)
+                if (!requested) workManager.cancelUniqueWork(com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD).await()
                 else {
-                    val request = androidx.work.OneTimeWorkRequestBuilder<com.omnimemoria.data.worker.ModelDownloadWorker>()
-                        .setInputData(androidx.work.workDataOf(com.omnimemoria.data.worker.ModelDownloadWorker.MODEL_NAME to model.id))
-                        .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).setRequiresBatteryNotLow(true).build())
-                        .build()
-                    workManager.enqueueUniqueWork(com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD, androidx.work.ExistingWorkPolicy.KEEP, request)
+                    val request = com.omnimemoria.data.worker.ModelDownloadWorker.request()
+                    workManager.enqueueUniqueWork(com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD, androidx.work.ExistingWorkPolicy.REPLACE, request).await()
                 }
             }
         } }
@@ -86,9 +103,9 @@ class SettingsViewModel @Inject constructor(
 
     fun dismissError() { _error.value = null }
 
-    private suspend fun safely(action: suspend () -> Unit) {
+    private suspend fun safely(message: String = "Unable to save settings. Please try again.", action: suspend () -> Unit) {
         try { action() } catch (cancelled: CancellationException) { throw cancelled }
-        catch (error: Exception) { _error.value = "Unable to save settings. Please try again." }
+        catch (error: Exception) { _error.value = message }
     }
 
     private fun requestKey(model: OfflineModel) = when (model) {
