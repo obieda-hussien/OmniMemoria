@@ -33,4 +33,18 @@ class FilterPresetCodecTest {
         val b = FilterConfig(mediaTypes = linkedSetOf(MediaType.IMAGE, MediaType.RAW), mimeFormats = linkedSetOf("image/jpeg", "image/png"))
         assertEquals(FilterPresetCodec.encode(a), FilterPresetCodec.encode(b))
     }
+
+    @Test fun invalidRangesAndNonFiniteResolutionFallBackFromCompleteRecords() {
+        val encoded = FilterPresetCodec.encode(FilterConfig(mediaTypes = setOf(MediaType.VIDEO)))
+        for (bad in listOf(
+            encoded.replace("minSize=", "minSize=-1"),
+            encoded.replace("minSize=&maxSize=", "minSize=20&maxSize=10"),
+            encoded.replace("from=&to=", "from=20&to=10"),
+            encoded.replace("mp=", "mp=Infinity"),
+            encoded.replace("mp=", "mp=NaN"),
+            encoded.replace("minSize=", "minSize=invalid"),
+            encoded.replace("text=", "text=invalid"),
+            encoded.replace("from=&to=", "from=20&to=")
+        )) assertEquals(FilterConfig(), FilterPresetCodec.decode(bad))
+    }
 }

@@ -31,11 +31,14 @@ object FilterPresetCodec {
         }
         require(values["v"] == "1")
         require(values.keys.containsAll(setOf("types", "formats", "minSize", "maxSize", "from", "to", "mp", "text", "faces", "phone", "favorite")))
-        val from = values["from"]?.toLongOrNull()
-        val to = values["to"]?.toLongOrNull()
-        val min = values["minSize"]?.toLongOrNull()
-        val max = values["maxSize"]?.toLongOrNull()
-        val mp = values["mp"]?.toFloatOrNull()
+        fun optionalLong(key: String) = values.getValue(key).takeIf { it.isNotEmpty() }?.toLong()
+        fun optionalBoolean(key: String) = values.getValue(key).takeIf { it.isNotEmpty() }?.toBooleanStrict()
+        val from = optionalLong("from")
+        val to = optionalLong("to")
+        val min = optionalLong("minSize")
+        val max = optionalLong("maxSize")
+        val mp = values.getValue("mp").takeIf { it.isNotEmpty() }?.toFloat()
+        require((from == null) == (to == null))
         require(min == null || min >= 0)
         require(max == null || max >= 0)
         require(min == null || max == null || min <= max)
@@ -47,10 +50,10 @@ object FilterPresetCodec {
             minSizeBytes = min, maxSizeBytes = max,
             dateRange = if (from != null && to != null) from..to else null,
             minResolutionMp = mp,
-            hasText = values["text"]?.toBooleanStrictOrNull(),
-            hasFaces = values["faces"]?.toBooleanStrictOrNull(),
-            hasPhoneNumber = values["phone"]?.toBooleanStrictOrNull(),
-            isFavorite = values["favorite"]?.toBooleanStrictOrNull()
+            hasText = optionalBoolean("text"),
+            hasFaces = optionalBoolean("faces"),
+            hasPhoneNumber = optionalBoolean("phone"),
+            isFavorite = optionalBoolean("favorite")
         )
     }.getOrDefault(FilterConfig())
 }
