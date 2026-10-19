@@ -127,11 +127,7 @@ private fun VaultDisabledState(onGoToSettings: () -> Unit) {
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(Color(0xFF5548D9), MaterialTheme.colorScheme.primary)
-                        )
-                    )
+                    .background(MaterialTheme.colorScheme.primaryContainer)
                     .clickable(onClick = onGoToSettings)
                     .padding(horizontal = 28.dp, vertical = 14.dp)
             ) {
@@ -139,13 +135,13 @@ private fun VaultDisabledState(onGoToSettings: () -> Unit) {
                     Icon(
                         Icons.Outlined.Settings,
                         null,
-                        tint     = Color.White,
+                        tint     = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.size(17.dp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         "Go to Settings",
-                        color      = Color.White,
+                        color      = MaterialTheme.colorScheme.onPrimaryContainer,
                         fontWeight = FontWeight.Bold,
                         style      = MaterialTheme.typography.bodyLarge
                     )

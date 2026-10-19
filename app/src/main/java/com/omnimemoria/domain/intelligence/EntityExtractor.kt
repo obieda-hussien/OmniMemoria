@@ -14,7 +14,7 @@ object EntityExtractor {
     }.joinToString("")
     private val date = Regex("""\b\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\b""")
     private val identifier = Regex("""(?:invoice|order|reference|account|رقم\s+(?:الفاتورة|الطلب|الحساب|المعاملة))\s*[:#]?\s*$""", RegexOption.IGNORE_CASE)
-    private val currency = """(?:EGP|USD|EUR|GBP|SAR|AED|ج\s*\.?\s*م\.?|جنيه(?:ات)?|ريال|درهم|دولار|يورو|[\u0024€£])"""
+    private val currency = """(?:EGP|USD|EUR|GBP|SAR|AED|ج\s*\.?\s*م\.?|جنيه\s+مصري|جنيه\s+إسترليني|ريال\s+سعودي|درهم\s+إماراتي|دولار\s+أمريكي|جنيه(?:ات)?|ريال|درهم|دولار|يورو|[\u0024€£])"""
     private val number = """(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?"""
     private val money = Regex("""(?<![\p{L}\d])(?:($currency)\s*(-?$number)|(-?$number)\s*($currency))(?![\p{L}\d])""", RegexOption.IGNORE_CASE)
     private fun numericText(text: String) = normalizeDigits(text)
@@ -47,12 +47,14 @@ object EntityExtractor {
         if (match.range.last + 2 < normalized.length && normalized[match.range.last + 1] in "/.," && normalized[match.range.last + 2].isDigit()) return@mapNotNull null
         val token = match.groupValues[1].ifBlank { match.groupValues[4] }.replace(Regex("[\\s.]"), "").uppercase()
         val code = when (token) {
-            "EGP", "جم", "جنيه", "جنيهات" -> "EGP"
-            "USD", "\u0024", "دولار" -> "USD"
+            "EGP", "جم", "جنيهمصري" -> "EGP"
+            "USD", "دولارأمريكي" -> "USD"
             "EUR", "€", "يورو" -> "EUR"
-            "GBP", "£" -> "GBP"
-            "SAR", "ريال" -> "SAR"
-            "AED", "درهم" -> "AED"
+            "GBP", "جنيهإسترليني" -> "GBP"
+            "SAR", "ريالسعودي" -> "SAR"
+            "AED", "درهمإماراتي" -> "AED"
+            "جنيه", "جنيهات" -> "جنيه"
+            "ريال", "درهم", "دولار", "\u0024", "£" -> token
             else -> return@mapNotNull null
         }
         val value = match.groupValues[2].ifBlank { match.groupValues[3] }.replace(",", "")

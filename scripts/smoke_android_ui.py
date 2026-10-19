@@ -92,7 +92,8 @@ try:
     adb('install', '-r', str(apk))
     adb('logcat', '-c')
     adb('shell', 'appops', 'set', '--uid', PACKAGE, 'MANAGE_EXTERNAL_STORAGE', 'allow')
-    adb('shell', 'pm', 'grant', PACKAGE, 'android.permission.READ_EXTERNAL_STORAGE')
+    # Match the app's actual Android-11 All files access flow. Do not mask
+    # permission bugs by granting an extra runtime permission behind its UI.
     (OUTPUT / 'device.txt').write_text(adb('shell', 'getprop', 'ro.build.fingerprint') +
         '\nGoogle Play Services packages: '+adb('shell', 'pm', 'list', 'packages', 'com.google.android.gms'))
     assert not adb('shell', 'pm', 'list', 'packages', 'com.google.android.gms').strip(), 'Expected AOSP without GMS'
@@ -109,18 +110,26 @@ try:
         tap('Vault'); wait('Vault is disabled'); capture(f'vault-{mode}')
         tap('Settings'); wait('Scan library now'); capture(f'settings-{mode}')
         tap('Back')
+        tap('Gallery'); tap('omni-ocr-check.png')
+        tap('Info'); wait('Media details'); capture(f'details-{mode}')
+        adb('shell', 'input', 'keyevent', '4'); time.sleep(0.5)
+        adb('shell', 'input', 'keyevent', '4'); wait('All Media')
 
     tap('Settings')
     scroll_to('Arabic OCR (Tesseract)')
     tap('Arabic OCR (Tesseract)')
-    tap('Download')
-    scroll_to('Offline models')
-    swipe()
+    tap('Later')
+    scroll_to('Image Classification'); tap('Image Classification')
+    scroll_to('Face Detection'); tap('Face Detection')
+    scroll_to('Download 12.6 MB')
+    tap('Download 12.6 MB'); capture('model-dialog')
+    tap('Download'); capture('model-requested')
     wait('High accuracy model installed', seconds=150, partial=True)
     capture('model-installed')
     # Reopening Settings starts at the scan controls, preserving installed flags.
     home(); tap('Settings'); tap('Scan library now')
-    wait('Scan complete', seconds=180, partial=True)
+    completed, _ = wait('Scan complete', seconds=180, partial=True)
+    assert '0 need attention' in completed.get('text', ''), 'An analysis stage failed'
     capture('scan-complete')
     tap('Back'); tap('Gallery')
     tap('omni-ocr-check.png')
@@ -133,11 +142,23 @@ try:
     text = '\n'.join(node.get('text', '') for node in tree().iter('node'))
     assert '1234.50 EGP' in text, 'Expected exact detected amount'
     assert any(word in text + phone_text for word in ('فاتورة', 'الهاتف')), 'Expected native Arabic OCR text'
+    scroll_to('No faces detected'); capture('ocr-face-result')
     (OUTPUT / 'ocr-output.txt').write_text(phone_text + '\n' + text)
     # No Java fatal exception is allowed in any tested route or OCR operation.
     crash = adb('logcat', '-d', '-b', 'crash')
     assert 'FATAL EXCEPTION' not in crash, crash
-    print('PASS: optimized APK; light/dark Search, Vault, Settings, photo details; native Arabic OCR, phone and amount; AOSP API 30 without GMS.')
+    print('PASS: optimized APK; light/dark Search, Vault, Settings, photo details; native Arabic OCR, phone, amount, labels and faces; AOSP API 30 without GMS.')
+except Exception:
+    try:
+        capture('failure-current')
+        for _ in range(6):
+            swipe(up=False)
+        capture('failure-top')
+    except Exception:
+        pass
+    raise
 finally:
+    adb('shell', 'am', 'broadcast', '-a', 'androidx.work.diagnostics.REQUEST_DIAGNOSTICS', '-p', PACKAGE, check=False)
+    time.sleep(1)
     (OUTPUT / 'logcat-crash.txt').write_text(adb('logcat', '-d', '-b', 'crash', check=False))
     (OUTPUT / 'logcat.txt').write_text(adb('logcat', '-d', '-t', '3000', check=False))

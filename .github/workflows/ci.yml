@@ -442,6 +442,16 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           retention-days: 30
 
+      - name: Upload optimized stack trace mappings
+        uses: actions/upload-artifact@v6
+        with:
+          name: optimized-mappings-${{ github.run_number }}
+          path: |
+            app/build/outputs/mapping/release/mapping.txt
+            app/build/outputs/mapping/preview/mapping.txt
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Cleanup keystore file
         if: always() && steps.signing.outputs.ready == 'true'
         run: rm -f "${{ env.KEYSTORE_PATH }}"

@@ -29,9 +29,13 @@ class EntityExtractorTest {
     @Test fun extractsArabicAndLatinCurrencyAmountsExactly() {
         assertEquals(listOf(DetectedAmount("1234.50", "EGP"), DetectedAmount("25.75", "USD")),
             EntityExtractor.amounts("الإجمالي ١٬٢٣٤٫٥٠ ج.م و USD 25.75"))
-        assertEquals(listOf(DetectedAmount("250", "SAR"), DetectedAmount("90", "EUR")),
+        assertEquals(listOf(DetectedAmount("250", "ريال"), DetectedAmount("90", "EUR")),
             EntityExtractor.amounts("۲۵۰ ريال · €90"))
         assertTrue(EntityExtractor.amounts("2026/10/20 01012345678").isEmpty())
         assertTrue(EntityExtractor.amounts("١776/0٠ جنيه").isEmpty())
+    }
+    @Test fun ambiguousCurrencyWordsDoNotInventACountry() {
+        assertEquals(listOf(DetectedAmount("25", "$"), DetectedAmount("30", "GBP"), DetectedAmount("40", "SAR")),
+            EntityExtractor.amounts("$25 · 30 جنيه إسترليني · 40 ريال سعودي"))
     }
 }

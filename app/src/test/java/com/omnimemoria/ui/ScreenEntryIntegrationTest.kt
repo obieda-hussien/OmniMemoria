@@ -59,6 +59,7 @@ class ScreenEntryIntegrationTest {
         // Opens and validates the real Room schema before any collectors run.
         runBlocking { database.photoIntelligenceDao().getAll() }
         runBlocking { flags.setEnabled(FeatureFlag.VAULT, false) }
+        runBlocking { flags.setEnabled(FeatureFlag.ARABIC_OCR, false) }
     }
 
     private fun show(content: @androidx.compose.runtime.Composable () -> Unit) {
@@ -77,6 +78,17 @@ class ScreenEntryIntegrationTest {
         show { SearchScreen({}, {}) }
         compose.onNodeWithText("Quick Filters").assertIsDisplayed()
         compose.onNodeWithText("Phone Numbers").assertIsDisplayed()
+    }
+
+    @Test fun confirmingArabicSetupEnqueuesTheActualModelRequest() {
+        show { SettingsScreen() }
+        compose.onNodeWithText("Arabic OCR (Tesseract)").performScrollTo().performClick()
+        compose.onNodeWithText("Download").assertIsDisplayed().performClick()
+        compose.waitUntil(5_000) {
+            androidx.work.WorkManager.getInstance(compose.activity).getWorkInfosForUniqueWork(
+                com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD
+            ).get().isNotEmpty()
+        }
     }
 
     @Test fun disabledVaultOpensWithRealViewModel() {

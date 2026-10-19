@@ -115,7 +115,10 @@ class SettingsViewModel @Inject constructor(
 
     private suspend fun safely(message: String = "Unable to save settings. Please try again.", action: suspend () -> Unit) {
         try { action() } catch (cancelled: CancellationException) { throw cancelled }
-        catch (error: Exception) { _error.value = message }
+        catch (error: Exception) {
+            android.util.Log.e("OmniSettings", message, error)
+            _error.value = message
+        }
     }
 
     private fun requestKey(model: OfflineModel) = when (model) {

@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.ImageDecoder
+import android.graphics.ColorSpace
 import android.os.Build
 import androidx.exifinterface.media.ExifInterface
 import androidx.palette.graphics.Palette
@@ -127,6 +128,7 @@ class PhotoAnalyzer @Inject constructor(
             val (width, height) = OcrImageSizing.target(info.size.width, info.size.height)
             decoder.setTargetSize(width, height)
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            decoder.setTargetColorSpace(ColorSpace.get(ColorSpace.Named.SRGB))
         }
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         resolver.openInputStream(image.uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
