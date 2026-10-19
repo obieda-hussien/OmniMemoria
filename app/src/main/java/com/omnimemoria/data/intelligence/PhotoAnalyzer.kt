@@ -72,7 +72,8 @@ class PhotoAnalyzer @Inject constructor(
                             .put("top", box.top.toFloat()/bitmap.height).put("right", box.right.toFloat()/bitmap.width)
                             .put("bottom", box.bottom.toFloat()/bitmap.height))
                     } }
-                    result = result.copy(rawText = found.text.take(100_000), ocrBoxes = JSONObject().put("width", bitmap.width).put("height", bitmap.height).put("lines", boxes).toString())
+                    val merged = if (mask and AnalysisPolicy.ARABIC != 0) OcrText.merge(result.rawText, found.text) else found.text.take(100_000)
+                    result = result.copy(rawText = merged, ocrBoxes = JSONObject().put("width", bitmap.width).put("height", bitmap.height).put("lines", boxes).toString())
                 }
                 stage(AnalysisPolicy.ARABIC, "Arabic OCR") {
                     if (!arabicReady) throw IOException("Arabic model is not installed")
@@ -83,8 +84,7 @@ class PhotoAnalyzer @Inject constructor(
                     try {
                         engine.setImage(bitmap)
                         val extracted = engine.getUTF8Text().orEmpty().take(100_000)
-                        result = result.copy(rawText = (result.rawText.lineSequence() + extracted.lineSequence())
-                            .map { it.trim() }.filter { it.isNotBlank() }.distinct().joinToString("\n").take(100_000))
+                        result = result.copy(rawText = OcrText.merge(result.rawText, extracted))
                     } finally { engine.clear() }
                 }
                 stage(AnalysisPolicy.LABELS, "Image classification") {
