@@ -55,7 +55,8 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
             .components {
                 add(coil3.svg.SvgDecoder.Factory())
                 add(coil3.video.VideoFrameDecoder.Factory())
-                add(coil3.gif.AnimatedImageDecoder.Factory())
+                if (android.os.Build.VERSION.SDK_INT >= 28) add(coil3.gif.AnimatedImageDecoder.Factory())
+                else add(coil3.gif.GifDecoder.Factory())
             }
             // ── Memory cache ────────────────────────────────────────────────────
             // 25% of available heap — keeps decoded Bitmaps warm while the user
