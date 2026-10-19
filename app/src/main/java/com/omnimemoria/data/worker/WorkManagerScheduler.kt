@@ -8,7 +8,6 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -24,22 +23,21 @@ class WorkManagerScheduler @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     fun scheduleImmediateIndex(photoIds: List<Long>) {
-        val inputData = Data.Builder()
-            .putLongArray(PhotoIndexWorker.WORK_INPUT_PHOTO_IDS, photoIds.toLongArray())
-            .putString(PhotoIndexWorker.WORK_INPUT_MODE, PhotoIndexWorker.WORK_MODE_IMMEDIATE)
-            .build()
-
-        val request = OneTimeWorkRequestBuilder<PhotoIndexWorker>()
-            .setInputData(inputData)
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-            .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
-            .build()
-
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            UNIQUE_IMMEDIATE_WORK_NAME,
-            ExistingWorkPolicy.APPEND_OR_REPLACE,
-            request
-        )
+        // WorkManager Data has a 10 KiB limit. Chain bounded, deduplicated batches.
+        photoIds.distinct().filter { it > 0 }.chunked(400).forEach { batch ->
+            val inputData = Data.Builder()
+                .putLongArray(PhotoIndexWorker.WORK_INPUT_PHOTO_IDS, batch.toLongArray())
+                .putString(PhotoIndexWorker.WORK_INPUT_MODE, PhotoIndexWorker.WORK_MODE_IMMEDIATE)
+                .build()
+            val request = OneTimeWorkRequestBuilder<PhotoIndexWorker>()
+                .setInputData(inputData)
+                .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).build())
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                UNIQUE_IMMEDIATE_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request
+            )
+        }
     }
 
     fun schedulePeriodicIndex() {

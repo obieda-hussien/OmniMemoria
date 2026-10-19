@@ -13,7 +13,7 @@ import coil3.memory.MemoryCache
 import coil3.request.crossfade
 import com.omnimemoria.data.local.objectbox.MyObjectBox
 import com.omnimemoria.data.worker.WorkManagerScheduler
-import com.omnimemoria.domain.flags.FeatureFlag
+import com.omnimemoria.domain.flags.FeaturePolicy
 import com.omnimemoria.domain.flags.FeatureFlagManager
 import dagger.hilt.android.HiltAndroidApp
 import io.objectbox.BoxStore
@@ -21,7 +21,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -112,13 +112,12 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
         // Schedule/cancel periodic photo indexing based on active AI flags
         applicationScope.launch {
             try {
-                combine(
-                    AI_FEATURE_FLAGS.map(featureFlagManager::isEnabled)
-                ) { states -> states.any { it } }
+                featureFlagManager.featureStates
+                    .map { states -> FeaturePolicy.indexingFlags.any { states[it] == true } }
                     .distinctUntilChanged()
                     .collectLatest { shouldSchedule ->
                         if (shouldSchedule) workManagerScheduler.schedulePeriodicIndex()
-                        else                workManagerScheduler.cancelPeriodicIndex()
+                        else                workManagerScheduler.cancelAllWork()
                     }
             } catch (throwable: Throwable) {
                 Log.e("OmniMemoria", "Failed to initialize periodic indexing scheduler", throwable)
@@ -137,16 +136,6 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
     }
 
     companion object {
-        private val AI_FEATURE_FLAGS = listOf(
-            FeatureFlag.OCR,
-            FeatureFlag.ARABIC_OCR,
-            FeatureFlag.ML_LABELS,
-            FeatureFlag.FACE_DETECTION,
-            FeatureFlag.EMBEDDINGS,
-            FeatureFlag.RAG_SEARCH,
-            FeatureFlag.SMART_FILTERS
-        )
-
         lateinit var boxStore: BoxStore
             private set
     }

@@ -1,66 +1,65 @@
 package com.omnimemoria.ui.settings
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkManager
 import com.omnimemoria.data.preferences.AppPreferences
-import com.omnimemoria.data.worker.ModelDownloadWorker
+import com.omnimemoria.data.worker.WorkManagerScheduler
 import com.omnimemoria.domain.flags.FeatureFlag
 import com.omnimemoria.domain.flags.FeatureFlagManager
+import com.omnimemoria.domain.flags.OfflineModel
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val featureFlagManager: FeatureFlagManager,
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    @ApplicationContext context: Context
 ) : ViewModel() {
+    val featureStates = featureFlagManager.featureStates.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5_000), FeatureFlag.entries.associateWith { false }
+    )
+    val modelRequests = appPreferences.snapshots.map { preferences ->
+        OfflineModel.entries.associate { it.id to (preferences[requestKey(it)] ?: false) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    val featureStates: StateFlow<Map<FeatureFlag, Boolean>> =
-        combine(
-            FEATURE_FLAGS.map { flag ->
-                featureFlagManager.isEnabled(flag)
-            }
-        ) { states ->
-            FEATURE_FLAGS.zip(states.toList()).toMap()
-        }.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            initialValue = FEATURE_FLAGS.associateWith { false }
-        )
+    val indexingState = WorkManager.getInstance(context)
+        .getWorkInfosForUniqueWorkFlow(WorkManagerScheduler.UNIQUE_PERIODIC_WORK_NAME)
+        .map { jobs -> when (jobs.firstOrNull { !it.state.isFinished }?.state) {
+            androidx.work.WorkInfo.State.ENQUEUED -> "Waiting for idle device and sufficient battery"
+            androidx.work.WorkInfo.State.RUNNING -> "Checking feature preferences"
+            androidx.work.WorkInfo.State.BLOCKED -> "Waiting for prerequisites"
+            else -> "Off"
+        } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Loading")
 
-    val modelDownloadStates: StateFlow<Map<String, Boolean>> =
-        combine(
-            appPreferences.getBoolean(AppPreferences.PreferencesKeys.MODEL_TESSERACT_ARA_DOWNLOADED),
-            appPreferences.getBoolean(AppPreferences.PreferencesKeys.MODEL_MEDIAPIPE_EMBEDDER_DOWNLOADED)
-        ) { tesseractDownloaded, embedderDownloaded ->
-            mapOf(
-                ModelDownloadWorker.MODEL_TESSERACT_ARA to tesseractDownloaded,
-                ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER to embedderDownloaded
-            )
-        }.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            initialValue = mapOf(
-                ModelDownloadWorker.MODEL_TESSERACT_ARA to false,
-                ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER to false
-            )
-        )
+    private val _error = MutableStateFlow<String?>(null)
+    val error = _error.asStateFlow()
 
-    fun toggle(flag: FeatureFlag) {
-        viewModelScope.launch {
-            val current = featureStates.value[flag] ?: false
-            featureFlagManager.setEnabled(flag, !current)
-        }
+    fun setEnabled(flag: FeatureFlag, enabled: Boolean) {
+        viewModelScope.launch { safely { featureFlagManager.setEnabled(flag, enabled) } }
     }
 
-    companion object {
-        private const val STOP_TIMEOUT_MILLIS = 5_000L
+    fun requestModel(id: String, requested: Boolean = true) {
+        val model = OfflineModel.fromId(id) ?: return
+        viewModelScope.launch { safely { appPreferences.setBoolean(requestKey(model), requested) } }
+    }
 
-        private val FEATURE_FLAGS = FeatureFlag.entries
+    fun dismissError() { _error.value = null }
+
+    private suspend fun safely(action: suspend () -> Unit) {
+        try { action() } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { _error.value = "Unable to save settings. Please try again." }
+    }
+
+    private fun requestKey(model: OfflineModel) = when (model) {
+        OfflineModel.TESSERACT_ARABIC -> AppPreferences.PreferencesKeys.REQUEST_TESSERACT_DOWNLOAD
+        OfflineModel.EMBEDDING_GEMMA -> AppPreferences.PreferencesKeys.REQUEST_EMBEDDER_DOWNLOAD
     }
 }

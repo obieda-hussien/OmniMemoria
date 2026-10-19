@@ -245,7 +245,7 @@ fun AppNavGraph(externalUri: String? = null, intentType: String? = null, reminde
                 // ── Settings ──────────────────────────────────────────────────
                 composable(AppRoutes.Settings) {
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
-                        SettingsScreen()
+                        SettingsScreen(onBack = { navController.popBackStack() })
                     }
                 }
             }

@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.omnimemoria.data.worker.ModelDownloadWorker
 import com.omnimemoria.data.worker.OnThisDayWorker
+import com.omnimemoria.domain.flags.OfflineModel
 import com.omnimemoria.domain.flags.FeatureFlag
 import com.omnimemoria.ui.components.OmniDetailTopBar
 import com.omnimemoria.ui.components.OmniSettingsGroup
@@ -45,8 +46,9 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val featureStates      by viewModel.featureStates.collectAsState()
-    val modelDownloadStates by viewModel.modelDownloadStates.collectAsState()
-    val ocrEnabled          = featureStates[FeatureFlag.OCR] == true
+    val modelRequests by viewModel.modelRequests.collectAsState()
+    val indexingState by viewModel.indexingState.collectAsState()
+    val settingsError by viewModel.error.collectAsState()
     var activeDownloadModel by remember { mutableStateOf<String?>(null) }
     val appContext = LocalContext.current
     var remindersEnabled by remember(appContext) {
@@ -120,6 +122,16 @@ fun SettingsScreen(
             }
 
             item {
+                Text("AI engines are not included in this version. Your feature preferences and offline model requests are saved for future updates.", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+                Text("Indexing schedule: $indexingState. Photo analysis is not available yet.", style = MaterialTheme.typography.bodySmall)
+                settingsError?.let { error ->
+                    Text(error, color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = viewModel::dismissError) { Text("Dismiss") }
+                }
+            }
+
+            item {
                 OmniSettingsGroup(title = "AI Features", icon = Icons.Outlined.AutoAwesome) {
                     AI_FEATURE_ITEMS.forEachIndexed { index, item ->
                         OmniFeatureToggleItem(
@@ -127,8 +139,11 @@ fun SettingsScreen(
                             subtitle        = item.subtitle,
                             icon            = item.icon,
                             checked         = featureStates[item.flag] == true,
-                            enabled         = if (item.flag == FeatureFlag.ARABIC_OCR) ocrEnabled else true,
-                            onCheckedChange = { viewModel.toggle(item.flag) },
+                            onCheckedChange = { enabled ->
+                                viewModel.setEnabled(item.flag, enabled)
+                                if (enabled && item.flag == FeatureFlag.ARABIC_OCR) activeDownloadModel = OfflineModel.TESSERACT_ARABIC.id
+                                if (enabled && item.flag in setOf(FeatureFlag.EMBEDDINGS, FeatureFlag.RAG_SEARCH)) activeDownloadModel = OfflineModel.EMBEDDING_GEMMA.id
+                            },
                             isLast          = index == AI_FEATURE_ITEMS.lastIndex
                         )
                     }
@@ -143,7 +158,11 @@ fun SettingsScreen(
                             subtitle        = item.subtitle,
                             icon            = item.icon,
                             checked         = featureStates[item.flag] == true,
-                            onCheckedChange = { viewModel.toggle(item.flag) },
+                            onCheckedChange = { enabled ->
+                                viewModel.setEnabled(item.flag, enabled)
+                                if (enabled && item.flag == FeatureFlag.ARABIC_OCR) activeDownloadModel = OfflineModel.TESSERACT_ARABIC.id
+                                if (enabled && item.flag in setOf(FeatureFlag.EMBEDDINGS, FeatureFlag.RAG_SEARCH)) activeDownloadModel = OfflineModel.EMBEDDING_GEMMA.id
+                            },
                             isLast          = index == VISUAL_FEATURE_ITEMS.lastIndex
                         )
                     }
@@ -158,7 +177,11 @@ fun SettingsScreen(
                             subtitle        = item.subtitle,
                             icon            = item.icon,
                             checked         = featureStates[item.flag] == true,
-                            onCheckedChange = { viewModel.toggle(item.flag) },
+                            onCheckedChange = { enabled ->
+                                viewModel.setEnabled(item.flag, enabled)
+                                if (enabled && item.flag == FeatureFlag.ARABIC_OCR) activeDownloadModel = OfflineModel.TESSERACT_ARABIC.id
+                                if (enabled && item.flag in setOf(FeatureFlag.EMBEDDINGS, FeatureFlag.RAG_SEARCH)) activeDownloadModel = OfflineModel.EMBEDDING_GEMMA.id
+                            },
                             isLast          = index == COMPRESSION_ITEMS.lastIndex
                         )
                     }
@@ -171,8 +194,9 @@ fun SettingsScreen(
                         OmniModelDownloadItem(
                             title          = item.title,
                             icon           = item.icon,
-                            downloaded     = modelDownloadStates[item.modelName] == true,
+                            requested      = modelRequests[item.modelName] == true,
                             onDownloadClick = { activeDownloadModel = item.modelName },
+                            onCancelRequest = { viewModel.requestModel(item.modelName, false) },
                             isLast         = index == AI_MODEL_ITEMS.lastIndex
                         )
                     }
@@ -187,7 +211,11 @@ fun SettingsScreen(
                             subtitle        = item.subtitle,
                             icon            = item.icon,
                             checked         = featureStates[item.flag] == true,
-                            onCheckedChange = { viewModel.toggle(item.flag) },
+                            onCheckedChange = { enabled ->
+                                viewModel.setEnabled(item.flag, enabled)
+                                if (enabled && item.flag == FeatureFlag.ARABIC_OCR) activeDownloadModel = OfflineModel.TESSERACT_ARABIC.id
+                                if (enabled && item.flag in setOf(FeatureFlag.EMBEDDINGS, FeatureFlag.RAG_SEARCH)) activeDownloadModel = OfflineModel.EMBEDDING_GEMMA.id
+                            },
                             isLast          = index == SECURITY_FEATURE_ITEMS.lastIndex
                         )
                     }
@@ -227,7 +255,7 @@ fun SettingsScreen(
     }
 
     activeDownloadModel?.let { modelName ->
-        DownloadModelDialog(modelName = modelName, onDismiss = { activeDownloadModel = null })
+        DownloadModelDialog(modelName = modelName, onDismiss = { activeDownloadModel = null }, onRequest = { viewModel.requestModel(it) })
     }
 }
 
@@ -325,7 +353,8 @@ private fun OmniFeatureToggleItem(
 private fun OmniModelDownloadItem(
     title:          String,
     icon:           ImageVector,
-    downloaded:     Boolean,
+    requested:      Boolean,
+    onCancelRequest: () -> Unit,
     onDownloadClick: () -> Unit,
     isLast:         Boolean = false
 ) {
@@ -360,51 +389,10 @@ private fun OmniModelDownloadItem(
                 modifier   = Modifier.weight(1f)
             )
 
-            if (downloaded) {
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.tertiaryContainer)
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Outlined.CheckCircle,
-                        null,
-                        tint     = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "Ready",
-                        style      = MaterialTheme.typography.labelSmall,
-                        color      = MaterialTheme.colorScheme.onTertiaryContainer,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.primary)
-                        .clickable(onClick = onDownloadClick)
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Outlined.CloudDownload,
-                            null,
-                            tint     = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            "Get",
-                            style      = MaterialTheme.typography.labelMedium,
-                            color      = MaterialTheme.colorScheme.onPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(if (requested) "Requested · not installed" else "Not installed", style = MaterialTheme.typography.labelSmall)
+                TextButton(onClick = if (requested) onCancelRequest else onDownloadClick) {
+                    Text(if (requested) "Cancel request" else "Set up")
                 }
             }
         }
@@ -501,11 +489,11 @@ private data class AiModelItem(
 
 private val AI_FEATURE_ITEMS = listOf(
     FeatureItem("Text Extraction (OCR)",    FeatureFlag.OCR,            Icons.Outlined.DocumentScanner),
-    FeatureItem("Arabic OCR (Tesseract)",   FeatureFlag.ARABIC_OCR,     Icons.Outlined.Translate,      "Requires OCR to be enabled"),
+    FeatureItem("Arabic OCR (Tesseract)",   FeatureFlag.ARABIC_OCR,     Icons.Outlined.Translate,      "Enables OCR too · model preparation available below"),
     FeatureItem("Image Classification",     FeatureFlag.ML_LABELS,      Icons.Outlined.Category),
     FeatureItem("Face Detection",           FeatureFlag.FACE_DETECTION,  Icons.Outlined.Face),
     FeatureItem("Embeddings",              FeatureFlag.EMBEDDINGS,      Icons.Outlined.Polyline),
-    FeatureItem("Semantic Search (RAG)",    FeatureFlag.RAG_SEARCH,      Icons.Outlined.TravelExplore,  "Requires Embeddings"),
+    FeatureItem("Semantic Search (RAG)",    FeatureFlag.RAG_SEARCH,      Icons.Outlined.TravelExplore,  "Enables OCR and Embeddings too"),
     FeatureItem("Smart Content Filters",    FeatureFlag.SMART_FILTERS,   Icons.Outlined.FilterList,     "Uses AI-indexed metadata")
 )
 
@@ -524,8 +512,8 @@ private val COMPRESSION_ITEMS = listOf(
 )
 
 private val AI_MODEL_ITEMS = listOf(
-    AiModelItem("Tesseract Arabic (~30 MB)", ModelDownloadWorker.MODEL_TESSERACT_ARA,    Icons.Outlined.Language),
-    AiModelItem("Embedding Model (~50 MB)",  ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER, Icons.Outlined.Psychology)
+    AiModelItem("Tesseract Arabic", ModelDownloadWorker.MODEL_TESSERACT_ARA,    Icons.Outlined.Language),
+    AiModelItem("EmbeddingGemma",  ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER, Icons.Outlined.Psychology)
 )
 
 private val SECURITY_FEATURE_ITEMS = listOf(

@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SortPresetDao {
-    @Query("SELECT * FROM sort_presets")
+    @Query("SELECT * FROM sort_presets ORDER BY isDefault DESC, id ASC")
     fun getAll(): Flow<List<SortPreset>>
 
     @Query("SELECT * FROM sort_presets WHERE isDefault = 1 LIMIT 1")
@@ -23,8 +23,10 @@ interface SortPresetDao {
 
     @Transaction
     suspend fun setDefault(id: Int) {
-        clearDefault()
-        markDefault(id)
+        if (findById(id) != null) {
+            clearDefault()
+            markDefault(id)
+        }
     }
 
     @Query("UPDATE sort_presets SET isDefault = 0")
@@ -32,6 +34,9 @@ interface SortPresetDao {
 
     @Query("UPDATE sort_presets SET isDefault = 1 WHERE id = :id")
     suspend fun markDefault(id: Int)
+
+    @Query("SELECT * FROM sort_presets WHERE id = :id")
+    suspend fun findById(id: Int): SortPreset?
 
     @Query("SELECT COUNT(*) FROM sort_presets")
     suspend fun count(): Int
