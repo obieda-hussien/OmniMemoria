@@ -63,6 +63,7 @@ fun TrashScreen(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) pendingOnConfirm?.invoke()
+        else viewModel.permissionCancelled()
         pendingOnConfirm = null
     }
 
@@ -116,6 +117,10 @@ fun TrashScreen(
                 }
             )
 
+            if (android.os.Build.VERSION.SDK_INT < 30) {
+                Text("Items are hidden in OmniMemoria and kept for 30 days. Other apps may still show them.",
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
+            }
             if (trashItems.isEmpty() && !isLoading) {
                 Box(
                     modifier         = Modifier.weight(1f).fillMaxWidth(),

@@ -6,7 +6,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 source = (root / 'app/src/main/java/com/omnimemoria/di/DatabaseModule.kt').read_text()
-for initial in (1, 2):
+for initial in (1, 2, 3):
     db = sqlite3.connect(':memory:')
     db.executescript("""
         CREATE TABLE sort_presets(id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL,
@@ -19,14 +19,16 @@ for initial in (1, 2):
         CREATE TABLE photo_intelligence(photoId INTEGER PRIMARY KEY, rawText TEXT);
         INSERT INTO photo_intelligence VALUES(9003, 'preserved OCR');
     """)
-    if initial == 2:
+    if initial >= 2:
         db.executescript("""
             CREATE TABLE corrupted_media(id INTEGER NOT NULL PRIMARY KEY, detectedAt INTEGER NOT NULL, reason TEXT NOT NULL);
             CREATE TABLE media_integrity_checked(id INTEGER NOT NULL PRIMARY KEY, checkedAt INTEGER NOT NULL);
             INSERT INTO corrupted_media VALUES(5, 123, 'preserved');
             INSERT INTO media_integrity_checked VALUES(6, 456);
         """)
-    for version in range(initial, 3):
+    if initial >= 3:
+        db.execute("ALTER TABLE sort_presets ADD COLUMN filterConfig TEXT NOT NULL DEFAULT ''")
+    for version in range(initial, 4):
         block = source.split(f'val MIGRATION_{version}_{version+1} =', 1)[1].split('\n    }', 1)[0]
         statements = re.findall(r'db.execSQL\("([^"\n]+)"\)', block)
         assert statements, f'Missing migration {version}'
@@ -35,10 +37,11 @@ for initial in (1, 2):
     assert db.execute('SELECT id, name, filterConfig FROM sort_presets').fetchall() == [(42, 'My preset', '')]
     assert db.execute('SELECT * FROM favorites').fetchall() == [(9001,)]
     assert db.execute('SELECT * FROM trash').fetchall() == [(9002,)]
-    assert db.execute('SELECT * FROM photo_intelligence').fetchall() == [(9003, 'preserved OCR')]
+    assert db.execute('SELECT photoId, rawText FROM photo_intelligence').fetchall() == [(9003, 'preserved OCR')]
     assert db.execute("PRAGMA table_info(sort_presets)").fetchall()[-1][2:5] == ('TEXT', 1, "''")
-    if initial == 2:
+    if initial >= 2:
         assert db.execute('SELECT * FROM corrupted_media').fetchall() == [(5, 123, 'preserved')]
         assert db.execute('SELECT * FROM media_integrity_checked').fetchall() == [(6, 456)]
+    assert db.execute('SELECT completedMask, sourceModified, sourceSize, analysisVersion, indexError, ocrBoxes FROM photo_intelligence').fetchall() == [(0, 0, 0, 0, '', '')]
     db.close()
-print('Passed production SQLite migration SQL: 1 -> 3 and 2 -> 3; presets and library records preserved.')
+print('Passed production SQLite migrations 1/2/3 -> 4; existing library data preserved and analysis fields initialized.')

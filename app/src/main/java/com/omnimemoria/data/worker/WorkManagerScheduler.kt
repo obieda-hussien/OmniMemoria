@@ -40,6 +40,17 @@ class WorkManagerScheduler @Inject constructor(
         }
     }
 
+    fun scheduleBackgroundIndex(afterId: Long = 0, ids: List<Long>? = null, append: Boolean = false) {
+        val data = Data.Builder().putLong(PhotoIndexWorker.WORK_INPUT_AFTER_ID, afterId)
+        ids?.let { data.putLongArray(PhotoIndexWorker.WORK_INPUT_PHOTO_IDS, it.toLongArray()) }
+        val request = OneTimeWorkRequestBuilder<PhotoIndexWorker>()
+            .setInputData(data.build())
+            .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresDeviceIdle(ids == null).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS).build()
+        WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_SCAN_WORK_NAME,
+            if (afterId == 0L && !append) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+    }
+
     fun schedulePeriodicIndex() {
         val constraints = Constraints.Builder()
             .setRequiresBatteryNotLow(true)
@@ -68,6 +79,7 @@ class WorkManagerScheduler @Inject constructor(
 
     fun cancelAllWork() {
         WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_IMMEDIATE_WORK_NAME)
+        WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_SCAN_WORK_NAME)
         cancelPeriodicIndex()
     }
 
@@ -148,6 +160,7 @@ class WorkManagerScheduler @Inject constructor(
     }
 
     companion object {
+        const val UNIQUE_SCAN_WORK_NAME = "omnimemoria_index_scan"
         const val UNIQUE_IMMEDIATE_WORK_NAME = "omnimemoria_index_immediate"
         const val UNIQUE_PERIODIC_WORK_NAME = "omnimemoria_index_periodic"
         internal const val PERIODIC_INDEX_INTERVAL_HOURS = 6L

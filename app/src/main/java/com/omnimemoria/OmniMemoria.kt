@@ -13,7 +13,7 @@ import coil3.memory.MemoryCache
 import coil3.request.crossfade
 import com.omnimemoria.data.local.objectbox.MyObjectBox
 import com.omnimemoria.data.worker.WorkManagerScheduler
-import com.omnimemoria.domain.flags.FeaturePolicy
+import com.omnimemoria.domain.intelligence.AnalysisPolicy
 import com.omnimemoria.domain.flags.FeatureFlagManager
 import dagger.hilt.android.HiltAndroidApp
 import io.objectbox.BoxStore
@@ -113,11 +113,13 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
         applicationScope.launch {
             try {
                 featureFlagManager.featureStates
-                    .map { states -> FeaturePolicy.indexingFlags.any { states[it] == true } }
+                    .map(AnalysisPolicy::required)
                     .distinctUntilChanged()
                     .collectLatest { shouldSchedule ->
-                        if (shouldSchedule) workManagerScheduler.schedulePeriodicIndex()
-                        else                workManagerScheduler.cancelAllWork()
+                        if (shouldSchedule != 0) {
+                            workManagerScheduler.schedulePeriodicIndex()
+                            workManagerScheduler.scheduleBackgroundIndex()
+                        } else workManagerScheduler.cancelAllWork()
                     }
             } catch (throwable: Throwable) {
                 Log.e("OmniMemoria", "Failed to initialize periodic indexing scheduler", throwable)

@@ -33,7 +33,9 @@ class TrashCleanupWorker @AssistedInject constructor(
             trashRepository.cleanExpired()
             Log.d(TAG, "TrashCleanupWorker: sweep complete")
             Result.success()
-        } catch (t: Throwable) {
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (t: Exception) {
             Log.e(TAG, "TrashCleanupWorker: error during sweep", t)
             Result.retry()
         }

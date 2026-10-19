@@ -6,106 +6,57 @@ import androidx.lifecycle.viewModelScope
 import com.omnimemoria.data.local.db.TrashItem
 import com.omnimemoria.data.repository.TrashRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-// ── UI Events ─────────────────────────────────────────────────────────────────
-
 sealed class TrashUiEvent {
-    data class RequestMediaPermission(
-        val pendingIntent: PendingIntent,
-        val onConfirmed: () -> Unit
-    ) : TrashUiEvent()
-
+    data class RequestMediaPermission(val pendingIntent: PendingIntent, val onConfirmed: () -> Unit) : TrashUiEvent()
     data class ShowSnackbar(val message: String) : TrashUiEvent()
 }
 
-// ── ViewModel ─────────────────────────────────────────────────────────────────
-
 @HiltViewModel
-class TrashViewModel @Inject constructor(
-    private val trashRepository: TrashRepository
-) : ViewModel() {
-
-    val trashItems: StateFlow<List<TrashItem>> = trashRepository.getAllFlow()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    val trashCount: StateFlow<Int> = trashRepository.getCount()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
-
+class TrashViewModel @Inject constructor(private val repository: TrashRepository) : ViewModel() {
+    val trashItems = repository.getAllFlow().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val trashCount = repository.getCount().stateIn(viewModelScope, SharingStarted.Eagerly, 0)
     private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
-
+    val isLoading = _isLoading.asStateFlow()
     private val _uiEvents = Channel<TrashUiEvent>(Channel.BUFFERED)
-    val uiEvents: Flow<TrashUiEvent> = _uiEvents.receiveAsFlow()
+    val uiEvents = _uiEvents.receiveAsFlow()
 
-    // ── Restore ───────────────────────────────────────────────────────────────
+    fun permissionCancelled() { _isLoading.value = false }
+    fun restore(item: TrashItem) = perform(listOf(item), true)
+    fun permanentlyDelete(item: TrashItem) = perform(listOf(item), false)
+    // Snapshot the requested items. A later arrival must not be removed by this confirmation.
+    fun emptyTrash() = perform(trashItems.value.toList(), false)
 
-    fun restore(item: TrashItem) {
+    private fun perform(items: List<TrashItem>, restore: Boolean) {
+        if (_isLoading.value || items.isEmpty()) return
+        _isLoading.value = true
         viewModelScope.launch(Dispatchers.IO) {
-            val pi = trashRepository.restoreFromTrashIntent(item)
-            val name = item.originalPath.substringAfterLast('/').ifBlank { item.originalPath }
-            if (pi != null) {
-                _uiEvents.send(TrashUiEvent.RequestMediaPermission(pi) {
-                    viewModelScope.launch(Dispatchers.IO) {
-                        trashRepository.confirmRestoreFromTrash(item)
-                        _uiEvents.send(TrashUiEvent.ShowSnackbar("\"$name\" restored"))
-                    }
+            try {
+                val request = if (restore) repository.restoreFromTrashIntent(items) else repository.permanentlyDeleteIntent(items)
+                if (request == null) finish(items, restore)
+                else _uiEvents.send(TrashUiEvent.RequestMediaPermission(request) {
+                    viewModelScope.launch(Dispatchers.IO) { finish(items, restore) }
                 })
-            } else {
-                trashRepository.confirmRestoreFromTrash(item)
-                _uiEvents.send(TrashUiEvent.ShowSnackbar("\"$name\" restored"))
-            }
+            } catch (cancelled: CancellationException) { _isLoading.value = false; throw cancelled }
+            catch (error: Exception) { fail(error) }
         }
     }
-
-    // ── Permanent delete ───────────────────────────────────────────────────────
-
-    fun permanentlyDelete(item: TrashItem) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val pi = trashRepository.permanentlyDeleteIntent(item)
-            if (pi != null) {
-                _uiEvents.send(TrashUiEvent.RequestMediaPermission(pi) {
-                    viewModelScope.launch(Dispatchers.IO) {
-                        trashRepository.confirmPermanentlyDelete(item)
-                        _uiEvents.send(TrashUiEvent.ShowSnackbar("Deleted permanently"))
-                    }
-                })
-            } else {
-                trashRepository.confirmPermanentlyDelete(item)
-                _uiEvents.send(TrashUiEvent.ShowSnackbar("Deleted permanently"))
-            }
-        }
+    private suspend fun finish(items: List<TrashItem>, restore: Boolean) {
+        try {
+            if (restore) repository.confirmRestoreFromTrash(items) else repository.confirmPermanentlyDelete(items)
+            _uiEvents.send(TrashUiEvent.ShowSnackbar(if (restore) "Media restored" else "Media deleted permanently"))
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { fail(error) }
+        finally { _isLoading.value = false }
     }
-
-    // ── Empty trash ────────────────────────────────────────────────────────────
-
-    fun emptyTrash() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _isLoading.value = true
-            val pi = trashRepository.getEmptyTrashIntent()
-            if (pi != null) {
-                _uiEvents.send(TrashUiEvent.RequestMediaPermission(pi) {
-                    viewModelScope.launch(Dispatchers.IO) {
-                        trashRepository.confirmEmptyTrash()
-                        _isLoading.value = false
-                        _uiEvents.send(TrashUiEvent.ShowSnackbar("Trash emptied"))
-                    }
-                })
-            } else {
-                trashRepository.confirmEmptyTrash()
-                _isLoading.value = false
-                _uiEvents.send(TrashUiEvent.ShowSnackbar("Trash emptied"))
-            }
-        }
+    private suspend fun fail(error: Exception) {
+        _isLoading.value = false
+        _uiEvents.send(TrashUiEvent.ShowSnackbar(error.message ?: "Media operation failed. Your trash records have been retained."))
     }
 }

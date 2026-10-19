@@ -3,198 +3,146 @@ package com.omnimemoria.data.repository
 import android.app.PendingIntent
 import android.content.ContentUris
 import android.content.Context
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.MediaStore
 import com.omnimemoria.data.local.db.TrashDao
 import com.omnimemoria.data.local.db.TrashItem
 import com.omnimemoria.domain.model.MediaPhoto
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** System trash on Android 11+. Older devices retain the file and hide it in
+ * OmniMemoria until restore, explicit permanent deletion or expiry. */
 @Singleton
 class TrashRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val trashDao: TrashDao
 ) {
     private val contentResolver = context.contentResolver
-
-    // ── Reactive reads ───────────────────────────────────────────────────────
-
+    private val mutex = Mutex()
     fun getAllFlow(): Flow<List<TrashItem>> = trashDao.getAllFlow()
     fun getCount(): Flow<Int> = trashDao.getCount()
     fun getTotalItems(): Flow<Int> = trashDao.getTotalItems()
+    suspend fun getTrashItemsByIds(ids: List<Long>): List<TrashItem> = withContext(Dispatchers.IO) { ids.mapNotNull { trashDao.getById(it) } }
+    suspend fun getTrashItemById(id: Long): TrashItem? = withContext(Dispatchers.IO) { trashDao.getById(id) }
 
-    suspend fun getTrashItemsByIds(ids: List<Long>): List<TrashItem> = withContext(Dispatchers.IO) {
-        ids.mapNotNull { trashDao.getById(it) }
-    }
-
-    suspend fun getTrashItemById(id: Long): TrashItem? = withContext(Dispatchers.IO) {
-        trashDao.getById(id)
-    }
-
-    // ── Move to trash (with API-level fallback) ──────────────────────────────
-
-    /**
-     * Unified "move to trash" helper that handles the Android 11+ permission
-     * dialog split internally.
-     *
-     * On **API 30+**: obtains a [PendingIntent] from MediaStore and delegates
-     * to [onNeedsPermission] so the caller can launch the system dialog.
-     * [onConfirmed] is supplied to [onNeedsPermission] as the callback to call
-     * once the user accepts; it then runs [confirmMoveToTrash] + [onDone].
-     *
-     * On **API < 30**: deletes directly via [confirmMoveToTrash] and then
-     * calls [onDone] immediately — no permission dialog is required.
-     *
-     * Both branches guarantee [onDone] is invoked exactly once on success.
-     *
-     * @param photos           Items to move to trash.
-     * @param onNeedsPermission Called with the [PendingIntent] and an `onConfirmed`
-     *                         suspend lambda when the system dialog is required.
-     *                         The caller must launch the intent and invoke the
-     *                         lambda when the user confirms.
-     * @param onDone           Called on the IO thread after the trash operation
-     *                         completes successfully (post-confirm or direct).
-     */
     suspend fun moveToTrashWithFallback(
         photos: List<MediaPhoto>,
-        onNeedsPermission: suspend (pendingIntent: PendingIntent, onConfirmed: suspend () -> Unit) -> Unit,
-        onDone: suspend () -> Unit = {}
+        onNeedsPermission: suspend (PendingIntent, suspend () -> Unit) -> Unit,
+        onDone: suspend () -> Unit = {},
+        onError: suspend (String) -> Unit = { throw IOException(it) }
     ) {
         if (photos.isEmpty()) return
-        val pi = moveToTrashIntent(photos)
-        if (pi != null) {
-            onNeedsPermission(pi) {
-                confirmMoveToTrash(photos)
-                onDone()
-            }
-        } else {
-            confirmMoveToTrash(photos)
-            onDone()
+        val snapshot = photos.distinctBy { it.id }
+        suspend fun report(action: suspend () -> Unit) {
+            try { action() } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { onError(error.message ?: "Unable to move media to trash") }
+        }
+        report {
+            val intent = moveToTrashIntent(snapshot)
+            if (intent != null) onNeedsPermission(intent) { report { confirmMoveToTrash(snapshot); onDone() } }
+            else { confirmMoveToTrash(snapshot); onDone() }
         }
     }
-
-    /** Single-photo convenience overload. */
     suspend fun moveToTrashWithFallback(
         photo: MediaPhoto,
-        onNeedsPermission: suspend (pendingIntent: PendingIntent, onConfirmed: suspend () -> Unit) -> Unit,
-        onDone: suspend () -> Unit = {}
-    ) = moveToTrashWithFallback(listOf(photo), onNeedsPermission, onDone)
+        onNeedsPermission: suspend (PendingIntent, suspend () -> Unit) -> Unit,
+        onDone: suspend () -> Unit = {},
+        onError: suspend (String) -> Unit = { throw IOException(it) }
+    ) = moveToTrashWithFallback(listOf(photo), onNeedsPermission, onDone, onError)
 
-    // ── Move to trash ────────────────────────────────────────────────────────
-
-    suspend fun moveToTrashIntent(photos: List<MediaPhoto>): PendingIntent? =
-        withContext(Dispatchers.IO) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && photos.isNotEmpty()) {
-                runCatching {
-                    MediaStore.createTrashRequest(contentResolver, photos.map { it.uri }, true)
-                }.getOrNull()
-            } else null
-        }
-
-    suspend fun moveToTrashIntent(photo: MediaPhoto): PendingIntent? = moveToTrashIntent(listOf(photo))
+    suspend fun moveToTrashIntent(photos: List<MediaPhoto>): PendingIntent? = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT >= 30 && photos.isNotEmpty())
+            MediaStore.createTrashRequest(contentResolver, photos.map { it.uri }, true)
+        else null // Only absence of platform support takes the legacy path.
+    }
+    suspend fun moveToTrashIntent(photo: MediaPhoto) = moveToTrashIntent(listOf(photo))
 
     suspend fun confirmMoveToTrash(photos: List<MediaPhoto>) = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        photos.forEach { photo ->
-            trashDao.upsert(
-                TrashItem(
-                    id           = photo.id,
-                    originalPath = photo.name,
-                    mediaStoreId = photo.id,
-                    deletedAt    = now,
-                    mediaType    = photo.mimeType
-                )
-            )
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                runCatching { contentResolver.delete(photo.uri, null, null) }
+        mutex.withLock {
+            photos.forEach { photo ->
+                val state = readState(photo.uri)
+                if (!state.exists || (Build.VERSION.SDK_INT >= 30 && !state.trashed))
+                    throw IOException("The media was not moved to trash. Please try again.")
+                trashDao.upsert(TrashItem(photo.id, photo.name, photo.id, System.currentTimeMillis(), photo.mimeType))
             }
         }
     }
-
     suspend fun confirmMoveToTrash(photo: MediaPhoto) = confirmMoveToTrash(listOf(photo))
 
-    // ── Restore ──────────────────────────────────────────────────────────────
-
-    suspend fun restoreFromTrashIntent(items: List<TrashItem>): PendingIntent? =
-        withContext(Dispatchers.IO) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && items.isNotEmpty()) {
-                runCatching {
-                    MediaStore.createTrashRequest(contentResolver, items.map { buildUriForItem(it) }, false)
-                }.getOrNull()
-            } else null
-        }
-
-    suspend fun restoreFromTrashIntent(item: TrashItem): PendingIntent? = restoreFromTrashIntent(listOf(item))
+    suspend fun restoreFromTrashIntent(items: List<TrashItem>): PendingIntent? = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT >= 30 && items.isNotEmpty())
+            MediaStore.createTrashRequest(contentResolver, items.map(::buildUriForItem), false)
+        else null
+    }
+    suspend fun restoreFromTrashIntent(item: TrashItem) = restoreFromTrashIntent(listOf(item))
 
     suspend fun confirmRestoreFromTrash(items: List<TrashItem>) = withContext(Dispatchers.IO) {
-        items.forEach { item ->
-            trashDao.delete(item.id)
-            // Note: On API < 30, it was permanently deleted during moveToTrash, we can't fully restore it.
+        mutex.withLock {
+            items.forEach { item ->
+                val state = readState(buildUriForItem(item))
+                if (!state.exists || (Build.VERSION.SDK_INT >= 30 && state.trashed))
+                    throw IOException("The original file is unavailable or has not been restored.")
+                trashDao.delete(item.id)
+            }
         }
     }
-
     suspend fun confirmRestoreFromTrash(item: TrashItem) = confirmRestoreFromTrash(listOf(item))
 
-    // ── Permanent delete ─────────────────────────────────────────────────────
-
-    suspend fun permanentlyDeleteIntent(items: List<TrashItem>): PendingIntent? =
-        withContext(Dispatchers.IO) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && items.isNotEmpty()) {
-                runCatching {
-                    MediaStore.createDeleteRequest(contentResolver, items.map { buildUriForItem(it) })
-                }.getOrNull()
-            } else null
-        }
-
-    suspend fun permanentlyDeleteIntent(item: TrashItem): PendingIntent? = permanentlyDeleteIntent(listOf(item))
+    suspend fun permanentlyDeleteIntent(items: List<TrashItem>): PendingIntent? = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT >= 30 && items.isNotEmpty())
+            MediaStore.createDeleteRequest(contentResolver, items.map(::buildUriForItem))
+        else null
+    }
+    suspend fun permanentlyDeleteIntent(item: TrashItem) = permanentlyDeleteIntent(listOf(item))
 
     suspend fun confirmPermanentlyDelete(items: List<TrashItem>) = withContext(Dispatchers.IO) {
-        items.forEach { item ->
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                runCatching { contentResolver.delete(buildUriForItem(item), null, null) }
+        mutex.withLock {
+            items.forEach { item ->
+                val uri = buildUriForItem(item)
+                if (Build.VERSION.SDK_INT < 30 && readState(uri).exists) contentResolver.delete(uri, null, null)
+                if (readState(uri).exists) throw IOException("The file was not deleted. It remains in trash.")
+                trashDao.delete(item.id)
             }
-            trashDao.delete(item.id)
         }
     }
-
     suspend fun confirmPermanentlyDelete(item: TrashItem) = confirmPermanentlyDelete(listOf(item))
-
-    // ── Empty trash ──────────────────────────────────────────────────────────
-
-    suspend fun getEmptyTrashIntent(): PendingIntent? = withContext(Dispatchers.IO) {
-        permanentlyDeleteIntent(trashDao.getAll())
-    }
-
-    suspend fun confirmEmptyTrash() = withContext(Dispatchers.IO) {
-        confirmPermanentlyDelete(trashDao.getAll())
-    }
-
-    // ── Cleanup expired ──────────────────────────────────────────────────────
+    suspend fun getEmptyTrashIntent() = permanentlyDeleteIntent(trashDao.getAll())
+    suspend fun confirmEmptyTrash() = confirmPermanentlyDelete(trashDao.getAll())
 
     suspend fun cleanExpired() = withContext(Dispatchers.IO) {
-        val cutoff  = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1_000
-        val expired = trashDao.getExpiredItems(cutoff)
-        expired.forEach { item ->
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                runCatching { contentResolver.delete(buildUriForItem(item), null, null) }
-            }
-            trashDao.delete(item.id)
+        val expired = trashDao.getExpiredItems(System.currentTimeMillis() - 30L * 86_400_000L)
+        // Android 11+ owns expiry. Keep records until the system actually removes
+        // the file; permission errors never become evidence of deletion.
+        if (Build.VERSION.SDK_INT >= 30) {
+            for (item in expired) if (!readState(buildUriForItem(item)).exists) trashDao.delete(item.id)
+        } else confirmPermanentlyDelete(expired)
+    }
+
+    private data class MediaState(val exists: Boolean, val trashed: Boolean = false)
+    private fun readState(uri: Uri): MediaState {
+        val projection = if (Build.VERSION.SDK_INT >= 30) arrayOf("_id", "is_trashed") else arrayOf("_id")
+        val cursor = if (Build.VERSION.SDK_INT >= 30) contentResolver.query(uri, projection,
+            Bundle().apply { putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE) }, null)
+        else contentResolver.query(uri, projection, null, null, null)
+        return (cursor ?: throw IOException("Cannot verify media state. Please check storage access.")).use {
+            if (!it.moveToFirst()) MediaState(false)
+            else MediaState(true, Build.VERSION.SDK_INT >= 30 && it.getInt(it.getColumnIndexOrThrow("is_trashed")) == 1)
         }
     }
 
-    // ── Helper ───────────────────────────────────────────────────────────────
-
-    fun buildUriForItem(item: TrashItem): android.net.Uri {
-        val isVideo = item.mediaType.startsWith("video/", ignoreCase = true)
-        val base = if (isVideo)
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        else
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        return ContentUris.withAppendedId(base, item.mediaStoreId)
-    }
+    fun buildUriForItem(item: TrashItem): Uri = ContentUris.withAppendedId(
+        if (item.mediaType.startsWith("video/", true)) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        else MediaStore.Images.Media.EXTERNAL_CONTENT_URI, item.mediaStoreId
+    )
 }

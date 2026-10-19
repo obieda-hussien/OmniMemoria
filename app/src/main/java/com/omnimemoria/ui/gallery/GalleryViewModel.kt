@@ -122,6 +122,11 @@ class GalleryViewModel @Inject constructor(
     private val _dynamicAccent = MutableStateFlow<Color?>(null)
     val dynamicAccent: StateFlow<Color?> = _dynamicAccent.asStateFlow()
 
+    private suspend fun safely(action: suspend () -> Unit) {
+        try { action() } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { _uiEvents.send(GalleryUiEvent.ShowSnackbar(error.message ?: "Media operation failed")) }
+    }
+
     // ── Selection ──────────────────────────────────────────────────────────────
     private val _selectedIds = MutableStateFlow<Set<Long>>(emptySet())
     val selectedIds: StateFlow<Set<Long>> = _selectedIds.asStateFlow()
@@ -196,7 +201,7 @@ class GalleryViewModel @Inject constructor(
             refreshHomeSummary()
         }
         viewModelScope.launch {
-            mediaStoreRepository.observeMediaStoreChanges().collectLatest {
+            activeQuery.flatMapLatest { mediaStoreRepository.observeMediaQueryChanges(filter = it.filter.copy(isFavorite = null)) }.collectLatest {
                 mediaStoreVersion.update { it + 1 }
                 refreshHomeSummary()
             }
@@ -288,10 +293,11 @@ class GalleryViewModel @Inject constructor(
                     _uiEvents.send(
                         GalleryUiEvent.RequestMediaPermission(
                             pendingIntent = pi,
-                            onConfirmed   = { viewModelScope.launch(Dispatchers.IO) { onConfirmed() } }
+                            onConfirmed   = { viewModelScope.launch(Dispatchers.IO) { safely { onConfirmed() } } }
                         )
                     )
                 },
+                onError = { _uiEvents.send(GalleryUiEvent.ShowSnackbar(it)) },
                 onDone = {
                     clearSelection()
                     _uiEvents.send(buildUndoEvent(count, deletedIds))
@@ -305,7 +311,7 @@ class GalleryViewModel @Inject constructor(
             message     = "$count photo${if (count > 1) "s" else ""} moved to Trash",
             actionLabel = "Undo",
             onAction    = {
-                viewModelScope.launch(Dispatchers.IO) {
+                viewModelScope.launch(Dispatchers.IO) { safely {
                     val items = trashRepository.getTrashItemsByIds(deletedIds)
                     val pendingIntent = trashRepository.restoreFromTrashIntent(items)
 
@@ -315,7 +321,7 @@ class GalleryViewModel @Inject constructor(
                                 pendingIntent = pendingIntent,
                                 onConfirmed   = {
                                     viewModelScope.launch(Dispatchers.IO) {
-                                        trashRepository.confirmRestoreFromTrash(items)
+                                        safely { trashRepository.confirmRestoreFromTrash(items) }
                                     }
                                 }
                             )
@@ -323,7 +329,7 @@ class GalleryViewModel @Inject constructor(
                     } else {
                         trashRepository.confirmRestoreFromTrash(items)
                     }
-                }
+                } }
             }
         )
 

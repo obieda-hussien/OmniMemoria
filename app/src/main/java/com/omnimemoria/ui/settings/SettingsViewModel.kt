@@ -20,8 +20,11 @@ import kotlinx.coroutines.launch
 class SettingsViewModel @Inject constructor(
     private val featureFlagManager: FeatureFlagManager,
     private val appPreferences: AppPreferences,
+    private val models: com.omnimemoria.data.intelligence.ArabicModelStore,
+    private val scheduler: WorkManagerScheduler,
     @ApplicationContext context: Context
 ) : ViewModel() {
+    private val workManager = WorkManager.getInstance(context)
     val featureStates = featureFlagManager.featureStates.stateIn(
         viewModelScope, SharingStarted.WhileSubscribed(5_000), FeatureFlag.entries.associateWith { false }
     )
@@ -29,15 +32,33 @@ class SettingsViewModel @Inject constructor(
         OfflineModel.entries.associate { it.id to (preferences[requestKey(it)] ?: false) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    val indexingState = WorkManager.getInstance(context)
-        .getWorkInfosForUniqueWorkFlow(WorkManagerScheduler.UNIQUE_PERIODIC_WORK_NAME)
-        .map { jobs -> when (jobs.firstOrNull { !it.state.isFinished }?.state) {
-            androidx.work.WorkInfo.State.ENQUEUED -> "Waiting for idle device and sufficient battery"
-            androidx.work.WorkInfo.State.RUNNING -> "Checking feature preferences"
-            androidx.work.WorkInfo.State.BLOCKED -> "Waiting for prerequisites"
-            else -> "Off"
-        } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Loading")
+    val modelStatuses = combine(appPreferences.snapshots,
+        workManager.getWorkInfosForUniqueWorkFlow(com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD)) { _, jobs ->
+        val job = jobs.lastOrNull()
+        val status = when {
+            models.isInstalled() -> "Installed · verified"
+            job?.state == androidx.work.WorkInfo.State.RUNNING -> "Downloading ${job.progress.getInt("percent", 0)}%"
+            job?.state == androidx.work.WorkInfo.State.ENQUEUED -> "Waiting for network / battery"
+            job?.state == androidx.work.WorkInfo.State.FAILED -> "Download failed · retry"
+            else -> "Not installed"
+        }
+        mapOf(OfflineModel.TESSERACT_ARABIC.id to status, OfflineModel.EMBEDDING_GEMMA.id to "Semantic indexing update pending")
+    }.flowOn(kotlinx.coroutines.Dispatchers.IO).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    val indexingState = workManager.getWorkInfosForUniqueWorkFlow(WorkManagerScheduler.UNIQUE_SCAN_WORK_NAME)
+        .map { jobs ->
+            val active = jobs.lastOrNull { it.state == androidx.work.WorkInfo.State.RUNNING }
+                ?: jobs.lastOrNull { !it.state.isFinished } ?: jobs.lastOrNull()
+            when (active?.state) {
+                androidx.work.WorkInfo.State.RUNNING -> "Analyzing · ${active.progress.getInt("processed", 0)} completed · ${active.progress.getInt("failed", 0)} need attention"
+                androidx.work.WorkInfo.State.ENQUEUED -> "Waiting for idle device and sufficient battery"
+                androidx.work.WorkInfo.State.SUCCEEDED -> "Scan complete · ${active.outputData.getInt("processed", 0)} completed in last batch"
+                androidx.work.WorkInfo.State.FAILED -> "Scan needs storage access or retry"
+                else -> "Off"
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Loading")
+
+    fun scanNow() { scheduler.scheduleBackgroundIndex() }
 
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
@@ -48,7 +69,19 @@ class SettingsViewModel @Inject constructor(
 
     fun requestModel(id: String, requested: Boolean = true) {
         val model = OfflineModel.fromId(id) ?: return
-        viewModelScope.launch { safely { appPreferences.setBoolean(requestKey(model), requested) } }
+        viewModelScope.launch { safely {
+            appPreferences.setBoolean(requestKey(model), requested)
+            if (model == OfflineModel.TESSERACT_ARABIC) {
+                if (!requested) workManager.cancelUniqueWork(com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD)
+                else {
+                    val request = androidx.work.OneTimeWorkRequestBuilder<com.omnimemoria.data.worker.ModelDownloadWorker>()
+                        .setInputData(androidx.work.workDataOf(com.omnimemoria.data.worker.ModelDownloadWorker.MODEL_NAME to model.id))
+                        .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).setRequiresBatteryNotLow(true).build())
+                        .build()
+                    workManager.enqueueUniqueWork(com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD, androidx.work.ExistingWorkPolicy.KEEP, request)
+                }
+            }
+        } }
     }
 
     fun dismissError() { _error.value = null }

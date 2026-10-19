@@ -46,6 +46,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val featureStates      by viewModel.featureStates.collectAsState()
+    val modelStatuses by viewModel.modelStatuses.collectAsState()
     val modelRequests by viewModel.modelRequests.collectAsState()
     val indexingState by viewModel.indexingState.collectAsState()
     val settingsError by viewModel.error.collectAsState()
@@ -122,9 +123,10 @@ fun SettingsScreen(
             }
 
             item {
-                Text("AI engines are not included in this version. Your feature preferences and offline model requests are saved for future updates.", style = MaterialTheme.typography.bodyMedium)
+                Text("Photo analysis runs locally while your device is idle. Arabic OCR needs its optional model. Semantic indexing will follow in a separate update.", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
-                Text("Indexing schedule: $indexingState. Photo analysis is not available yet.", style = MaterialTheme.typography.bodySmall)
+                Text("Indexing: $indexingState", style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = viewModel::scanNow) { Text("Schedule library scan") }
                 settingsError?.let { error ->
                     Text(error, color = MaterialTheme.colorScheme.error)
                     TextButton(onClick = viewModel::dismissError) { Text("Dismiss") }
@@ -195,6 +197,7 @@ fun SettingsScreen(
                             title          = item.title,
                             icon           = item.icon,
                             requested      = modelRequests[item.modelName] == true,
+                            status         = modelStatuses[item.modelName] ?: "Checking model",
                             onDownloadClick = { activeDownloadModel = item.modelName },
                             onCancelRequest = { viewModel.requestModel(item.modelName, false) },
                             isLast         = index == AI_MODEL_ITEMS.lastIndex
@@ -354,6 +357,7 @@ private fun OmniModelDownloadItem(
     title:          String,
     icon:           ImageVector,
     requested:      Boolean,
+    status:         String,
     onCancelRequest: () -> Unit,
     onDownloadClick: () -> Unit,
     isLast:         Boolean = false
@@ -390,9 +394,10 @@ private fun OmniModelDownloadItem(
             )
 
             Column(horizontalAlignment = Alignment.End) {
-                Text(if (requested) "Requested · not installed" else "Not installed", style = MaterialTheme.typography.labelSmall)
-                TextButton(onClick = if (requested) onCancelRequest else onDownloadClick) {
-                    Text(if (requested) "Cancel request" else "Set up")
+                Text(status, style = MaterialTheme.typography.labelSmall)
+                if (!status.startsWith("Installed")) {
+                    TextButton(onClick = onDownloadClick) { Text(if (status.contains("failed")) "Retry" else "Set up") }
+                    if (requested && !status.contains("failed")) TextButton(onClick = onCancelRequest) { Text("Cancel request") }
                 }
             }
         }

@@ -70,6 +70,13 @@ dependencyCheck {
 }
 
 dependencies {
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:image-labeling:17.0.9")
+    implementation("com.google.mlkit:face-detection:16.1.7")
+    implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
+    implementation("androidx.palette:palette-ktx:1.0.0")
+    implementation("androidx.exifinterface:exifinterface:1.4.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

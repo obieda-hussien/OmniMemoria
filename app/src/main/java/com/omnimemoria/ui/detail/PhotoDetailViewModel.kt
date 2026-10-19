@@ -38,6 +38,8 @@ sealed class PhotoDetailUiEvent {
         val onConfirmed: () -> Unit
     ) : PhotoDetailUiEvent()
 
+    data class ShowError(val message: String) : PhotoDetailUiEvent()
+
     object NavigateBack : PhotoDetailUiEvent()
 }
 
@@ -185,6 +187,7 @@ class PhotoDetailViewModel @Inject constructor(
                         viewModelScope.launch(Dispatchers.IO) { onConfirmed() }
                     })
                 },
+                onError = { _uiEvents.send(PhotoDetailUiEvent.ShowError(it)) },
                 onDone = {
                     _uiEvents.send(PhotoDetailUiEvent.NavigateBack)
                 }

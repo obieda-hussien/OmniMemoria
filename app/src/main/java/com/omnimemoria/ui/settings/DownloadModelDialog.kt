@@ -16,9 +16,11 @@ fun DownloadModelDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(model.title) },
-        text = { Text("Save a request for this offline model. Model downloads and local processing will be available in a future update. No model files are downloaded in this version; size will be shown when a model is available.") },
+        text = { Text(if (model == OfflineModel.TESSERACT_ARABIC)
+            "Download the Arabic OCR model (1.4 MB) from the Tesseract project. The file is checked before installation. Photos stay on your device."
+            else "Semantic model downloads will be available with semantic indexing. You can save a request now.") },
         confirmButton = {
-            TextButton(onClick = { onRequest(model.id); onDismiss() }) { Text("Save request") }
+            TextButton(onClick = { onRequest(model.id); onDismiss() }) { Text(if (model == OfflineModel.TESSERACT_ARABIC) "Download" else "Save request") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Later") } }
     )

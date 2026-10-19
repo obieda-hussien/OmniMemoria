@@ -48,7 +48,7 @@ class FavoritesViewModel @Inject constructor(
     init {
         viewModelScope.launch(Dispatchers.IO) {
             combine(favoritesRepository.getAllSortedByDate(), sortConfig, filterConfig,
-                mediaStoreRepository.observeMediaStoreChanges().onStart { emit(Unit) }) { rows, sort, filter, _ -> Triple(rows, sort, filter) }
+                mediaStoreRepository.observeMediaQueryChanges(filter = FilterConfig(hasText = true)).onStart { emit(Unit) }) { rows, sort, filter, _ -> Triple(rows, sort, filter) }
                 .collectLatest { (rows, sort, filter) ->
                     val photos = mediaStoreRepository.getMatchingPhotos(sort, filter, ids = rows.map { it.id }.toSet())
                     _uiState.value = FavoritesUiState(photos, false)

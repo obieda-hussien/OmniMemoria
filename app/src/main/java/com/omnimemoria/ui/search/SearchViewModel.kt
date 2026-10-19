@@ -48,7 +48,7 @@ class SearchViewModel @Inject constructor(
     private data class Request(val text: String, val quick: QuickFilterType?, val sort: SortConfig, val filter: FilterConfig, val version: Int)
     init {
         viewModelScope.launch {
-            mediaStoreRepository.observeMediaQueryChanges(SortConfig(SortBy.FAVORITES_FIRST)).collect { refreshVersion.value++ }
+            mediaStoreRepository.observeMediaQueryChanges(SortConfig(SortBy.FAVORITES_FIRST), FilterConfig(hasText = true)).collect { refreshVersion.value++ }
         }
         viewModelScope.launch(Dispatchers.IO) {
             _counts.value = SearchQuickFilterCounts(
