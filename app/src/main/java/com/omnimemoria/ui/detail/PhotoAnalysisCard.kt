@@ -61,7 +61,7 @@ internal fun PhotoAnalysisCard(photo: MediaPhoto, viewModel: PhotoAnalysisViewMo
     val busy by viewModel.busy.collectAsState()
     val context = LocalContext.current
     val row = analysis?.takeIf { it.id == photo.id && !it.isVaultItem }
-    if (photo.id <= 0 || photo.isVideo) return
+    if (photo.id <= 0 || photo.mimeType.startsWith("video/")) return
     Spacer(Modifier.height(20.dp))
     HorizontalDivider()
     Text("On-device analysis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))

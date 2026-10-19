@@ -112,14 +112,16 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
         // Schedule/cancel periodic photo indexing based on active AI flags
         applicationScope.launch {
             try {
+                var previousMask: Int? = null
                 featureFlagManager.featureStates
                     .map(AnalysisPolicy::required)
                     .distinctUntilChanged()
                     .collectLatest { shouldSchedule ->
                         if (shouldSchedule != 0) {
                             workManagerScheduler.schedulePeriodicIndex()
-                            workManagerScheduler.scheduleBackgroundIndex()
+                            workManagerScheduler.scheduleBackgroundIndex(append = previousMask != null)
                         } else workManagerScheduler.cancelAllWork()
+                        previousMask = shouldSchedule
                     }
             } catch (throwable: Throwable) {
                 Log.e("OmniMemoria", "Failed to initialize periodic indexing scheduler", throwable)

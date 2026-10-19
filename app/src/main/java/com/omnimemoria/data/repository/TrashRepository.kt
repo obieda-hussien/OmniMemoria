@@ -131,6 +131,12 @@ class TrashRepository @Inject constructor(
 
     private data class MediaState(val exists: Boolean, val trashed: Boolean = false)
     private fun readState(uri: Uri): MediaState {
+        val allFiles = Build.VERSION.SDK_INT >= 30 && android.os.Environment.isExternalStorageManager()
+        val permission = if (Build.VERSION.SDK_INT >= 33) {
+            if (uri.toString().contains("/video/")) android.Manifest.permission.READ_MEDIA_VIDEO else android.Manifest.permission.READ_MEDIA_IMAGES
+        } else android.Manifest.permission.READ_EXTERNAL_STORAGE
+        if (!allFiles && context.checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            throw SecurityException("Storage access is required to verify this operation.")
         val projection = if (Build.VERSION.SDK_INT >= 30) arrayOf("_id", "is_trashed") else arrayOf("_id")
         val cursor = if (Build.VERSION.SDK_INT >= 30) contentResolver.query(uri, projection,
             Bundle().apply { putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE) }, null)

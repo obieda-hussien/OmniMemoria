@@ -26,6 +26,7 @@ class ModelDownloadWorker @AssistedInject constructor(
         val partial = java.io.File(store.file.parentFile, "ara.$id.traineddata.part")
         try {
             if (!store.isInstalled()) {
+                preferences.setBoolean(AppPreferences.PreferencesKeys.MODEL_TESSERACT_ARA_DOWNLOADED, false)
                 store.file.parentFile?.mkdirs()
                 val connection = URL(ArabicModelStore.URL).openConnection() as HttpsURLConnection
                 connection.connectTimeout = 15_000; connection.readTimeout = 30_000; connection.instanceFollowRedirects = false
