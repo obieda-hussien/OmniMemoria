@@ -26,20 +26,21 @@ class WorkManagerScheduler @Inject constructor(
     fun scheduleImmediateIndex(photoIds: List<Long>) {
         // WorkManager Data has a 10 KiB limit. Chain bounded, deduplicated batches.
         photoIds.distinct().filter { it > 0 }.chunked(400).forEach { batch ->
-            val inputData = Data.Builder()
-                .putLongArray(PhotoIndexWorker.WORK_INPUT_PHOTO_IDS, batch.toLongArray())
-                .putString(PhotoIndexWorker.WORK_INPUT_MODE, PhotoIndexWorker.WORK_MODE_IMMEDIATE)
-                .build()
-            val request = OneTimeWorkRequestBuilder<PhotoIndexWorker>()
-                .setInputData(inputData)
-                .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).build())
-                .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
-                .build()
+            val request = immediateRequest(batch)
             WorkManager.getInstance(context).enqueueUniqueWork(
                 UNIQUE_IMMEDIATE_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request
             )
         }
     }
+
+    internal fun immediateRequest(photoIds: List<Long>): androidx.work.OneTimeWorkRequest =
+        OneTimeWorkRequestBuilder<PhotoIndexWorker>()
+            .setInputData(Data.Builder()
+                .putLongArray(PhotoIndexWorker.WORK_INPUT_PHOTO_IDS, photoIds.toLongArray())
+                .putString(PhotoIndexWorker.WORK_INPUT_MODE, PhotoIndexWorker.WORK_MODE_IMMEDIATE)
+                .putBoolean(PhotoIndexWorker.WORK_INPUT_USER_INITIATED, true).build())
+            .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
+            .build()
 
     internal fun scanRequest(afterId: Long = 0, ids: List<Long>? = null, userInitiated: Boolean = false): androidx.work.OneTimeWorkRequest {
         val data = Data.Builder().putLong(PhotoIndexWorker.WORK_INPUT_AFTER_ID, afterId)

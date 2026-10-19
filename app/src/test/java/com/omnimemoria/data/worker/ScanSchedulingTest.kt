@@ -27,6 +27,13 @@ class ScanSchedulingTest {
         assertFalse(request.workSpec.constraints.requiresBatteryNotLow())
         assertTrue(request.workSpec.input.getBoolean(PhotoIndexWorker.WORK_INPUT_USER_INITIATED, false))
     }
+    @Test fun individualPhotoAnalysisAlsoStartsWithoutBatteryRestrictions() {
+        val request = scheduler().immediateRequest(listOf(42))
+        assertFalse(request.workSpec.constraints.requiresBatteryNotLow())
+        assertFalse(request.workSpec.constraints.requiresDeviceIdle())
+        assertTrue(request.workSpec.input.getBoolean(PhotoIndexWorker.WORK_INPUT_USER_INITIATED, false))
+        assertArrayEquals(longArrayOf(42), request.workSpec.input.getLongArray(PhotoIndexWorker.WORK_INPUT_PHOTO_IDS))
+    }
     @Test fun continuationKeepsManualModeAndCursor() {
         val request = scheduler().scanRequest(afterId = 120, userInitiated = true)
         assertFalse(request.workSpec.constraints.requiresDeviceIdle())
