@@ -22,13 +22,17 @@ class ModelDownloadWorker @AssistedInject constructor(
         val model = OfflineModel.fromId(inputData.getString(MODEL_NAME).orEmpty())
             ?: return Result.failure(workDataOf("error" to "unknown_model"))
         appPreferences.updateBooleans {
-            mapOf(
-                AppPreferences.PreferencesKeys.MODEL_TESSERACT_ARA_DOWNLOADED to false,
-                AppPreferences.PreferencesKeys.MODEL_MEDIAPIPE_EMBEDDER_DOWNLOADED to false,
-                AppPreferences.PreferencesKeys.ARE_AI_MODELS_DOWNLOADED to false,
-                (if (model == OfflineModel.TESSERACT_ARABIC) AppPreferences.PreferencesKeys.REQUEST_TESSERACT_DOWNLOAD
-                 else AppPreferences.PreferencesKeys.REQUEST_EMBEDDER_DOWNLOAD) to true
-            )
+            // Preferences.Key.to creates a DataStore Preferences.Pair, not a
+            // kotlin.Pair. Build a regular map explicitly for the atomic update.
+            buildMap {
+                put(AppPreferences.PreferencesKeys.MODEL_TESSERACT_ARA_DOWNLOADED, false)
+                put(AppPreferences.PreferencesKeys.MODEL_MEDIAPIPE_EMBEDDER_DOWNLOADED, false)
+                put(AppPreferences.PreferencesKeys.ARE_AI_MODELS_DOWNLOADED, false)
+                val requestKey = if (model == OfflineModel.TESSERACT_ARABIC)
+                    AppPreferences.PreferencesKeys.REQUEST_TESSERACT_DOWNLOAD
+                else AppPreferences.PreferencesKeys.REQUEST_EMBEDDER_DOWNLOAD
+                put(requestKey, true)
+            }
         }
         return Result.failure(workDataOf("error" to "download_available_in_phase_4"))
     }
