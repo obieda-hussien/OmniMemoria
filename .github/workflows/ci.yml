@@ -157,6 +157,7 @@ jobs:
           path: |
             app/build/reports/tests/
             app/build/test-results/
+            **/build/outputs/ui-previews/*.png
           retention-days: 14
 
       - name: Optional extended checks
@@ -409,6 +410,29 @@ jobs:
         run: |
           ./gradlew --no-daemon --max-workers 1 \
             :app:assembleRelease
+
+      - name: Build optimized installable preview
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=true -Dkotlin.incremental=false -Dorg.gradle.jvmargs=-Xmx4g"
+        run: ./gradlew --no-daemon --max-workers 1 :app:assemblePreview
+
+      - name: Upload ARM64 optimized preview
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-preview-arm64-v8a-${{ github.run_number }}
+          path: app/build/outputs/apk/preview/*arm64-v8a*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload other optimized previews
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-preview-other-abis-${{ github.run_number }}
+          path: |
+            app/build/outputs/apk/preview/*armeabi-v7a*.apk
+            app/build/outputs/apk/preview/*x86*.apk
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload release APK
         continue-on-error: true

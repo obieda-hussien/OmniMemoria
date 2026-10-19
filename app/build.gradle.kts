@@ -57,6 +57,14 @@ android {
         }
     }
 
+    // Installable optimized build for device testing without a production key.
+    buildTypes.create("preview") {
+        initWith(buildTypes.getByName("release"))
+        signingConfig = signingConfigs.getByName("debug")
+        versionNameSuffix = "-preview"
+        matchingFallbacks += listOf("release")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -137,7 +145,6 @@ dependencies {
     implementation(libs.coil.svg)
     implementation(libs.coil.gif)
     implementation(libs.coil.video)
-    implementation(libs.avif.coder.coil)
 
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.datastore.preferences)

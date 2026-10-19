@@ -64,8 +64,9 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
             // automatically via WeakReferences.
             .memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, percent = 0.12)
-                    .maxSizeBytes(32L * 1024 * 1024)
+                    .maxSizeBytes(minOf(32L * 1024 * 1024,
+                        (context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager)
+                            .memoryClass.toLong() * 1024 * 1024 * 12 / 100))
                     .build()
             }
 
