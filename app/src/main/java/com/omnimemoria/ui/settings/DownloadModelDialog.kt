@@ -17,7 +17,7 @@ fun DownloadModelDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(model.title) },
-        text = { Text("Download the Arabic OCR model (1.4 MB) from the Tesseract project. The file is checked before installation. Photos stay on your device. Gemini Nano is not needed.") },
+        text = { Text("Download the high accuracy Arabic OCR model (${com.omnimemoria.data.intelligence.ArabicModelStore.SIZE_LABEL}) from the Tesseract project. It improves difficult text and may take longer to analyze. The file is verified before installation; an existing standard model remains usable. Photos stay on your device. Gemini Nano is not needed.") },
         confirmButton = {
             TextButton(onClick = { onRequest(model.id); onDismiss() }) { Text("Download") }
         },

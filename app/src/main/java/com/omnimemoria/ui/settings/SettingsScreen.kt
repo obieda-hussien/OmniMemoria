@@ -159,9 +159,13 @@ internal fun ModelDownloadRow(title: String, icon: ImageVector, status: ModelSta
                 LinearProgressIndicator(progress = { status.percent / 100f }, modifier = Modifier.fillMaxWidth())
                 Text("${status.percent}%", style = MaterialTheme.typography.labelMedium)
             }
-            if (status.phase !in setOf(ModelPhase.INSTALLED, ModelPhase.PLANNED)) {
+            if (status.canUpgrade || status.phase !in setOf(ModelPhase.INSTALLED, ModelPhase.PLANNED)) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onDownload) { Text(if (status.phase in setOf(ModelPhase.FAILED, ModelPhase.RETRYING)) "Retry now" else "Download 1.4 MB") }
+                    TextButton(onClick = onDownload) { Text(when {
+                        status.canUpgrade -> "Upgrade · ${com.omnimemoria.data.intelligence.ArabicModelStore.SIZE_LABEL}"
+                        status.phase in setOf(ModelPhase.FAILED, ModelPhase.RETRYING) -> "Retry now"
+                        else -> "Download ${com.omnimemoria.data.intelligence.ArabicModelStore.SIZE_LABEL}"
+                    }) }
                     if (status.phase in setOf(ModelPhase.DOWNLOADING, ModelPhase.QUEUED, ModelPhase.RETRYING)) TextButton(onClick = onCancel) { Text("Cancel download") }
                 }
             }
@@ -185,7 +189,7 @@ private data class AiModelItem(
 
 private val AI_FEATURE_ITEMS = listOf(
     FeatureItem("Text Extraction (OCR)",    FeatureFlag.OCR,            Icons.Outlined.DocumentScanner),
-    FeatureItem("Arabic OCR (Tesseract)",   FeatureFlag.ARABIC_OCR,     Icons.Outlined.Translate,      "On-device Arabic text · download the 1.4 MB model below"),
+    FeatureItem("Arabic OCR (Tesseract)",   FeatureFlag.ARABIC_OCR,     Icons.Outlined.Translate,      "On-device Arabic text · optional high accuracy model below"),
     FeatureItem("Image Classification",     FeatureFlag.ML_LABELS,      Icons.Outlined.Category),
     FeatureItem("Face Detection",           FeatureFlag.FACE_DETECTION,  Icons.Outlined.Face),
     FeatureItem("Embeddings",              FeatureFlag.EMBEDDINGS,      Icons.Outlined.Polyline, "Not available in this version"),

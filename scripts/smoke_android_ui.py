@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""Exercise the optimized APK and native OCR on an API-30 AOSP emulator.
+
+Only a synthetic fixture is pushed to the emulator; no user photos are used.
+"""
+import re
+import subprocess
+import time
+from pathlib import Path
+from xml.etree import ElementTree as ET
+
+PACKAGE = 'com.omnimemoria'
+OUTPUT = Path('device-smoke')
+OUTPUT.mkdir(exist_ok=True)
+
+
+def adb(*args, check=True):
+    return subprocess.run(['adb', *args], check=check, capture_output=True, text=True, timeout=45).stdout
+
+
+def alive():
+    if not adb('shell', 'pidof', PACKAGE, check=False).strip():
+        raise AssertionError('Application process exited; see logcat-crash.txt')
+
+
+def tree():
+    alive()
+    adb('shell', 'uiautomator', 'dump', '/sdcard/omni-ui.xml')
+    raw = adb('shell', 'cat', '/sdcard/omni-ui.xml')
+    (OUTPUT / 'last-window.xml').write_text(raw)
+    return ET.fromstring(raw)
+
+
+def find(label, partial=False):
+    nodes = list(tree().iter('node'))
+    for attribute in ('content-desc', 'text'):
+        for node in reversed(nodes):
+            value = node.get(attribute, '')
+            if (label in value if partial else value == label):
+                bounds = list(map(int, re.findall(r'\d+', node.get('bounds', ''))))
+                if len(bounds) == 4 and bounds[2] > bounds[0] and bounds[3] > bounds[1]:
+                    return node, bounds
+    return None
+
+
+def wait(label, seconds=30, partial=False):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        result = find(label, partial)
+        if result:
+            return result
+        time.sleep(0.6)
+    raise AssertionError(f'Missing UI: {label}')
+
+
+def tap(label, partial=False):
+    _, (left, top, right, bottom) = wait(label, partial=partial)
+    adb('shell', 'input', 'tap', str((left + right)//2), str((top + bottom)//2))
+    time.sleep(0.5)
+
+
+def swipe(up=True):
+    width, height = map(int, re.findall(r'(\d+)x(\d+)', adb('shell', 'wm', 'size'))[-1])
+    start, end = (0.78, 0.28) if up else (0.28, 0.78)
+    adb('shell', 'input', 'swipe', str(width//2), str(int(height*start)), str(width//2), str(int(height*end)), '350')
+    time.sleep(0.3)
+
+
+def scroll_to(label, partial=False, limit=10):
+    for _ in range(limit):
+        if find(label, partial):
+            return
+        swipe()
+    raise AssertionError(f'Missing scroll target: {label}')
+
+
+def capture(name):
+    alive()
+    result = subprocess.run(['adb', 'exec-out', 'screencap', '-p'], check=True, capture_output=True)
+    (OUTPUT / f'{name}.png').write_bytes(result.stdout)
+    (OUTPUT / f'{name}.xml').write_text(ET.tostring(tree(), encoding='unicode'))
+
+
+def home():
+    adb('shell', 'am', 'force-stop', PACKAGE)
+    adb('shell', 'am', 'start', '-W', '-n', PACKAGE+'/.MainActivity')
+    wait('All Media', seconds=45)
+
+
+try:
+    apk = next(Path('preview-apks').rglob('*x86_64*preview.apk'))
+    adb('install', '-r', str(apk))
+    adb('logcat', '-c')
+    adb('shell', 'appops', 'set', '--uid', PACKAGE, 'MANAGE_EXTERNAL_STORAGE', 'allow')
+    adb('shell', 'pm', 'grant', PACKAGE, 'android.permission.READ_EXTERNAL_STORAGE')
+    (OUTPUT / 'device.txt').write_text(adb('shell', 'getprop', 'ro.build.fingerprint') +
+        '\nGoogle Play Services packages: '+adb('shell', 'pm', 'list', 'packages', 'com.google.android.gms'))
+    assert not adb('shell', 'pm', 'list', 'packages', 'com.google.android.gms').strip(), 'Expected AOSP without GMS'
+    adb('shell', 'mkdir', '-p', '/sdcard/Pictures')
+    adb('push', 'scripts/fixtures/omni-ocr-check.png', '/sdcard/Pictures/omni-ocr-check.png')
+    adb('shell', 'content', 'insert', '--uri', 'content://media/external/images/media',
+        '--bind', '_data:s:/sdcard/Pictures/omni-ocr-check.png', '--bind', 'mime_type:s:image/png',
+        '--bind', '_display_name:s:omni-ocr-check.png')
+
+    for mode in ('no', 'yes'):
+        adb('shell', 'cmd', 'uimode', 'night', mode)
+        home()
+        tap('Search'); wait('Quick Filters'); capture(f'search-{mode}')
+        tap('Vault'); wait('Vault is disabled'); capture(f'vault-{mode}')
+        tap('Settings'); wait('Scan library now'); capture(f'settings-{mode}')
+        tap('Back')
+
+    tap('Settings')
+    scroll_to('Arabic OCR (Tesseract)')
+    tap('Arabic OCR (Tesseract)')
+    tap('Download')
+    scroll_to('Offline models')
+    swipe()
+    wait('High accuracy model installed', seconds=150, partial=True)
+    capture('model-installed')
+    # Reopening Settings starts at the scan controls, preserving installed flags.
+    home(); tap('Settings'); tap('Scan library now')
+    wait('Scan complete', seconds=180, partial=True)
+    capture('scan-complete')
+    tap('Back'); tap('Gallery')
+    tap('omni-ocr-check.png')
+    tap('Info'); wait('Media details'); capture('details-open')
+    scroll_to('Call 01012345678')
+    capture('ocr-phone')
+    phone_text = '\n'.join(node.get('text', '') for node in tree().iter('node'))
+    scroll_to('Detected amounts', partial=True)
+    capture('ocr-amounts')
+    text = '\n'.join(node.get('text', '') for node in tree().iter('node'))
+    assert '1234.50 EGP' in text, 'Expected exact detected amount'
+    assert any(word in text + phone_text for word in ('فاتورة', 'الهاتف')), 'Expected native Arabic OCR text'
+    (OUTPUT / 'ocr-output.txt').write_text(phone_text + '\n' + text)
+    # No Java fatal exception is allowed in any tested route or OCR operation.
+    crash = adb('logcat', '-d', '-b', 'crash')
+    assert 'FATAL EXCEPTION' not in crash, crash
+    print('PASS: optimized APK; light/dark Search, Vault, Settings, photo details; native Arabic OCR, phone and amount; AOSP API 30 without GMS.')
+finally:
+    (OUTPUT / 'logcat-crash.txt').write_text(adb('logcat', '-d', '-b', 'crash', check=False))
+    (OUTPUT / 'logcat.txt').write_text(adb('logcat', '-d', '-t', '3000', check=False))

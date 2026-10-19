@@ -19,7 +19,7 @@ import androidx.work.await
 import com.omnimemoria.domain.intelligence.AnalysisPolicy
 
 enum class ModelPhase { NOT_INSTALLED, QUEUED, DOWNLOADING, RETRYING, INSTALLED, FAILED, PLANNED }
-data class ModelStatus(val phase: ModelPhase, val message: String, val percent: Int = 0)
+data class ModelStatus(val phase: ModelPhase, val message: String, val percent: Int = 0, val canUpgrade: Boolean = false)
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -42,12 +42,13 @@ class SettingsViewModel @Inject constructor(
         val job = jobs.firstOrNull { it.state == androidx.work.WorkInfo.State.RUNNING }
             ?: jobs.firstOrNull { !it.state.isFinished } ?: jobs.lastOrNull()
         val status = when {
-            models.isInstalled() -> ModelStatus(ModelPhase.INSTALLED, "Installed · file verified")
             job?.state == androidx.work.WorkInfo.State.RUNNING -> ModelStatus(ModelPhase.DOWNLOADING, "Downloading Arabic OCR", job.progress.getInt("percent", 0))
             job?.state == androidx.work.WorkInfo.State.ENQUEUED && job.runAttemptCount > 0 -> ModelStatus(ModelPhase.RETRYING, "Download interrupted · retry scheduled. Tap Retry now to start again.")
             job?.state == androidx.work.WorkInfo.State.ENQUEUED -> ModelStatus(ModelPhase.QUEUED, "Queued · internet access required")
             job?.state == androidx.work.WorkInfo.State.FAILED -> ModelStatus(ModelPhase.FAILED, job.outputData.getString("error") ?: "Download failed. Please retry.")
-            else -> ModelStatus(ModelPhase.NOT_INSTALLED, "Optional · 1.4 MB download")
+            models.isHighAccuracyInstalled() -> ModelStatus(ModelPhase.INSTALLED, "High accuracy model installed · file verified")
+            models.isInstalled() -> ModelStatus(ModelPhase.INSTALLED, "Standard model installed · optional high accuracy upgrade", canUpgrade = true)
+            else -> ModelStatus(ModelPhase.NOT_INSTALLED, "Optional · ${com.omnimemoria.data.intelligence.ArabicModelStore.SIZE_LABEL} download")
         }
         mapOf(OfflineModel.TESSERACT_ARABIC.id to status, OfflineModel.EMBEDDING_GEMMA.id to ModelStatus(ModelPhase.PLANNED, "Not included in this version. No Gemini Nano is required for photo analysis."))
     }.flowOn(kotlinx.coroutines.Dispatchers.IO).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())

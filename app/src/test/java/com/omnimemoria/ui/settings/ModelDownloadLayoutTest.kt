@@ -66,7 +66,7 @@ class ModelDownloadLayoutTest {
         show(true, LayoutDirection.Rtl, ModelPhase.QUEUED)
         val title = compose.onNodeWithText("Tesseract Arabic").fetchSemanticsNode().boundsInRoot
         val status = compose.onNodeWithText("Queued · internet access required").fetchSemanticsNode().boundsInRoot
-        val button = compose.onNodeWithText("Download 1.4 MB").fetchSemanticsNode().boundsInRoot
+        val button = compose.onNodeWithText("Download 12.6 MB").fetchSemanticsNode().boundsInRoot
         assertTrue(title.bottom <= status.top)
         assertTrue(status.bottom <= button.top)
         compose.onNodeWithText("Cancel download").assertIsDisplayed()
@@ -75,7 +75,15 @@ class ModelDownloadLayoutTest {
     @Test fun lightPlannedModelHasNoMisleadingDownloadButton() {
         show(false, LayoutDirection.Ltr, ModelPhase.PLANNED)
         compose.onNodeWithText("Tesseract Arabic").assertIsDisplayed()
-        compose.onNodeWithText("Download 1.4 MB").assertDoesNotExist()
+        compose.onNodeWithText("Download 12.6 MB").assertDoesNotExist()
         savePreview("model-light-ltr-planned")
+    }
+    @Test fun installedStandardModelOffersTheOptionalAccuracyUpgrade() {
+        compose.setContent { OmniMemoriaTheme {
+            ModelDownloadRow("Tesseract Arabic", Icons.Outlined.Language,
+                ModelStatus(ModelPhase.INSTALLED, "Standard model installed", canUpgrade = true), {}, {})
+        } }
+        compose.onNodeWithText("Upgrade · 12.6 MB").assertIsDisplayed()
+        compose.onNodeWithText("Cancel download").assertDoesNotExist()
     }
 }

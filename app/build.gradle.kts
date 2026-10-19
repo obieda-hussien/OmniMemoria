@@ -37,8 +37,8 @@ android {
         applicationId = "com.omnimemoria"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -117,6 +117,7 @@ dependencies {
     implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
     implementation("androidx.palette:palette-ktx:1.0.0")
     implementation("androidx.exifinterface:exifinterface:1.4.0")
+    implementation("com.googlecode.libphonenumber:libphonenumber:9.0.41")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

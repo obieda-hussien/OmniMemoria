@@ -25,7 +25,7 @@ class ModelDownloadWorker @AssistedInject constructor(
             return@withContext Result.failure(workDataOf("error" to "Embedding downloads arrive with semantic indexing."))
         val partial = java.io.File(store.file.parentFile, "ara.$id.traineddata.part")
         try {
-            if (!store.isInstalled()) {
+            if (!store.isHighAccuracyInstalled()) {
                 preferences.setBoolean(AppPreferences.PreferencesKeys.MODEL_TESSERACT_ARA_DOWNLOADED, false)
                 store.file.parentFile?.mkdirs()
                 val connection = URL(ArabicModelStore.URL).openConnection() as HttpsURLConnection
@@ -50,7 +50,7 @@ class ModelDownloadWorker @AssistedInject constructor(
                     if (!partial.renameTo(store.file)) throw IOException("Cannot install model")
                 } finally { connection.disconnect() }
             }
-            if (!store.isInstalled()) throw IOException("Installed model is invalid")
+            if (!store.isHighAccuracyInstalled()) throw IOException("Installed model is invalid")
             preferences.setBoolean(AppPreferences.PreferencesKeys.MODEL_TESSERACT_ARA_DOWNLOADED, true)
             // Installation succeeded even if scheduling a later scan is unavailable.
             runCatching { scheduler.scheduleBackgroundIndex(append = true) }
@@ -68,7 +68,7 @@ class ModelDownloadWorker @AssistedInject constructor(
         const val UNIQUE_ARABIC_DOWNLOAD = "model_download_tesseract_ara"
         fun request(): OneTimeWorkRequest = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
             .setInputData(workDataOf(MODEL_NAME to MODEL_TESSERACT_ARA))
-            // A user-requested 1.4 MB download must not wait for a full battery.
+            // User-requested model downloads must not wait for a full battery.
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, java.util.concurrent.TimeUnit.SECONDS)
             .build()

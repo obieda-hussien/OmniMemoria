@@ -17,10 +17,11 @@ class AnalysisPolicyTest {
         }
     }
     @Test fun unchangedCompletedImageIsSkippedButNewFeaturesAndEditsAreNot() {
-        assertFalse(AnalysisPolicy.needsAnalysis(3, 3, 1, 10, 10, 100, 100))
-        assertTrue(AnalysisPolicy.needsAnalysis(1, 3, 1, 10, 10, 100, 100))
-        assertTrue(AnalysisPolicy.needsAnalysis(3, 3, 1, 10, 11, 100, 100))
-        assertTrue(AnalysisPolicy.needsAnalysis(3, 3, 1, 10, 10, 100, 101))
+        assertFalse(AnalysisPolicy.needsAnalysis(3, 3, AnalysisPolicy.VERSION, 10, 10, 100, 100))
+        assertTrue(AnalysisPolicy.needsAnalysis(1, 3, AnalysisPolicy.VERSION, 10, 10, 100, 100))
+        assertTrue(AnalysisPolicy.needsAnalysis(3, 3, AnalysisPolicy.VERSION, 10, 11, 100, 100))
+        assertTrue(AnalysisPolicy.needsAnalysis(3, 3, AnalysisPolicy.VERSION, 10, 10, 100, 101))
         assertTrue(AnalysisPolicy.needsAnalysis(3, 3, 0, 10, 10, 100, 100))
+        assertTrue(AnalysisPolicy.needsAnalysis(3, 3, AnalysisPolicy.VERSION, 10, 10, 100, 100, AnalysisPolicy.version(true)))
     }
 }

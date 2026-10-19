@@ -116,7 +116,7 @@ private fun VaultDisabledState(onGoToSettings: () -> Unit) {
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Enable the Vault in Settings to encrypt and protect your private photos with AES-256.",
+                "A PIN preview is available in Settings. Encrypted photo storage is not available in this version.",
                 style     = MaterialTheme.typography.bodyMedium,
                 color     = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center

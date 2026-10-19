@@ -58,6 +58,7 @@ class ScreenEntryIntegrationTest {
             Configuration.Builder().setExecutor(SynchronousExecutor()).build())
         // Opens and validates the real Room schema before any collectors run.
         runBlocking { database.photoIntelligenceDao().getAll() }
+        runBlocking { flags.setEnabled(FeatureFlag.VAULT, false) }
     }
 
     private fun show(content: @androidx.compose.runtime.Composable () -> Unit) {

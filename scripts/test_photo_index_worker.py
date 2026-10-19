@@ -92,13 +92,13 @@ class IndexImageSource {
   return images.filter { it.id > after && (ids == null || it.id in ids) }
  }
 }
-class ArabicModelStore { suspend fun isInstalled() = false }
+class ArabicModelStore { suspend fun isInstalled() = false; fun isHighAccuracyInstalled() = false }
 class PhotoAnalyzer {
  var onAnalyze: () -> Unit = {}; var released = false
- suspend fun analyze(image: IndexImage, old: PhotoIntelligence?, required: Int, arabicReady: Boolean): PhotoIntelligence {
+ suspend fun analyze(image: IndexImage, old: PhotoIntelligence?, required: Int, arabicReady: Boolean, analysisVersion: Int): PhotoIntelligence {
   onAnalyze()
   return PhotoIntelligence(image.id, "recognized", "", false, false, false, "", "", "", indexedAt = 1, embeddingId = null,
-   completedMask = required, sourceModified = image.modified, sourceSize = image.size, analysisVersion = AnalysisPolicy.VERSION)
+   completedMask = required, sourceModified = image.modified, sourceSize = image.size, analysisVersion = analysisVersion)
  }
  suspend fun release() { released = true }
 }

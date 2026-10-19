@@ -37,11 +37,13 @@ class PhotoIndexWorker @AssistedInject constructor(
         val trash = database.trashDao()
         try {
             val arabicReady = models.isInstalled()
+            val highAccuracyArabic = arabicReady && models.isHighAccuracyInstalled()
             while (examined < 80 && SystemClock.elapsedRealtime() - started < 45_000) {
                 currentCoroutineContext().ensureActive()
                 val required = AnalysisPolicy.required(flags.featureStates.first())
                 if (required == 0) return@withContext Result.success(workDataOf(OUTPUT_STATUS to "disabled"))
                 val available = if (arabicReady) required else required and AnalysisPolicy.ARABIC.inv()
+                val analysisVersion = AnalysisPolicy.version(highAccuracyArabic && required and AnalysisPolicy.ARABIC != 0)
                 val page = source.page(after, ids)
                 if (page.isEmpty()) return@withContext Result.success(workDataOf(OUTPUT_STATUS to "complete", "processed" to processed, "failed" to failed))
                 val corrupted = database.corruptedMediaDao().getAllIds().toHashSet()
@@ -57,9 +59,9 @@ class PhotoIndexWorker @AssistedInject constructor(
                     val old = dao.getById(image.id)
                     if (image.id in corrupted || old?.isVaultItem == true || trash.getById(image.id) != null) continue
                     if (old != null && !AnalysisPolicy.needsAnalysis(old.completedMask, available, old.analysisVersion,
-                            old.sourceModified, image.modified, old.sourceSize, image.size)) continue
+                            old.sourceModified, image.modified, old.sourceSize, image.size, analysisVersion)) continue
                     try {
-                        val result = analyzer.analyze(image, old, required, arabicReady)
+                        val result = analyzer.analyze(image, old, required, arabicReady, analysisVersion)
                         val fresh = source.page(image.id - 1, listOf(image.id)).firstOrNull()
                         if (AnalysisPolicy.required(flags.featureStates.first()) != required) {
                             scheduler.scheduleBackgroundIndex(0, ids, append = true, userInitiated = userInitiated)

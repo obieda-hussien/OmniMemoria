@@ -3,7 +3,8 @@ package com.omnimemoria.domain.intelligence
 import com.omnimemoria.domain.flags.FeatureFlag
 
 object AnalysisPolicy {
-    const val VERSION = 1
+    const val VERSION = 2
+    fun version(highAccuracyArabic: Boolean) = if (highAccuracyArabic) 3 else VERSION
     const val TEXT = 1
     const val ARABIC = 2
     const val LABELS = 4
@@ -21,6 +22,7 @@ object AnalysisPolicy {
         if (on(FeatureFlag.PHOTO_DNA)) mask = mask or HASH
         return mask
     }
-    fun needsAnalysis(completed: Int, requested: Int, version: Int, oldModified: Long, modified: Long, oldSize: Long, size: Long) =
-        version != VERSION || oldModified != modified || oldSize != size || (completed and requested) != requested
+    fun needsAnalysis(completed: Int, requested: Int, version: Int, oldModified: Long, modified: Long, oldSize: Long, size: Long,
+        expectedVersion: Int = VERSION) =
+        version != expectedVersion || oldModified != modified || oldSize != size || (completed and requested) != requested
 }

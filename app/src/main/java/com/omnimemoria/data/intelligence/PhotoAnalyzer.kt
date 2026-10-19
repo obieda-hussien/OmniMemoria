@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.ImageDecoder
+import android.os.Build
 import androidx.exifinterface.media.ExifInterface
 import androidx.palette.graphics.Palette
 import com.google.mlkit.vision.common.InputImage
@@ -28,8 +30,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
-import org.json.JSONArray
-import org.json.JSONObject
 
 /** One bounded image and one native OCR instance at a time across all workers. */
 @Singleton
@@ -43,12 +43,14 @@ class PhotoAnalyzer @Inject constructor(
     private var faces: FaceDetector? = null
     private var arabic: TessBaseAPI? = null
 
-    suspend fun analyze(image: IndexImage, old: PhotoIntelligence?, required: Int, arabicReady: Boolean): PhotoIntelligence = withContext(Dispatchers.IO) {
+    suspend fun analyze(image: IndexImage, old: PhotoIntelligence?, required: Int, arabicReady: Boolean,
+        analysisVersion: Int = AnalysisPolicy.VERSION): PhotoIntelligence = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val unchanged = old != null && old.sourceModified == image.modified && old.sourceSize == image.size && old.analysisVersion == AnalysisPolicy.VERSION
+            val unchanged = old != null && old.sourceModified == image.modified && old.sourceSize == image.size && old.analysisVersion == analysisVersion
             val base = if (unchanged) old!! else PhotoIntelligence(image.id, "", "", false, false, false, "", "", "", indexedAt = null, embeddingId = null)
             var result = base
             var mask = base.completedMask
+            var ocrLines = OcrRegions.read(base.ocrBoxes)
             val errors = mutableListOf<String>()
             val bitmap = decode(image)
             try {
@@ -66,26 +68,22 @@ class PhotoAnalyzer @Inject constructor(
                     // ML Kit tasks do not own cancellation. Await completion before
                     // releasing their bitmap or closing the native client.
                     val found = withContext(NonCancellable) { engine.process(input).await() }
-                    val boxes = JSONArray()
-                    found.textBlocks.flatMap { it.lines }.take(500).forEach { line -> line.boundingBox?.let { box ->
-                        boxes.put(JSONObject().put("text", line.text).put("left", box.left.toFloat()/bitmap.width)
-                            .put("top", box.top.toFloat()/bitmap.height).put("right", box.right.toFloat()/bitmap.width)
-                            .put("bottom", box.bottom.toFloat()/bitmap.height))
+                    val latin = found.textBlocks.flatMap { it.lines }.take(1000).mapNotNull { line -> line.boundingBox?.let { box ->
+                        OcrLine(line.text, box.left.toFloat()/bitmap.width, box.top.toFloat()/bitmap.height,
+                            box.right.toFloat()/bitmap.width, box.bottom.toFloat()/bitmap.height)
                     } }
-                    val merged = if (mask and AnalysisPolicy.ARABIC != 0) OcrText.merge(result.rawText, found.text) else found.text.take(100_000)
-                    result = result.copy(rawText = merged, ocrBoxes = JSONObject().put("width", bitmap.width).put("height", bitmap.height).put("lines", boxes).toString())
+                    ocrLines = ocrLines.filter { it.language == "arabic" } + latin
+                    result = result.copy(rawText = OcrText.text(ocrLines), ocrBoxes = OcrRegions.write(bitmap.width, bitmap.height, ocrLines))
                 }
                 stage(AnalysisPolicy.ARABIC, "Arabic OCR") {
                     if (!arabicReady) throw IOException("Arabic model is not installed")
                     val engine = arabic ?: TessBaseAPI().also { instance ->
-                        if (!instance.init(arabicModel.root.absolutePath, "ara")) { instance.recycle(); throw IOException("Arabic OCR initialization failed") }
+                        if (!instance.init(arabicModel.root.absolutePath, "ara", TessBaseAPI.OEM_LSTM_ONLY)) { instance.recycle(); throw IOException("Arabic OCR initialization failed") }
                         arabic = instance
                     }
-                    try {
-                        engine.setImage(bitmap)
-                        val extracted = engine.getUTF8Text().orEmpty().take(100_000)
-                        result = result.copy(rawText = OcrText.merge(result.rawText, extracted))
-                    } finally { engine.clear() }
+                    val arabicLines = ArabicOcr.recognize(engine, bitmap, ocrLines.filter { it.language != "arabic" })
+                    ocrLines = ocrLines.filter { it.language != "arabic" } + arabicLines
+                    result = result.copy(rawText = OcrText.text(ocrLines), ocrBoxes = OcrRegions.write(bitmap.width, bitmap.height, ocrLines))
                 }
                 stage(AnalysisPolicy.LABELS, "Image classification") {
                     val engine = labels ?: ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS).also { labels = it }
@@ -112,7 +110,7 @@ class PhotoAnalyzer @Inject constructor(
                 }
                 currentCoroutineContext().ensureActive()
                 result.copy(completedMask = mask, sourceModified = image.modified, sourceSize = image.size,
-                    analysisVersion = AnalysisPolicy.VERSION, indexedAt = System.currentTimeMillis(), isIndexed = mask and required == required,
+                    analysisVersion = analysisVersion, indexedAt = System.currentTimeMillis(), isIndexed = mask and required == required,
                     hasPhoneNumber = EntityExtractor.phones(result.rawText).isNotEmpty(), hasEmail = EntityExtractor.emails(result.rawText).isNotEmpty(),
                     indexError = if (required and AnalysisPolicy.ARABIC != 0 && !arabicReady) "Download the Arabic OCR model in Settings." else errors.joinToString(" "))
             } finally { bitmap.recycle() }
@@ -125,6 +123,11 @@ class PhotoAnalyzer @Inject constructor(
 
     private fun decode(image: IndexImage): Bitmap {
         val resolver = context.contentResolver
+        if (Build.VERSION.SDK_INT >= 28) return ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, image.uri)) { decoder, info, _ ->
+            val (width, height) = OcrImageSizing.target(info.size.width, info.size.height)
+            decoder.setTargetSize(width, height)
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        }
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         resolver.openInputStream(image.uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Image cannot be decoded")
