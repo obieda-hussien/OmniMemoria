@@ -13,6 +13,7 @@ REQUIRED = {
 
 def verify(path):
     found = {name: set() for name in REQUIRED}
+    schema_lines = []
     owner = None
     errors = []
     with Path(path).open() as stream:
@@ -21,7 +22,10 @@ def verify(path):
                 continue
             if line and not line[0].isspace():
                 owner = line.split(' -> ', 1)[0]
+                if owner in REQUIRED:
+                    schema_lines.append(line.rstrip())
             elif owner in REQUIRED and '(' not in line:
+                schema_lines.append(line.rstrip())
                 match = re.match(r'\s+\S+ (\w+) -> (\S+)\s*$', line)
                 if match and match[1] in REQUIRED[owner]:
                     found[owner].add(match[1])
@@ -31,7 +35,8 @@ def verify(path):
         for field in fields - found[name]:
             errors.append(f'{name}.{field} missing from optimized schema')
     if errors:
-        raise SystemExit(f'{path}: unsafe DataStore protobuf schema:\n' + '\n'.join(errors))
+        raise SystemExit(f'{path}: unsafe DataStore protobuf schema:\n' + '\n'.join(errors)
+                         + '\nActual mapping fields:\n' + '\n'.join(schema_lines))
     print(f'PASS {path}: all DataStore protobuf reflection fields retained')
 
 
