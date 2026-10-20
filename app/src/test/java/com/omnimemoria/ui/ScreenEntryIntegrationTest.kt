@@ -102,7 +102,7 @@ class ScreenEntryIntegrationTest {
         compose.onNodeWithText("Scan library now").assertIsDisplayed()
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithContentDescription("Albums").performClick()
-        compose.onNodeWithText("Albums").assertExists()
+        compose.onNode(hasText("Albums") and isSelected()).assertExists()
         compose.onNodeWithContentDescription("Search").performClick()
         compose.onNodeWithText("Quick Filters").assertIsDisplayed()
     }
