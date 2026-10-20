@@ -84,6 +84,23 @@ def scroll_to(label, partial=False, limit=10):
     raise AssertionError(f'Missing scroll target: {label}')
 
 
+def feature_checked(label):
+    for node in tree().iter('node'):
+        if node.get('checkable') == 'true' and any(
+                child.get('text') == label for child in node.iter('node')):
+            return node.get('checked') == 'true'
+    return False
+
+
+def wait_checked(label, seconds=15):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if feature_checked(label):
+            return
+        time.sleep(0.3)
+    raise AssertionError('Preference did not persist: '+label)
+
+
 def capture(name):
     alive()
     result = subprocess.run(['adb', 'exec-out', 'screencap', '-p'], check=True, capture_output=True)
@@ -135,6 +152,16 @@ try:
     assert all(value in fixture_rows[0] for value in
         ('_size='+str(Path('scripts/fixtures/omni-ocr-check.png').stat().st_size),
          'width=1080', 'height=1440', 'is_pending=0')), media
+
+    # Regression for the reported preferences_ reflection crash. A fresh
+    # install alone never parses a nonempty protobuf file. Write through the
+    # real Settings UI, then kill the process and read it on a cold launch.
+    home(); tap('Settings'); scroll_to('Hidden Photo Notes')
+    tap('Hidden Photo Notes'); wait_checked('Hidden Photo Notes')
+    capture('preferences-written')
+    home(); tap('Settings'); scroll_to('Hidden Photo Notes')
+    wait_checked('Hidden Photo Notes'); capture('preferences-read-after-restart')
+    tap('Back')
 
     for mode in ('no', 'yes'):
         adb('shell', 'cmd', 'uimode', 'night', mode)
