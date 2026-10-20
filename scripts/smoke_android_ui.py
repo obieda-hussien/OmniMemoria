@@ -4,6 +4,8 @@
 Only a synthetic fixture is pushed to the emulator; no user photos are used.
 """
 import re
+import hashlib
+import struct
 import subprocess
 import time
 from pathlib import Path
@@ -141,6 +143,11 @@ try:
     fixture = '/storage/emulated/0/Pictures/omni-ocr-check.png'
     adb('shell', 'mkdir', '-p', '/storage/emulated/0/Pictures')
     adb('push', 'scripts/fixtures/omni-ocr-check.png', fixture)
+    local_fixture = Path('scripts/fixtures/omni-ocr-check.png').read_bytes()
+    assert struct.unpack('>II', local_fixture[16:24]) == (1080, 1440)
+    checksum = adb('shell', 'sha256sum', fixture)
+    (OUTPUT / 'fixture-checksum.txt').write_text(checksum)
+    assert checksum.split()[0] == hashlib.sha256(local_fixture).hexdigest(), checksum
     scan = adb('shell', 'content', 'call', '--uri', 'content://media',
         '--method', 'scan_file', '--arg', fixture)
     (OUTPUT / 'fixture-scan.txt').write_text(scan)
@@ -149,9 +156,11 @@ try:
     (OUTPUT / 'fixture-media.txt').write_text(media)
     fixture_rows = [line for line in media.splitlines() if '_display_name=omni-ocr-check.png,' in line]
     assert len(fixture_rows) == 1, media
+    # Android 11's scanner reads dimensions from EXIF; a valid PNG without
+    # EXIF can have NULL width/height. Verify actual bytes and the scanned row,
+    # then let image rendering/native OCR verify decoding below.
     assert all(value in fixture_rows[0] for value in
-        ('_size='+str(Path('scripts/fixtures/omni-ocr-check.png').stat().st_size),
-         'width=1080', 'height=1440', 'is_pending=0')), media
+        ('_size='+str(len(local_fixture)), '_data='+fixture, 'is_pending=0')), media
 
     # Regression for the reported preferences_ reflection crash. A fresh
     # install alone never parses a nonempty protobuf file. Write through the
