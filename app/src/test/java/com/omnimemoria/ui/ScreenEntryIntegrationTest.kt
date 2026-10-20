@@ -93,7 +93,11 @@ class ScreenEntryIntegrationTest {
     }
 
     @Test fun animatedNavigationCreatesViewModelsInsideSharedTransitionLayout() {
-        show { com.omnimemoria.ui.navigation.AppNavGraph() }
+        show {
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Rtl
+            ) { com.omnimemoria.ui.navigation.AppNavGraph() }
+        }
         compose.onNodeWithContentDescription("Search").performClick()
         compose.onNodeWithText("Quick Filters").assertIsDisplayed()
         compose.onNodeWithContentDescription("Vault").performClick()

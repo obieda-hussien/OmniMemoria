@@ -122,7 +122,20 @@ try:
     adb('push', 'scripts/fixtures/omni-ocr-check.png', '/sdcard/Pictures/omni-ocr-check.png')
     adb('shell', 'content', 'insert', '--uri', 'content://media/external/images/media',
         '--bind', '_data:s:/sdcard/Pictures/omni-ocr-check.png', '--bind', 'mime_type:s:image/png',
-        '--bind', '_display_name:s:omni-ocr-check.png')
+        '--bind', '_display_name:s:omni-ocr-check.png',
+        '--bind', '_size:l:'+str(Path('scripts/fixtures/omni-ocr-check.png').stat().st_size),
+        '--bind', 'width:i:1080', '--bind', 'height:i:1440', '--bind', 'media_type:i:1',
+        '--bind', 'datetaken:l:'+str(int(time.time()*1000)))
+    # Shell inserts do not populate image dimensions on every MediaProvider.
+    # The app deliberately excludes incomplete metadata, so prepare a valid row
+    # and request a real media scan rather than weakening its query policy.
+    adb('shell', 'am', 'broadcast', '-a', 'android.intent.action.MEDIA_SCANNER_SCAN_FILE',
+        '-d', 'file:///sdcard/Pictures/omni-ocr-check.png')
+    media = adb('shell', 'content', 'query', '--uri', 'content://media/external/images/media',
+        '--projection', '_id:_display_name:_size:width:height')
+    (OUTPUT / 'fixture-media.txt').write_text(media)
+    assert 'omni-ocr-check.png' in media and 'width=1080' in media and 'height=1440' in media, media
+
 
     for mode in ('no', 'yes'):
         adb('shell', 'cmd', 'uimode', 'night', mode)
