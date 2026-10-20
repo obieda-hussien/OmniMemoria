@@ -478,6 +478,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+      - name: Select latest harness only when APK inputs are unchanged
+        env:
+          HARNESS_BRANCH: ${{ github.head_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p device-smoke
+          printf 'APK commit: %s\n' "$GITHUB_SHA" > device-smoke/source.txt
+          if [ -n "$HARNESS_BRANCH" ]; then
+            git fetch --no-tags --depth=1 origin "refs/heads/$HARNESS_BRANCH"
+            CANDIDATE_SHA=$(git rev-parse FETCH_HEAD)
+            if git diff --quiet "$GITHUB_SHA" "$CANDIDATE_SHA" -- . \
+              ':(exclude)scripts/**' ':(exclude)app/src/test/**' ':(exclude)README.md'; then
+              git restore --source="$CANDIDATE_SHA" -- scripts/smoke_android_ui.py scripts/fixtures/omni-ocr-check.png
+              printf 'Harness commit: %s\n' "$CANDIDATE_SHA" >> device-smoke/source.txt
+            else
+              printf 'APK inputs changed; using original harness.\n' >> device-smoke/source.txt
+            fi
+          fi
+          cat device-smoke/source.txt
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:

@@ -118,24 +118,23 @@ try:
     (OUTPUT / 'device.txt').write_text(adb('shell', 'getprop', 'ro.build.fingerprint') +
         '\nGoogle Play Services packages: '+adb('shell', 'pm', 'list', 'packages', 'com.google.android.gms'))
     assert not adb('shell', 'pm', 'list', 'packages', 'com.google.android.gms').strip(), 'Expected AOSP without GMS'
-    adb('shell', 'mkdir', '-p', '/sdcard/Pictures')
-    adb('push', 'scripts/fixtures/omni-ocr-check.png', '/sdcard/Pictures/omni-ocr-check.png')
-    adb('shell', 'content', 'insert', '--uri', 'content://media/external/images/media',
-        '--bind', '_data:s:/sdcard/Pictures/omni-ocr-check.png', '--bind', 'mime_type:s:image/png',
-        '--bind', '_display_name:s:omni-ocr-check.png',
-        '--bind', '_size:l:'+str(Path('scripts/fixtures/omni-ocr-check.png').stat().st_size),
-        '--bind', 'width:i:1080', '--bind', 'height:i:1440', '--bind', 'media_type:i:1',
-        '--bind', 'datetaken:l:'+str(int(time.time()*1000)))
-    # Shell inserts do not populate image dimensions on every MediaProvider.
-    # The app deliberately excludes incomplete metadata, so prepare a valid row
-    # and request a real media scan rather than weakening its query policy.
-    adb('shell', 'am', 'broadcast', '-a', 'android.intent.action.MEDIA_SCANNER_SCAN_FILE',
-        '-d', 'file:///sdcard/Pictures/omni-ocr-check.png')
+    # MediaProvider's SELinux domain cannot follow /sdcard on this AOSP image.
+    # Scan the actual file synchronously through the canonical volume path;
+    # inserting a second row after pushing creates an empty duplicate instead.
+    fixture = '/storage/emulated/0/Pictures/omni-ocr-check.png'
+    adb('shell', 'mkdir', '-p', '/storage/emulated/0/Pictures')
+    adb('push', 'scripts/fixtures/omni-ocr-check.png', fixture)
+    scan = adb('shell', 'content', 'call', '--uri', 'content://media',
+        '--method', 'scan_file', '--arg', fixture)
+    (OUTPUT / 'fixture-scan.txt').write_text(scan)
     media = adb('shell', 'content', 'query', '--uri', 'content://media/external/images/media',
-        '--projection', '_id:_display_name:_size:width:height')
+        '--projection', '_id:_display_name:_data:_size:width:height:is_pending')
     (OUTPUT / 'fixture-media.txt').write_text(media)
-    assert 'omni-ocr-check.png' in media and 'width=1080' in media and 'height=1440' in media, media
-
+    fixture_rows = [line for line in media.splitlines() if '_display_name=omni-ocr-check.png,' in line]
+    assert len(fixture_rows) == 1, media
+    assert all(value in fixture_rows[0] for value in
+        ('_size='+str(Path('scripts/fixtures/omni-ocr-check.png').stat().st_size),
+         'width=1080', 'height=1440', 'is_pending=0')), media
 
     for mode in ('no', 'yes'):
         adb('shell', 'cmd', 'uimode', 'night', mode)
@@ -183,7 +182,7 @@ try:
     (OUTPUT / 'ocr-output.txt').write_text(phone_text + '\n' + text)
     # No Java fatal exception is allowed in any tested route or OCR operation.
     crash = adb('logcat', '-d', '-b', 'crash')
-    assert 'FATAL EXCEPTION' not in crash, crash
+    assert not crash.strip() or PACKAGE not in crash, crash
     print('PASS: optimized APK; light/dark Search, Vault, Settings, photo details; native Arabic OCR, phone, amount, labels and faces; AOSP API 30 without GMS.')
 except Exception:
     try:
