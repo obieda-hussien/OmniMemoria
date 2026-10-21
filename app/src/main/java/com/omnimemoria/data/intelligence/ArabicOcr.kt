@@ -22,13 +22,16 @@ internal object ArabicOcr {
         val prepared = prepare(image)
         try {
             val page = read(engine, prepared, TessBaseAPI.PageSegMode.PSM_AUTO)
-            val arabic = page.lines.filter { it.confidence >= 40 && OcrText.arabicLetters(it.text) >= 2 }
+            val arabic = page.lines.filter { it.confidence >= 45 && OcrText.arabicLetters(it.text) >= 2 }
             if (arabic.sumOf { OcrText.arabicLetters(it.text) } >= 80 && page.confidence >= 55) return page.lines
             currentCoroutineContext().ensureActive()
             val sparse = read(engine, prepared, TessBaseAPI.PageSegMode.PSM_SPARSE_TEXT)
             val candidates = page.lines + sparse.lines
             // A Latin-only photo should not trigger dozens of Arabic line jobs.
-            if (candidates.none { it.confidence >= 40 && OcrText.arabicLetters(it.text) >= 4 }) return candidates
+            // The Arabic model is not a second general-purpose OCR pass. If it did not
+            // find convincing Arabic script, discard its Latin/symbol hallucinations;
+            // the Latin recognizer already owns Latin text and digits.
+            if (candidates.none { it.confidence >= 45 && OcrText.arabicLetters(it.text) >= 2 }) return emptyList()
             val cropped = mutableListOf<OcrLine>()
             for (line in latin.filter { it.isValid() && it.bottom - it.top < 0.15f && it.right - it.left > 0.08f }.take(48)) {
                 currentCoroutineContext().ensureActive()
@@ -52,7 +55,7 @@ internal object ArabicOcr {
                         bottom = ((y + result.bottom * tile.height - border) / prepared.height).coerceIn(0f, 1f)) }
                 } finally { tile.recycle() }
             }
-            return cropped + candidates
+            return (cropped + candidates).filter { it.confidence >= 45 && OcrText.arabicLetters(it.text) >= 2 }
         } finally { prepared.recycle() }
     }
 
