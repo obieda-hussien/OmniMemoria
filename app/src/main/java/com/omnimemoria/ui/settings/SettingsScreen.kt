@@ -162,9 +162,9 @@ internal fun ModelDownloadRow(title: String, icon: ImageVector, status: ModelSta
             if (status.canUpgrade || status.phase !in setOf(ModelPhase.INSTALLED, ModelPhase.PLANNED)) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = onDownload) { Text(when {
-                        status.canUpgrade -> "Upgrade · ${com.omnimemoria.data.intelligence.ArabicModelStore.SIZE_LABEL}"
+                        status.canUpgrade -> "Upgrade · ${com.omnimemoria.data.intelligence.PaddleOcrModelStore.SIZE_LABEL}"
                         status.phase in setOf(ModelPhase.FAILED, ModelPhase.RETRYING) -> "Retry now"
-                        else -> "Download ${com.omnimemoria.data.intelligence.ArabicModelStore.SIZE_LABEL}"
+                        else -> "Download ${com.omnimemoria.data.intelligence.PaddleOcrModelStore.SIZE_LABEL}"
                     }) }
                     if (status.phase in setOf(ModelPhase.DOWNLOADING, ModelPhase.QUEUED, ModelPhase.RETRYING)) TextButton(onClick = onCancel) { Text("Cancel download") }
                 }
@@ -212,7 +212,7 @@ private val COMPRESSION_ITEMS = listOf(
 )
 
 private val AI_MODEL_ITEMS = listOf(
-    AiModelItem("Tesseract Arabic", ModelDownloadWorker.MODEL_TESSERACT_ARA,    Icons.Outlined.Language),
+    AiModelItem("Arabic + English OCR (PaddleOCRv5)", ModelDownloadWorker.MODEL_TESSERACT_ARA,    Icons.Outlined.Language),
     AiModelItem("EmbeddingGemma",  ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER, Icons.Outlined.Psychology)
 )
 
