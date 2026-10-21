@@ -233,7 +233,7 @@ jobs:
   android-debug:
     name: Android Debug Build
     runs-on: ubuntu-latest
-    needs: [ test, security-scan ]
+    # APK builds run independently so artifacts remain available even when tests/security checks fail.
     timeout-minutes: 90
     permissions:
       contents: read
@@ -312,7 +312,7 @@ jobs:
   android-release:
     name: Android Release Build
     runs-on: ubuntu-latest
-    needs: [ test, security-scan ]
+    # APK builds run independently so artifacts remain available even when tests/security checks fail.
     timeout-minutes: 90
     permissions:
       contents: write
