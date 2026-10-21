@@ -48,8 +48,10 @@ class Data(val values: Map<String, Any?> = emptyMap()) {
 fun workDataOf(vararg pairs: Pair<String, Any?>) = Data(mapOf(*pairs))
 class WorkerParameters(val data: Data = Data(), val attempts: Int = 0)
 abstract class CoroutineWorker(context: android.content.Context, val params: WorkerParameters) {
+ val applicationContext = context
  val inputData = params.data; val runAttemptCount = params.attempts; val isStopped = false
  abstract suspend fun doWork(): Result
+ suspend fun setForeground(info: Any) {}
  suspend fun setProgress(data: Data) {}
  data class Result(val state: String, val data: Data = Data()) {
   companion object {
@@ -107,6 +109,9 @@ class PhotoAnalyzer {
 class WorkManagerScheduler {
  val queued = mutableListOf<Long>()
  fun scheduleBackgroundIndex(afterId: Long = 0, ids: List<Long>? = null, append: Boolean = false, userInitiated: Boolean = false) { queued += afterId }
+}
+internal object WorkForeground {
+ fun info(context: android.content.Context, notificationId: Int, title: String, message: String): Any = Any()
 }
 """,
     'Runner.kt': """import android.content.Context
