@@ -90,7 +90,7 @@ object OcrText {
             if (prior != null) {
                 val gap = row.top - prior.bottom
                 val paragraphGap = gap > max(0.018f, max(row.height, prior.height) * 1.25f)
-                out.append(if (paragraphGap) "\\n\\n" else "\\n")
+                out.append(if (paragraphGap) "\n\n" else "\n")
             }
             out.append(row.lines.joinToString(" ") { it.text.trim() })
             previous = row
