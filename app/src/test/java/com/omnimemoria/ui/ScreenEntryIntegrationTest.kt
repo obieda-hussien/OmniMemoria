@@ -83,9 +83,10 @@ class ScreenEntryIntegrationTest {
     @Test fun confirmingArabicSetupEnqueuesTheActualModelRequest() {
         show { SettingsScreen() }
         compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Arabic + English OCR"))
+        // Enabling Arabic OCR now schedules its model download automatically;
+        // there is intentionally no second confirmation dialog/button.
         compose.onNodeWithText("Arabic + English OCR").performClick()
-        compose.onNodeWithText("Download").assertIsDisplayed().performClick()
-        compose.waitUntil(5_000) {
+        compose.waitUntil(10_000) {
             androidx.work.WorkManager.getInstance(compose.activity).getWorkInfosForUniqueWork(
                 com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD
             ).get().isNotEmpty()
