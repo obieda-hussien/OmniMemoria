@@ -95,6 +95,7 @@ class IndexImageSource {
  }
 }
 class ArabicModelStore { suspend fun isInstalled() = false; fun isHighAccuracyInstalled() = false }
+class PaddleOcrModelStore { fun isInstalled() = false }
 class PhotoAnalyzer {
  var onAnalyze: () -> Unit = {}; var released = false
  suspend fun analyze(image: IndexImage, old: PhotoIntelligence?, required: Int, arabicReady: Boolean, analysisVersion: Int): PhotoIntelligence {
@@ -126,7 +127,7 @@ class Fixture {
  val analyzer = PhotoAnalyzer(); val scheduler = WorkManagerScheduler()
  fun worker(attempts: Int = 0) = PhotoIndexWorker(Context(), WorkerParameters(workDataOf(
   PhotoIndexWorker.WORK_INPUT_PHOTO_IDS to longArrayOf(42), PhotoIndexWorker.WORK_INPUT_USER_INITIATED to true), attempts),
-  flags, db, source, analyzer, ArabicModelStore(), scheduler)
+  flags, db, source, analyzer, ArabicModelStore(), PaddleOcrModelStore(), scheduler)
 }
 fun main() = runBlocking {
  var cases = 0
