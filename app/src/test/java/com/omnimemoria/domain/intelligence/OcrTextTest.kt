@@ -43,7 +43,7 @@ class OcrTextTest {
         val lines = listOf(
             OcrLine("OK", 0.1f, 0.1f, 0.25f, 0.14f),
             OcrLine("OK", 0.1f, 0.3f, 0.25f, 0.34f))
-        assertEquals("OK\\n\\nOK", OcrText.text(lines))
+        assertEquals("OK\n\nOK", OcrText.text(lines))
     }
 
     @Test fun mixedEnglishAndArabicOnOneVisualRowUseRightToLeftRegionOrder() {
@@ -58,6 +58,6 @@ class OcrTextTest {
             OcrLine("First line", 0.1f, 0.1f, 0.8f, 0.14f),
             OcrLine("Second line", 0.1f, 0.155f, 0.8f, 0.195f),
             OcrLine("Next paragraph", 0.1f, 0.35f, 0.8f, 0.39f))
-        assertEquals("First line\\nSecond line\\n\\nNext paragraph", OcrText.text(lines))
+        assertEquals("First line\nSecond line\n\nNext paragraph", OcrText.text(lines))
     }
 }
