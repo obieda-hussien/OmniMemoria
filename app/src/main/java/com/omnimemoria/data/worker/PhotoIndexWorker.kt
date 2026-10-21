@@ -25,6 +25,7 @@ class PhotoIndexWorker @AssistedInject constructor(
     private val source: IndexImageSource,
     private val analyzer: PhotoAnalyzer,
     private val models: ArabicModelStore,
+    private val paddleModels: PaddleOcrModelStore,
     private val scheduler: WorkManagerScheduler
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -37,8 +38,10 @@ class PhotoIndexWorker @AssistedInject constructor(
         val trash = database.trashDao()
         try {
             if (userInitiated) setForeground(WorkForeground.info(applicationContext, 4101, "Scanning photo library", "Analyzing photos on this device"))
-            val arabicReady = models.isInstalled()
-            val highAccuracyArabic = arabicReady && models.isHighAccuracyInstalled()
+            val paddleReady = paddleModels.isInstalled()
+            val legacyArabicReady = models.isInstalled()
+            val arabicReady = paddleReady || legacyArabicReady
+            val highAccuracyArabic = paddleReady || models.isHighAccuracyInstalled()
             while (examined < 80 && SystemClock.elapsedRealtime() - started < 45_000) {
                 currentCoroutineContext().ensureActive()
                 val required = AnalysisPolicy.required(flags.featureStates.first())
