@@ -8,6 +8,25 @@ plugins {
     id("org.owasp.dependencycheck") version "12.1.0"
 }
 
+// Resolve the same compiler/runtime used by the project instead of relying on
+// a runner-specific Gradle installation or cache layout.
+listOf("verifyTrashRepository" to "scripts/test_trash_repository.py",
+    "verifyPhotoIndexWorker" to "scripts/test_photo_index_worker.py").forEach { (taskName, script) ->
+    tasks.register<Exec>(taskName) {
+        group = "verification"
+        description = "Run production repository/worker regressions with JVM boundary doubles"
+        workingDir(rootDir)
+        doFirst {
+            val runtime = configurations.getByName("debugUnitTestRuntimeClasspath").files
+            val stdlib = runtime.single { it.name.matches(Regex("kotlin-stdlib-[0-9].*\\.jar")) }
+            val coroutines = runtime.single { it.name.startsWith("kotlinx-coroutines-core-jvm-") && it.extension == "jar" }
+            commandLine("python3", script,
+                "--compiler-classpath", configurations.getByName("kotlinCompilerClasspath").asPath,
+                "--stdlib", stdlib.absolutePath, "--coroutines", coroutines.absolutePath)
+        }
+    }
+}
+
 apply(plugin = "io.objectbox")
 
 android {
@@ -18,8 +37,10 @@ android {
         applicationId = "com.omnimemoria"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 4
+        versionName = "1.0.3"
+
+        resValue("string", "build_revision", System.getenv("GITHUB_SHA")?.take(12) ?: "local")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -32,12 +53,21 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+    }
+
+    // Installable optimized build for device testing without a production key.
+    buildTypes.create("preview") {
+        initWith(buildTypes.getByName("release"))
+        signingConfig = signingConfigs.getByName("debug")
+        versionNameSuffix = "-preview"
+        matchingFallbacks += listOf("release")
     }
 
     compileOptions {
@@ -49,8 +79,21 @@ android {
         jvmTarget = "17"
     }
 
+    testOptions { unitTests.isIncludeAndroidResources = true }
+
     buildFeatures {
         compose = true
+    }
+
+    // Native OCR and image codecs are large. Ship a complete APK per supported
+    // CPU instead of making each device download four copies of native code.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = false
+        }
     }
 
     packaging {
@@ -70,6 +113,14 @@ dependencyCheck {
 }
 
 dependencies {
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:image-labeling:17.0.9")
+    implementation("com.google.mlkit:face-detection:16.1.7")
+    implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
+    implementation("androidx.palette:palette-ktx:1.0.0")
+    implementation("androidx.exifinterface:exifinterface:1.4.0")
+    implementation("com.googlecode.libphonenumber:libphonenumber:9.0.41")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -100,7 +151,6 @@ dependencies {
     implementation(libs.coil.svg)
     implementation(libs.coil.gif)
     implementation(libs.coil.video)
-    implementation(libs.avif.coder.coil)
 
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.datastore.preferences)
@@ -112,6 +162,12 @@ dependencies {
     implementation(libs.telephoto.zoomable.image.coil3)
 
     testImplementation(libs.junit)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("com.google.dagger:hilt-android-testing:2.57")
+    kspTest(libs.hilt.compiler)
+    kspTest(libs.androidx.hilt.compiler)
+    testImplementation("androidx.work:work-testing:2.10.1")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

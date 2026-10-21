@@ -68,6 +68,7 @@ class MediaStoreRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val photoIntelligenceDao: PhotoIntelligenceDao,
     private val favoritesRepository: FavoritesRepository,
+    private val trashDao: com.omnimemoria.data.local.db.TrashDao,
     private val corruptedMediaDao: CorruptedMediaDao
 ) {
     private val contentResolver: ContentResolver = context.contentResolver
@@ -85,7 +86,7 @@ class MediaStoreRepository @Inject constructor(
         val (selection, selectionArgs) = QueryBuilder(FilterConfig()).buildSelection()
 
         val corruptedIds = runCatching {
-            corruptedMediaDao.getAllIds().toHashSet()
+            (corruptedMediaDao.getAllIds() + trashDao.getAllIds() + photoIntelligenceDao.getVaultPhotoIds()).toHashSet()
         }.getOrDefault(emptySet<Long>())
 
         contentResolver.query(
@@ -136,7 +137,7 @@ class MediaStoreRepository @Inject constructor(
     }
 
     // ══ 2. Live ContentObserver → Flow (debounced 1.5s) ════════════════════════
-    fun observeMediaStoreChanges(): Flow<Unit> = callbackFlow {
+    private fun observeSystemChanges(): Flow<Unit> = callbackFlow {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) { trySend(Unit) }
         }
@@ -146,30 +147,24 @@ class MediaStoreRepository @Inject constructor(
         awaitClose { contentResolver.unregisterContentObserver(observer) }
     }.debounce(1_500L)
 
-    fun observeMediaQueryChanges(sort: SortConfig = SortConfig(), filter: FilterConfig = FilterConfig()): Flow<Unit> =
-        if (filter.isFavorite != null || sort.sortBy == SortBy.FAVORITES_FIRST) {
-            merge(observeMediaStoreChanges(), favoritesRepository.getAllFavoriteIds().drop(1).map { Unit })
-        } else observeMediaStoreChanges()
+    fun observeMediaStoreChanges(): Flow<Unit> = merge(
+        observeSystemChanges(), trashDao.getAllFlow().drop(1).map { Unit }
+    ).debounce(200)
 
-    // ══ 3. آخر صورة — لـ Dynamic Theme ═════════════════════════════════════════
-    fun getMostRecentPhotoUri(): Uri? {
-        contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            arrayOf(MediaStore.Images.Media._ID),
-            null, null,
-            "${MediaStore.Images.Media.DATE_TAKEN} DESC"
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID))
-                return ContentUris.withAppendedId(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id
-                )
-            }
-        }
-        return null
+    fun observeMediaQueryChanges(sort: SortConfig = SortConfig(), filter: FilterConfig = FilterConfig()): Flow<Unit> {
+        val sources = mutableListOf(observeMediaStoreChanges())
+        if (filter.isFavorite != null || sort.sortBy == SortBy.FAVORITES_FIRST)
+            sources += favoritesRepository.getAllFavoriteIds().drop(1).map { Unit }
+        if (filter.hasText != null || filter.hasFaces != null || filter.hasPhoneNumber != null)
+            sources += photoIntelligenceDao.observeGeneration().drop(1).map { Unit }.debounce(500)
+        return merge(*sources.toTypedArray())
     }
 
-    // ══ 4. استخراج اللون الغالب (lightweight 32×32 avg) ════════════════════════
+    suspend fun getMostRecentPhotoUri(): Uri? = withContext(Dispatchers.IO) {
+        val filter = FilterConfig(mediaTypes = setOf(MediaType.IMAGE))
+        queryPhotos(contentResolver, SortConfig(), filter, 1, 0, null, resolveQuery(filter)).firstOrNull()?.uri
+    }
+
     suspend fun extractDominantColor(uri: Uri): Color? = withContext(Dispatchers.IO) {
         runCatching {
             val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
@@ -197,7 +192,7 @@ class MediaStoreRepository @Inject constructor(
     }
 
     // ══ 5. On This Day — صورة واحدة من كل سنة ماضية (max 5) ═══════════════════
-    fun getPhotosOnThisDay(): List<MediaPhoto> {
+    suspend fun getPhotosOnThisDay(): List<MediaPhoto> {
         val results = mutableListOf<MediaPhoto>()
         val today   = Calendar.getInstance()
         val month   = today.get(Calendar.MONTH)
@@ -205,7 +200,9 @@ class MediaStoreRepository @Inject constructor(
         val curYear = today.get(Calendar.YEAR)
 
         // Compute the base selection once — same FilterConfig() for all 5 iterations.
-        val (baseSelection, baseArgs) = QueryBuilder(FilterConfig()).buildSelection()
+        val resolved = resolveQuery(FilterConfig())
+        val baseSelection = resolved.selection
+        val baseArgs = resolved.args
 
         for (yearsBack in 1..5) {
             val start = Calendar.getInstance().apply {
@@ -237,7 +234,7 @@ class MediaStoreRepository @Inject constructor(
     private suspend fun resolveQuery(filter: FilterConfig, includedIds: Set<Long>? = null): ResolvedQuery {
         val (base, args) = QueryBuilder(filter).buildSelection()
         val clauses = mutableListOf(base)
-        val excluded = photoIntelligenceDao.getVaultPhotoIds().toSet() + corruptedMediaDao.getAllIds()
+        val excluded = photoIntelligenceDao.getVaultPhotoIds().toSet() + corruptedMediaDao.getAllIds() + trashDao.getAllIds()
         clauses += MediaQuerySql.idsClause(excluded, false)
         val favorites = favoritesRepository.getAllFavoriteIds().first()
         filter.isFavorite?.let { clauses += MediaQuerySql.idsClause(favorites, it) }

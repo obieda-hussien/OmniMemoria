@@ -48,14 +48,19 @@ class SearchViewModel @Inject constructor(
     private data class Request(val text: String, val quick: QuickFilterType?, val sort: SortConfig, val filter: FilterConfig, val version: Int)
     init {
         viewModelScope.launch {
-            mediaStoreRepository.observeMediaQueryChanges(SortConfig(SortBy.FAVORITES_FIRST)).collect { refreshVersion.value++ }
+            mediaStoreRepository.observeMediaQueryChanges(SortConfig(SortBy.FAVORITES_FIRST), FilterConfig(hasText = true)).collect { refreshVersion.value++ }
         }
-        viewModelScope.launch(Dispatchers.IO) {
-            _counts.value = SearchQuickFilterCounts(
-                mediaStoreRepository.getPhotosByIds(photoIntelligenceDao.getIdsWithPhoneNumbers()).size,
-                mediaStoreRepository.getPhotosByIds(photoIntelligenceDao.getIdsWithEmails()).size,
-                mediaStoreRepository.getPhotosByIds(photoIntelligenceDao.getIdsWithFaces()).size
-            )
+        viewModelScope.launch {
+            refreshVersion.collectLatest {
+                try {
+                    _counts.value = withContext(Dispatchers.IO) { SearchQuickFilterCounts(
+                        mediaStoreRepository.getPhotosByIds(photoIntelligenceDao.getIdsWithPhoneNumbers()).size,
+                        mediaStoreRepository.getPhotosByIds(photoIntelligenceDao.getIdsWithEmails()).size,
+                        mediaStoreRepository.getPhotosByIds(photoIntelligenceDao.getIdsWithFaces()).size
+                    ) }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (error: Exception) { _counts.value = SearchQuickFilterCounts() }
+            }
         }
         viewModelScope.launch {
             combine(query, quickFilter, sortConfig, filterConfig, refreshVersion) { text, quick, sort, filter, version ->

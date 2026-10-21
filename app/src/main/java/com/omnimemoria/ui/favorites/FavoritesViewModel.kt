@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -48,7 +49,7 @@ class FavoritesViewModel @Inject constructor(
     init {
         viewModelScope.launch(Dispatchers.IO) {
             combine(favoritesRepository.getAllSortedByDate(), sortConfig, filterConfig,
-                mediaStoreRepository.observeMediaStoreChanges().onStart { emit(Unit) }) { rows, sort, filter, _ -> Triple(rows, sort, filter) }
+                filterConfig.flatMapLatest { mediaStoreRepository.observeMediaQueryChanges(filter = it.copy(isFavorite = null)) }.onStart { emit(Unit) }) { rows, sort, filter, _ -> Triple(rows, sort, filter) }
                 .collectLatest { (rows, sort, filter) ->
                     val photos = mediaStoreRepository.getMatchingPhotos(sort, filter, ids = rows.map { it.id }.toSet())
                     _uiState.value = FavoritesUiState(photos, false)

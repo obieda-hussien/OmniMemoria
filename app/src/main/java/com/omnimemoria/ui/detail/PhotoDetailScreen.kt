@@ -68,6 +68,7 @@ fun PhotoDetailScreen(
 ) {
     BackHandler(onBack = onBack)
 
+    val contextForMessages = LocalContext.current
     val haptic          = LocalHapticFeedback.current
     val photoList       by viewModel.photoList.collectAsState()
     val isFavorite      by viewModel.isFavorite.collectAsState()
@@ -93,6 +94,7 @@ fun PhotoDetailScreen(
                     )
                 }
                 is PhotoDetailUiEvent.NavigateBack -> onBack()
+                is PhotoDetailUiEvent.ShowError -> android.widget.Toast.makeText(contextForMessages, event.message, android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -396,7 +398,7 @@ private fun PhotoPager(
 }
 
 @Composable
-private fun PhotoMetadataCard(photo: MediaPhoto?) {
+internal fun PhotoMetadataCard(photo: MediaPhoto?) {
     val context = LocalContext.current
     val dateText = photo?.effectiveDateMs?.takeIf { it > 0 }?.let {
         SimpleDateFormat("EEE, d MMM yyyy  •  h:mm a", Locale.getDefault()).format(Date(it))
@@ -451,6 +453,7 @@ private fun PhotoMetadataCard(photo: MediaPhoto?) {
             Spacer(Modifier.height(12.dp))
             MetaRow(Icons.Outlined.LocationOn, "Location", locationText)
         }
+        if (photo != null) PhotoAnalysisCard(photo)
     }
 }
 

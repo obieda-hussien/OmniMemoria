@@ -109,6 +109,7 @@ class FolderDetailViewModel @Inject constructor(
                         viewModelScope.launch(Dispatchers.IO) { onConfirmed() }
                     })
                 },
+                onError = { _uiEvents.send(FolderDetailUiEvent.ShowSnackbar(it)) },
                 onDone = {
                     clearSelection()
                     _uiEvents.send(

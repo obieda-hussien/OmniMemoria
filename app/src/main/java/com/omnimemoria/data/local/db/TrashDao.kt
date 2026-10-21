@@ -22,6 +22,9 @@ interface TrashDao {
     @Query("SELECT * FROM trash WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): TrashItem?
 
+    @Query("SELECT id FROM trash")
+    suspend fun getAllIds(): List<Long>
+
     @Query("SELECT * FROM trash")
     suspend fun getAll(): List<TrashItem>
 

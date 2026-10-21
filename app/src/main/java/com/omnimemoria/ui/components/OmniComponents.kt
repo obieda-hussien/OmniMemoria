@@ -74,6 +74,7 @@ fun OmniDetailTopBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -379,7 +380,7 @@ fun OmniSelectionBar(
                 }
                 if (onDelete != null) {
                     IconButton(onClick = onDelete) {
-                        Icon(Icons.Outlined.Delete, null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(22.dp))
+                        Icon(Icons.Outlined.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
                     }
                 }
                 if (onMore != null) {
@@ -547,7 +548,7 @@ fun OmniSettingsGroup(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(20.dp))
-                .background(MaterialTheme.colorScheme.surface)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
         ) {
             Column(content = content)

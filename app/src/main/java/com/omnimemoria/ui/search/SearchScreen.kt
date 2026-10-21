@@ -199,7 +199,7 @@ private fun OmniSearchBar(
             Icon(
                 Icons.Outlined.Search,
                 contentDescription = null,
-                tint               = Color(0xFF8B7FF5),
+                tint               = MaterialTheme.colorScheme.primary,
                 modifier           = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(12.dp))
@@ -231,7 +231,7 @@ private fun OmniSearchBar(
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Normal
                     ),
-                    cursorBrush     = SolidColor(Color(0xFF8B7FF5)),
+                    cursorBrush     = SolidColor(MaterialTheme.colorScheme.primary),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { onQueryChange(query) }),
                     modifier        = Modifier
@@ -257,7 +257,7 @@ private fun OmniSearchBar(
                     Icon(
                         Icons.Outlined.Close,
                         contentDescription = "Clear",
-                        tint               = Color(0xFF8B7FF5),
+                        tint               = MaterialTheme.colorScheme.primary,
                         modifier           = Modifier.size(14.dp)
                     )
                 }
@@ -366,7 +366,7 @@ private fun IdleState(
                         listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f))
                     )
                 )
-                .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.15f), RoundedCornerShape(20.dp))
+                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
                 .padding(16.dp)
         ) {
             Row(verticalAlignment = Alignment.Top) {
@@ -374,13 +374,13 @@ private fun IdleState(
                     modifier = Modifier
                         .size(38.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF8B7FF5).copy(alpha = 0.14f)),
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Outlined.AutoAwesome,
                         null,
-                        tint     = Color(0xFF8B7FF5),
+                        tint     = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -402,8 +402,8 @@ private fun IdleState(
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF8B7FF5).copy(alpha = 0.14f))
-                            .border(1.dp, Color(0xFF8B7FF5).copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
                             .clickable(onClick = onOpenSettings)
                             .padding(horizontal = 12.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -411,7 +411,7 @@ private fun IdleState(
                         Icon(
                             Icons.Outlined.Settings,
                             null,
-                            tint     = Color(0xFF8B7FF5),
+                            tint     = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(Modifier.width(6.dp))
@@ -445,7 +445,7 @@ private fun RecentChip(term: String, onClick: () -> Unit, onDelete: () -> Unit) 
         Icon(
             Icons.Outlined.History,
             null,
-            tint     = Color(0xFF8B7FF5).copy(alpha = 0.6f),
+            tint     = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
             modifier = Modifier.size(13.dp)
         )
         Spacer(Modifier.width(6.dp))
@@ -466,7 +466,7 @@ private fun RecentChip(term: String, onClick: () -> Unit, onDelete: () -> Unit) 
             Icon(
                 Icons.Outlined.Close,
                 "Remove",
-                tint     = Color(0xFF6A6890),
+                tint     = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(10.dp)
             )
         }
@@ -594,7 +594,7 @@ private fun SearchingState() {
                         .size(7.dp)
                         .clip(CircleShape)
                         .background(
-                            Color(0xFF8B7FF5).copy(
+                            MaterialTheme.colorScheme.primary.copy(
                                 alpha = (alpha - i * 0.22f).coerceIn(0.12f, 1f)
                             )
                         )
@@ -652,7 +652,7 @@ private fun ResultsState(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF8B7FF5))
+                        .background(MaterialTheme.colorScheme.primary)
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -665,7 +665,7 @@ private fun ResultsState(
                     "\"$query\"",
                     style      = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color      = Color(0xFF8B7FF5)
+                    color      = MaterialTheme.colorScheme.primary
                 )
             }
         }

@@ -8,6 +8,12 @@ import androidx.room.Query
 
 @Dao
 interface PhotoIntelligenceDao {
+    @Query("SELECT COALESCE(MAX(indexedAt), 0) + COUNT(*) FROM photo_intelligence")
+    fun observeGeneration(): kotlinx.coroutines.flow.Flow<Long>
+
+    @Query("SELECT * FROM photo_intelligence WHERE id = :id")
+    fun observeById(id: Long): kotlinx.coroutines.flow.Flow<PhotoIntelligence?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(item: PhotoIntelligence)
 
@@ -45,13 +51,13 @@ interface PhotoIntelligenceDao {
 
     @Query("SELECT id FROM photo_intelligence WHERE hasFaces = 1")
     suspend fun getIdsWithFaces(): List<Long>
-    @Query("SELECT id FROM photo_intelligence WHERE isIndexed = 1 AND (length(trim(rawText)) > 0) = :present")
+    @Query("SELECT id FROM photo_intelligence WHERE (completedMask & 3) != 0 AND (length(trim(rawText)) > 0) = :present")
     suspend fun getIdsByTextPresence(present: Boolean): List<Long>
 
-    @Query("SELECT id FROM photo_intelligence WHERE isIndexed = 1 AND hasFaces = :present")
+    @Query("SELECT id FROM photo_intelligence WHERE (completedMask & 8) != 0 AND hasFaces = :present")
     suspend fun getIdsByFaces(present: Boolean): List<Long>
 
-    @Query("SELECT id FROM photo_intelligence WHERE isIndexed = 1 AND hasPhoneNumber = :present")
+    @Query("SELECT id FROM photo_intelligence WHERE (completedMask & 3) != 0 AND hasPhoneNumber = :present")
     suspend fun getIdsByPhoneNumber(present: Boolean): List<Long>
 
 }

@@ -34,11 +34,22 @@ object DatabaseModule {
         }
     }
 
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE photo_intelligence ADD COLUMN completedMask INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE photo_intelligence ADD COLUMN sourceModified INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE photo_intelligence ADD COLUMN sourceSize INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE photo_intelligence ADD COLUMN analysisVersion INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE photo_intelligence ADD COLUMN indexError TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE photo_intelligence ADD COLUMN ocrBoxes TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
         return Room.databaseBuilder(context, AppDatabase::class.java, "omnimemoria.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .build()
     }
 

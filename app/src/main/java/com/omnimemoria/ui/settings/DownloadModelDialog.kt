@@ -13,12 +13,13 @@ fun DownloadModelDialog(
     onRequest: (String) -> Unit
 ) {
     val model = OfflineModel.fromId(modelName) ?: return
+    if (model != OfflineModel.TESSERACT_ARABIC) return
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(model.title) },
-        text = { Text("Save a request for this offline model. Model downloads and local processing will be available in a future update. No model files are downloaded in this version; size will be shown when a model is available.") },
+        text = { Text("Download the high accuracy Arabic OCR model (${com.omnimemoria.data.intelligence.ArabicModelStore.SIZE_LABEL}) from the Tesseract project. It improves difficult text and may take longer to analyze. The file is verified before installation; an existing standard model remains usable. Photos stay on your device. Gemini Nano is not needed.") },
         confirmButton = {
-            TextButton(onClick = { onRequest(model.id); onDismiss() }) { Text("Save request") }
+            TextButton(onClick = { onRequest(model.id); onDismiss() }) { Text("Download") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Later") } }
     )

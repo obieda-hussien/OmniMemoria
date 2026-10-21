@@ -9,6 +9,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.await
 import androidx.work.WorkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.TimeUnit
@@ -25,20 +26,48 @@ class WorkManagerScheduler @Inject constructor(
     fun scheduleImmediateIndex(photoIds: List<Long>) {
         // WorkManager Data has a 10 KiB limit. Chain bounded, deduplicated batches.
         photoIds.distinct().filter { it > 0 }.chunked(400).forEach { batch ->
-            val inputData = Data.Builder()
-                .putLongArray(PhotoIndexWorker.WORK_INPUT_PHOTO_IDS, batch.toLongArray())
-                .putString(PhotoIndexWorker.WORK_INPUT_MODE, PhotoIndexWorker.WORK_MODE_IMMEDIATE)
-                .build()
-            val request = OneTimeWorkRequestBuilder<PhotoIndexWorker>()
-                .setInputData(inputData)
-                .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).build())
-                .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
-                .build()
+            val request = immediateRequest(batch)
             WorkManager.getInstance(context).enqueueUniqueWork(
                 UNIQUE_IMMEDIATE_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request
             )
         }
     }
+
+    internal fun immediateRequest(photoIds: List<Long>): androidx.work.OneTimeWorkRequest =
+        OneTimeWorkRequestBuilder<PhotoIndexWorker>()
+            .setInputData(Data.Builder()
+                .putLongArray(PhotoIndexWorker.WORK_INPUT_PHOTO_IDS, photoIds.toLongArray())
+                .putString(PhotoIndexWorker.WORK_INPUT_MODE, PhotoIndexWorker.WORK_MODE_IMMEDIATE)
+                .putBoolean(PhotoIndexWorker.WORK_INPUT_USER_INITIATED, true).build())
+            .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
+            .build()
+
+    internal fun scanRequest(afterId: Long = 0, ids: List<Long>? = null, userInitiated: Boolean = false): androidx.work.OneTimeWorkRequest {
+        val data = Data.Builder().putLong(PhotoIndexWorker.WORK_INPUT_AFTER_ID, afterId)
+            .putBoolean(PhotoIndexWorker.WORK_INPUT_USER_INITIATED, userInitiated)
+        ids?.let { data.putLongArray(PhotoIndexWorker.WORK_INPUT_PHOTO_IDS, it.toLongArray()) }
+        val idle = !userInitiated && ids == null
+        val builder = OneTimeWorkRequestBuilder<PhotoIndexWorker>()
+            .setInputData(data.build())
+            .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(!userInitiated).setRequiresDeviceIdle(idle).build())
+        // WorkManager throws when explicit backoff is combined with device idle.
+        if (!idle) builder.setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+        return builder.build()
+    }
+
+    fun scheduleBackgroundIndex(afterId: Long = 0, ids: List<Long>? = null, append: Boolean = false, userInitiated: Boolean = false): androidx.work.Operation {
+        return WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_SCAN_WORK_NAME,
+            if (afterId == 0L && !append) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.APPEND_OR_REPLACE,
+            scanRequest(afterId, ids, userInitiated))
+    }
+
+    suspend fun startLibraryScan() {
+        // Replace an idle-waiting scan when the user explicitly chooses Scan now.
+        androidx.work.WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_SCAN_WORK_NAME,
+            ExistingWorkPolicy.REPLACE, scanRequest(userInitiated = true)).await()
+    }
+
+    fun cancelLibraryScan() = WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_SCAN_WORK_NAME)
 
     fun schedulePeriodicIndex() {
         val constraints = Constraints.Builder()
@@ -68,6 +97,7 @@ class WorkManagerScheduler @Inject constructor(
 
     fun cancelAllWork() {
         WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_IMMEDIATE_WORK_NAME)
+        WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_SCAN_WORK_NAME)
         cancelPeriodicIndex()
     }
 
@@ -148,6 +178,7 @@ class WorkManagerScheduler @Inject constructor(
     }
 
     companion object {
+        const val UNIQUE_SCAN_WORK_NAME = "omnimemoria_index_scan"
         const val UNIQUE_IMMEDIATE_WORK_NAME = "omnimemoria_index_immediate"
         const val UNIQUE_PERIODIC_WORK_NAME = "omnimemoria_index_periodic"
         internal const val PERIODIC_INDEX_INTERVAL_HOURS = 6L

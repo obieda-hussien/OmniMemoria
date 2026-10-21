@@ -7,7 +7,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 
 enum class AiModelState {
     NONE,
@@ -18,7 +18,8 @@ enum class AiModelState {
 
 @Singleton
 class FeatureFlagManager @Inject constructor(
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    private val models: com.omnimemoria.data.intelligence.ArabicModelStore
 ) {
     val featureStates: Flow<Map<FeatureFlag, Boolean>> = appPreferences.snapshots.map { preferences ->
         val requested = FeatureFlag.entries.associateWith { preferences[flagKey(it)] ?: false }
@@ -34,9 +35,10 @@ class FeatureFlagManager @Inject constructor(
         }
     }
 
-    // Phase 2 has no inference artifacts. Legacy booleans written by the old stub
-    // are never evidence that a model is installed. Phase 4 supplies verified files.
-    fun areAiModelsDownloaded(): Flow<AiModelState> = flowOf(AiModelState.NONE)
+    // Read actual verified files; legacy preferences cannot establish installation.
+    fun areAiModelsDownloaded(): Flow<AiModelState> = appPreferences.snapshots.map {
+        if (models.isInstalled()) AiModelState.TESSERACT_ONLY else AiModelState.NONE
+    }.flowOn(kotlinx.coroutines.Dispatchers.IO).distinctUntilChanged()
 
     private fun flagKey(flag: FeatureFlag): Preferences.Key<Boolean> {
         return when (flag) {

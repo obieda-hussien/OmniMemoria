@@ -13,7 +13,7 @@ import coil3.memory.MemoryCache
 import coil3.request.crossfade
 import com.omnimemoria.data.local.objectbox.MyObjectBox
 import com.omnimemoria.data.worker.WorkManagerScheduler
-import com.omnimemoria.domain.flags.FeaturePolicy
+import com.omnimemoria.domain.intelligence.AnalysisPolicy
 import com.omnimemoria.domain.flags.FeatureFlagManager
 import dagger.hilt.android.HiltAndroidApp
 import io.objectbox.BoxStore
@@ -55,20 +55,23 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
             .components {
                 add(coil3.svg.SvgDecoder.Factory())
                 add(coil3.video.VideoFrameDecoder.Factory())
-                add(coil3.gif.AnimatedImageDecoder.Factory())
+                if (android.os.Build.VERSION.SDK_INT >= 28) add(coil3.gif.AnimatedImageDecoder.Factory())
+                else add(coil3.gif.GifDecoder.Factory())
             }
             // ── Memory cache ────────────────────────────────────────────────────
-            // 25% of available heap — keeps decoded Bitmaps warm while the user
+            // At most 12% of the heap or 32 MiB — keeps decoded Bitmaps warm while the user
             // scrolls. When the process is low on RAM, Android evicts entries
             // automatically via WeakReferences.
             .memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, percent = 0.25)
+                    .maxSizeBytes(minOf(32L * 1024 * 1024,
+                        (context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager)
+                            .memoryClass.toLong() * 1024 * 1024 * 12 / 100))
                     .build()
             }
 
             // ── Disk cache ──────────────────────────────────────────────────────
-            // 256 MB in cacheDir (scoped storage, auto-cleaned by the OS if the
+            // 96 MB in cacheDir (scoped storage, auto-cleaned by the OS if the
             // device runs low on space). This is the main fix: on subsequent launches
             // Coil reads the already-decoded image from disk instead of re-decoding
             // from the MediaStore, dropping thumbnail load time from ~200–400ms to
@@ -79,7 +82,7 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("coil_image_cache").toOkioPath())
-                    .maxSizeBytes(256L * 1024 * 1024)   // 256 MB
+                    .maxSizeBytes(96L * 1024 * 1024)   // 96 MB
                     .build()
             }
 
@@ -105,6 +108,7 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
 
     override fun onCreate() {
         super.onCreate()
+        com.omnimemoria.diagnostics.CrashReport.install(this)
 
         // ObjectBox initialization
         boxStore = MyObjectBox.builder().androidContext(this).build()
@@ -112,12 +116,16 @@ class OmniMemoria : Application(), Configuration.Provider, SingletonImageLoader.
         // Schedule/cancel periodic photo indexing based on active AI flags
         applicationScope.launch {
             try {
+                var previousMask: Int? = null
                 featureFlagManager.featureStates
-                    .map { states -> FeaturePolicy.indexingFlags.any { states[it] == true } }
+                    .map(AnalysisPolicy::required)
                     .distinctUntilChanged()
                     .collectLatest { shouldSchedule ->
-                        if (shouldSchedule) workManagerScheduler.schedulePeriodicIndex()
-                        else                workManagerScheduler.cancelAllWork()
+                        if (shouldSchedule != 0) {
+                            workManagerScheduler.schedulePeriodicIndex()
+                            workManagerScheduler.scheduleBackgroundIndex(append = previousMask != null)
+                        } else workManagerScheduler.cancelAllWork()
+                        previousMask = shouldSchedule
                     }
             } catch (throwable: Throwable) {
                 Log.e("OmniMemoria", "Failed to initialize periodic indexing scheduler", throwable)

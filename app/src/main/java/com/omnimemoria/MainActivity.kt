@@ -70,6 +70,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             OmniMemoriaTheme(darkTheme = darkTheme) {
+                com.omnimemoria.diagnostics.PreviousCrashDialog()
                 var permissionsGranted by remember { mutableStateOf(false) }
 
                 if (permissionsGranted) {
