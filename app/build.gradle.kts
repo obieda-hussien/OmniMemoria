@@ -117,6 +117,9 @@ dependencies {
     implementation("com.google.mlkit:image-labeling:17.0.9")
     implementation("com.google.mlkit:face-detection:16.1.7")
     implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
+    // On-device PaddleOCRv5 Arabic + English detector/recognizer (Apache-2.0).
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.21.1")
+    implementation("com.quickbirdstudios:opencv:4.5.3")
     implementation("androidx.palette:palette-ktx:1.0.0")
     implementation("androidx.exifinterface:exifinterface:1.4.0")
     implementation("com.googlecode.libphonenumber:libphonenumber:9.0.41")
