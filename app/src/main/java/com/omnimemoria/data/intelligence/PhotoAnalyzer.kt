@@ -91,7 +91,7 @@ class PhotoAnalyzer @Inject constructor(
                         if (!OpenCVUtils.init(context)) throw IOException("OpenCV initialization failed")
                         val engine = paddle ?: PaddleOCR.create(
                             context = context,
-                            config = PaddleOCRConfig(recScoreThresh = 0.55f, recBatchSize = 1),
+                            config = PaddleOCRConfig(detLimitSideLen = 960, detLimitType = "max", detMaxSideLimit = 1600, detThresh = 0.3f, detBoxThresh = 0.6f, recScoreThresh = 0.55f, recBatchSize = 1),
                             engineConfig = EngineConfig(numThreads = 2),
                             detModelAssetPath = paddleModels.detector.absolutePath,
                             recModelAssetPath = paddleModels.recognizer.absolutePath,
