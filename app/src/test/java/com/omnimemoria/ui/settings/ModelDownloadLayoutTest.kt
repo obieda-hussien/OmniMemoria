@@ -64,8 +64,8 @@ class ModelDownloadLayoutTest {
     }
     @Test fun darkRtlWithLargeTextDoesNotOverlapStatusAndActions() {
         show(true, LayoutDirection.Rtl, ModelPhase.QUEUED)
-        val title = compose.onNodeWithText("Tesseract Arabic").fetchSemanticsNode().boundsInRoot
-        val status = compose.onNodeWithText("Queued · internet access required").fetchSemanticsNode().boundsInRoot
+        val title = compose.onNodeWithText("Arabic + English OCR (PaddleOCRv5)").fetchSemanticsNode().boundsInRoot
+        val status = compose.onNodeWithText("Queued · Wi-Fi or mobile data required").fetchSemanticsNode().boundsInRoot
         val button = compose.onNodeWithText("Download ~13 MB").fetchSemanticsNode().boundsInRoot
         assertTrue(title.bottom <= status.top)
         assertTrue(status.bottom <= button.top)
@@ -75,13 +75,13 @@ class ModelDownloadLayoutTest {
     @Test fun lightPlannedModelHasNoMisleadingDownloadButton() {
         show(false, LayoutDirection.Ltr, ModelPhase.PLANNED)
         compose.onNodeWithText("Tesseract Arabic").assertIsDisplayed()
-        compose.onNodeWithText("Download 12.6 MB").assertDoesNotExist()
+        compose.onNodeWithText("Download ~13 MB").assertDoesNotExist()
         savePreview("model-light-ltr-planned")
     }
     @Test fun installedStandardModelOffersTheOptionalAccuracyUpgrade() {
         compose.setContent { OmniMemoriaTheme {
             ModelDownloadRow("Tesseract Arabic", Icons.Outlined.Language,
-                ModelStatus(ModelPhase.INSTALLED, "Legacy Arabic model installed", canUpgrade = true), {}, {})
+                ModelStatus(ModelPhase.INSTALLED, "Legacy Arabic model installed · upgrade to the multilingual PaddleOCRv5 model", canUpgrade = true), {}, {})
         } }
         compose.onNodeWithText("Upgrade · ~13 MB").assertIsDisplayed()
         compose.onNodeWithText("Cancel download").assertDoesNotExist()
