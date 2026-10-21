@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.flowOn
 
 enum class AiModelState {
     NONE,
-    TESSERACT_ONLY,
+    ARABIC_OCR_ONLY,
     EMBEDDER_ONLY,
     FULL
 }
@@ -19,7 +19,8 @@ enum class AiModelState {
 @Singleton
 class FeatureFlagManager @Inject constructor(
     private val appPreferences: AppPreferences,
-    private val models: com.omnimemoria.data.intelligence.ArabicModelStore
+    private val models: com.omnimemoria.data.intelligence.ArabicModelStore,
+    private val paddleModels: com.omnimemoria.data.intelligence.PaddleOcrModelStore
 ) {
     val featureStates: Flow<Map<FeatureFlag, Boolean>> = appPreferences.snapshots.map { preferences ->
         val requested = FeatureFlag.entries.associateWith { preferences[flagKey(it)] ?: false }
@@ -37,7 +38,7 @@ class FeatureFlagManager @Inject constructor(
 
     // Read actual verified files; legacy preferences cannot establish installation.
     fun areAiModelsDownloaded(): Flow<AiModelState> = appPreferences.snapshots.map {
-        if (models.isInstalled()) AiModelState.TESSERACT_ONLY else AiModelState.NONE
+        if (paddleModels.isInstalled() || models.isInstalled()) AiModelState.ARABIC_OCR_ONLY else AiModelState.NONE
     }.flowOn(kotlinx.coroutines.Dispatchers.IO).distinctUntilChanged()
 
     private fun flagKey(flag: FeatureFlag): Preferences.Key<Boolean> {
