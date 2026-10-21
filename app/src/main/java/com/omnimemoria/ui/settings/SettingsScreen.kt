@@ -90,8 +90,7 @@ fun SettingsScreen(onBack: () -> Unit = {}, viewModel: SettingsViewModel = hiltV
                         items.forEachIndexed { index, item ->
                             val available = item.flag !in setOf(FeatureFlag.EMBEDDINGS, FeatureFlag.RAG_SEARCH)
                             FeatureToggleRow(item.title, item.icon, available && features[item.flag] == true,
-                                { enabled -> viewModel.setEnabled(item.flag, enabled)
-                                    if (enabled && item.flag == FeatureFlag.ARABIC_OCR) showDownload = true },
+                                { enabled -> viewModel.setEnabled(item.flag, enabled) },
                                 subtitle = item.subtitle, enabled = available, isLast = index == items.lastIndex)
                         }
                     }
