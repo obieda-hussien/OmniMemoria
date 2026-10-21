@@ -93,7 +93,21 @@ class SettingsViewModel @Inject constructor(
     val error = _error.asStateFlow()
 
     fun setEnabled(flag: FeatureFlag, enabled: Boolean) {
-        viewModelScope.launch { safely { featureFlagManager.setEnabled(flag, enabled) } }
+        viewModelScope.launch { safely {
+            featureFlagManager.setEnabled(flag, enabled)
+            // Arabic OCR needs the verified high-accuracy model. Start its download
+            // automatically when the user enables the feature; CONNECTED permits
+            // Wi-Fi or mobile data and the worker reports visible progress.
+            if (enabled && flag == FeatureFlag.ARABIC_OCR && !models.isHighAccuracyInstalled()) {
+                appPreferences.setBoolean(requestKey(OfflineModel.TESSERACT_ARABIC), true)
+                val request = com.omnimemoria.data.worker.ModelDownloadWorker.request()
+                workManager.enqueueUniqueWork(
+                    com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD,
+                    androidx.work.ExistingWorkPolicy.KEEP,
+                    request
+                ).await()
+            }
+        } }
     }
 
     fun requestModel(id: String, requested: Boolean = true) {
