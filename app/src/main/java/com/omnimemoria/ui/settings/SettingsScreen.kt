@@ -66,7 +66,7 @@ fun SettingsScreen(onBack: () -> Unit = {}, viewModel: SettingsViewModel = hiltV
                 OmniSettingsGroup("Photo analysis", Icons.Outlined.AutoAwesome) {
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Runs on your device", style = MaterialTheme.typography.titleMedium)
-                        Text("OCR, image labels and face detection use included local models. Gemini Nano and a Google account are not required. Arabic OCR uses an optional download.",
+                        Text("OCR, image labels and face detection run on your device. Arabic + English recognition uses the optional PaddleOCRv5 download (~13 MB); after installation it works offline. Gemini Nano and a Google account are not required.",
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(indexing, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
                         AnalysisScanActions(scanEnabled, viewModel::scanNow, viewModel::cancelScan)
@@ -190,7 +190,7 @@ private data class AiModelItem(
 
 private val AI_FEATURE_ITEMS = listOf(
     FeatureItem("Text Extraction (OCR)",    FeatureFlag.OCR,            Icons.Outlined.DocumentScanner),
-    FeatureItem("Arabic OCR (Tesseract)",   FeatureFlag.ARABIC_OCR,     Icons.Outlined.Translate,      "On-device Arabic text · optional high accuracy model below"),
+    FeatureItem("Arabic + English OCR",        FeatureFlag.ARABIC_OCR,     Icons.Outlined.Translate,      "PP-OCRv5 mixed-script recognition · optional ~13 MB model below"),
     FeatureItem("Image Classification",     FeatureFlag.ML_LABELS,      Icons.Outlined.Category),
     FeatureItem("Face Detection",           FeatureFlag.FACE_DETECTION,  Icons.Outlined.Face),
     FeatureItem("Embeddings",              FeatureFlag.EMBEDDINGS,      Icons.Outlined.Polyline, "Not available in this version"),
