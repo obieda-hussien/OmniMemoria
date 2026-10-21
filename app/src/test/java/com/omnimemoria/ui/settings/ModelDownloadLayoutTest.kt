@@ -74,7 +74,7 @@ class ModelDownloadLayoutTest {
     }
     @Test fun lightPlannedModelHasNoMisleadingDownloadButton() {
         show(false, LayoutDirection.Ltr, ModelPhase.PLANNED)
-        compose.onNodeWithText("Tesseract Arabic").assertIsDisplayed()
+        compose.onNodeWithText("Arabic + English OCR (PaddleOCRv5)").assertIsDisplayed()
         compose.onNodeWithText("Download ~13 MB").assertDoesNotExist()
         savePreview("model-light-ltr-planned")
     }
