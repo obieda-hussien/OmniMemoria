@@ -58,7 +58,7 @@ class SettingsViewModel @Inject constructor(
             val active = jobs.lastOrNull { it.state == androidx.work.WorkInfo.State.RUNNING }
                 ?: jobs.lastOrNull { !it.state.isFinished } ?: jobs.lastOrNull()
             when (active?.state) {
-                androidx.work.WorkInfo.State.RUNNING -> "Analyzing · ${active.progress.getInt("processed", 0)} completed · ${active.progress.getInt("failed", 0)} need attention"
+                androidx.work.WorkInfo.State.RUNNING -> "Scanning · ${active.progress.getInt("examined", 0)} checked · ${active.progress.getInt("processed", 0)} analyzed · ${active.progress.getInt("skipped", 0)} already up to date · ${active.progress.getInt("failed", 0)} need attention"
                 androidx.work.WorkInfo.State.ENQUEUED -> when {
                     active.constraints.requiresDeviceIdle() -> "Scheduled · waits for idle device and sufficient battery"
                     active.runAttemptCount > 0 -> "Retry scheduled · a photo changed or library access was interrupted"
@@ -69,7 +69,7 @@ class SettingsViewModel @Inject constructor(
                 androidx.work.WorkInfo.State.SUCCEEDED -> when (active.outputData.getString(com.omnimemoria.data.worker.PhotoIndexWorker.OUTPUT_STATUS)) {
                     "disabled" -> "Enable an analysis feature to scan photos"
                     "continuing", "preferences_changed" -> "Continuing with the next batch"
-                    else -> "Scan complete · ${active.outputData.getInt("processed", 0)} analyzed · ${active.outputData.getInt("failed", 0)} need attention in last batch"
+                    else -> "Batch complete · ${active.outputData.getInt("examined", 0)} checked · ${active.outputData.getInt("processed", 0)} analyzed · ${active.outputData.getInt("skipped", 0)} skipped (up to date or excluded) · ${active.outputData.getInt("failed", 0)} need attention"
                 }
                 androidx.work.WorkInfo.State.FAILED -> when (active.outputData.getString(com.omnimemoria.data.worker.PhotoIndexWorker.OUTPUT_STATUS)) {
                     "photo_changed" -> "A photo kept changing during analysis. Finish editing, then scan again."
@@ -93,7 +93,21 @@ class SettingsViewModel @Inject constructor(
     val error = _error.asStateFlow()
 
     fun setEnabled(flag: FeatureFlag, enabled: Boolean) {
-        viewModelScope.launch { safely { featureFlagManager.setEnabled(flag, enabled) } }
+        viewModelScope.launch { safely {
+            featureFlagManager.setEnabled(flag, enabled)
+            // Arabic OCR needs the verified high-accuracy model. Start its download
+            // automatically when the user enables the feature; CONNECTED permits
+            // Wi-Fi or mobile data and the worker reports visible progress.
+            if (enabled && flag == FeatureFlag.ARABIC_OCR && !models.isHighAccuracyInstalled()) {
+                appPreferences.setBoolean(requestKey(OfflineModel.TESSERACT_ARABIC), true)
+                val request = com.omnimemoria.data.worker.ModelDownloadWorker.request()
+                workManager.enqueueUniqueWork(
+                    com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD,
+                    androidx.work.ExistingWorkPolicy.KEEP,
+                    request
+                ).await()
+            }
+        } }
     }
 
     fun requestModel(id: String, requested: Boolean = true) {
