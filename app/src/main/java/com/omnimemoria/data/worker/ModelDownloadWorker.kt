@@ -21,6 +21,7 @@ class ModelDownloadWorker @AssistedInject constructor(
     private val scheduler: WorkManagerScheduler
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        setForeground(WorkForeground.info(applicationContext, 4102, "Downloading Arabic OCR model", "Downloading and verifying the offline model"))
         if (inputData.getString(MODEL_NAME) != MODEL_TESSERACT_ARA)
             return@withContext Result.failure(workDataOf("error" to "Embedding downloads arrive with semantic indexing."))
         val partial = java.io.File(store.file.parentFile, "ara.$id.traineddata.part")
