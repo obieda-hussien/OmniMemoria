@@ -3,8 +3,9 @@ package com.omnimemoria.domain.intelligence
 import com.omnimemoria.domain.flags.FeatureFlag
 
 object AnalysisPolicy {
-    const val VERSION = 2
-    fun version(highAccuracyArabic: Boolean) = if (highAccuracyArabic) 3 else VERSION
+    // Version bump forces previously indexed images through the stronger mixed-script OCR pipeline.
+    const val VERSION = 4
+    fun version(highAccuracyArabic: Boolean) = if (highAccuracyArabic) 5 else VERSION
     const val TEXT = 1
     const val ARABIC = 2
     const val LABELS = 4
