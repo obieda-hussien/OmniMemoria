@@ -21,6 +21,10 @@ import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.googlecode.tesseract.android.TessBaseAPI
+import com.paddle.ocr.EngineConfig
+import com.paddle.ocr.PaddleOCR
+import com.paddle.ocr.PaddleOCRConfig
+import com.paddle.ocr.util.OpenCVUtils
 import com.omnimemoria.data.local.db.PhotoIntelligence
 import com.omnimemoria.domain.intelligence.*
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -36,13 +40,15 @@ import kotlinx.coroutines.tasks.await
 @Singleton
 class PhotoAnalyzer @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val arabicModel: ArabicModelStore
+    private val arabicModel: ArabicModelStore,
+    private val paddleModels: PaddleOcrModelStore
 ) {
     private val mutex = Mutex()
     private var text: TextRecognizer? = null
     private var labels: ImageLabeler? = null
     private var faces: FaceDetector? = null
     private var arabic: TessBaseAPI? = null
+    private var paddle: PaddleOCR? = null
 
     suspend fun analyze(image: IndexImage, old: PhotoIntelligence?, required: Int, arabicReady: Boolean,
         analysisVersion: Int = AnalysisPolicy.VERSION): PhotoIntelligence = withContext(Dispatchers.IO) {
@@ -76,14 +82,67 @@ class PhotoAnalyzer @Inject constructor(
                     ocrLines = ocrLines.filter { it.language == "arabic" } + latin
                     result = result.copy(rawText = OcrText.text(ocrLines), ocrBoxes = OcrRegions.write(bitmap.width, bitmap.height, ocrLines))
                 }
-                stage(AnalysisPolicy.ARABIC, "Arabic OCR") {
-                    if (!arabicReady) throw IOException("Arabic model is not installed")
-                    val engine = arabic ?: TessBaseAPI().also { instance ->
-                        if (!instance.init(arabicModel.root.absolutePath, "ara", TessBaseAPI.OEM_LSTM_ONLY)) { instance.recycle(); throw IOException("Arabic OCR initialization failed") }
-                        arabic = instance
+                stage(AnalysisPolicy.ARABIC, "Arabic and English OCR") {
+                    if (!arabicReady) throw IOException("Arabic OCR model is not installed")
+                    if (paddleModels.isInstalled()) {
+                        // PaddleOCRv5's Arabic recognizer handles Arabic, Latin letters,
+                        // punctuation and digits in one pass instead of forcing every
+                        // detected region through a single-language engine.
+                        if (!OpenCVUtils.init(context)) throw IOException("OpenCV initialization failed")
+                        val engine = paddle ?: PaddleOCR.create(
+                            context = context,
+                            config = PaddleOCRConfig(recScoreThresh = 0.55f, recBatchSize = 1),
+                            engineConfig = EngineConfig(numThreads = 2),
+                            detModelAssetPath = paddleModels.detector.absolutePath,
+                            recModelAssetPath = paddleModels.recognizer.absolutePath,
+                            recConfigAssetPath = paddleModels.recognitionConfig.absolutePath
+                        ).also { paddle = it }
+                        val found = withContext(NonCancellable) { engine.recognize(bitmap) }
+                        val recognized = found.results.take(1000).mapNotNull { item ->
+                            val text = OcrText.normalize(item.text)
+                            val points = item.box.points
+                            if (points.isEmpty() || text.isBlank() || !text.any(Char::isLetterOrDigit)) return@mapNotNull null
+                            val left = (points.minOf { it.x }.coerceIn(0f, bitmap.width.toFloat()) / bitmap.width)
+                            val top = (points.minOf { it.y }.coerceIn(0f, bitmap.height.toFloat()) / bitmap.height)
+                            val right = (points.maxOf { it.x }.coerceIn(0f, bitmap.width.toFloat()) / bitmap.width)
+                            val bottom = (points.maxOf { it.y }.coerceIn(0f, bitmap.height.toFloat()) / bitmap.height)
+                            val confidence = (item.confidence * 100f).coerceIn(0f, 100f)
+                            val script = if (OcrText.arabicLetters(text) >= 2) "arabic" else "latin"
+                            OcrLine(text, left, top, right, bottom, script, confidence).takeIf { it.isValid() && confidence >= 45f }
+                        }
+                        if (recognized.isNotEmpty()) {
+                            // Retain Latin-engine lines only when Paddle did not detect the
+                            // same visual region; this preserves lines missed by either model
+                            // without duplicating one line twice in the searchable text.
+                            val fallback = ocrLines.filter { existing ->
+                                recognized.none { candidate ->
+                                    val smaller = minOf(candidate.area, existing.area).coerceAtLeast(0.001f)
+                                    candidate.overlap(existing) / smaller >= 0.35f
+                                }
+                            }
+                            ocrLines = recognized + fallback
+                        } else if (arabicModel.isInstalled()) {
+                            val legacyEngine = arabic ?: TessBaseAPI().also { instance ->
+                                if (!instance.init(arabicModel.root.absolutePath, "ara", TessBaseAPI.OEM_LSTM_ONLY)) {
+                                    instance.recycle()
+                                    throw IOException("Fallback Arabic OCR initialization failed")
+                                }
+                                arabic = instance
+                            }
+                            ocrLines = ocrLines.filter { it.language != "arabic" } +
+                                ArabicOcr.recognize(legacyEngine, bitmap, ocrLines.filter { it.language != "arabic" })
+                        }
+                    } else {
+                        val engine = arabic ?: TessBaseAPI().also { instance ->
+                            if (!instance.init(arabicModel.root.absolutePath, "ara", TessBaseAPI.OEM_LSTM_ONLY)) {
+                                instance.recycle()
+                                throw IOException("Arabic OCR initialization failed")
+                            }
+                            arabic = instance
+                        }
+                        val arabicLines = ArabicOcr.recognize(engine, bitmap, ocrLines.filter { it.language != "arabic" })
+                        ocrLines = ocrLines.filter { it.language != "arabic" } + arabicLines
                     }
-                    val arabicLines = ArabicOcr.recognize(engine, bitmap, ocrLines.filter { it.language != "arabic" })
-                    ocrLines = ocrLines.filter { it.language != "arabic" } + arabicLines
                     result = result.copy(rawText = OcrText.text(ocrLines), ocrBoxes = OcrRegions.write(bitmap.width, bitmap.height, ocrLines))
                 }
                 stage(AnalysisPolicy.LABELS, "Image classification") {
@@ -118,9 +177,16 @@ class PhotoAnalyzer @Inject constructor(
         }
     }
 
-    suspend fun release() = withContext(NonCancellable + Dispatchers.IO) { mutex.withLock {
-        text?.close(); text = null; labels?.close(); labels = null; faces?.close(); faces = null; arabic?.recycle(); arabic = null
-    } }
+    suspend fun release() = withContext(NonCancellable + Dispatchers.IO) {
+        val paddleToRelease = mutex.withLock {
+            text?.close(); text = null
+            labels?.close(); labels = null
+            faces?.close(); faces = null
+            arabic?.recycle(); arabic = null
+            paddle.also { paddle = null }
+        }
+        paddleToRelease?.release()
+    }
 
     private fun decode(image: IndexImage): Bitmap {
         val resolver = context.contentResolver
