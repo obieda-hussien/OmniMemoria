@@ -38,4 +38,26 @@ class OcrTextTest {
     @Test fun presentationFormsAndBidiMarkersAreNormalized() {
         assertEquals("لا 2026", OcrText.normalize("\u200fﻻ 2026\u200e"))
     }
+
+    @Test fun repeatedWordsAtDifferentLocationsAreNotCollapsed() {
+        val lines = listOf(
+            OcrLine("OK", 0.1f, 0.1f, 0.25f, 0.14f),
+            OcrLine("OK", 0.1f, 0.3f, 0.25f, 0.34f))
+        assertEquals("OK\\n\\nOK", OcrText.text(lines))
+    }
+
+    @Test fun mixedEnglishAndArabicOnOneVisualRowUseRightToLeftRegionOrder() {
+        val lines = listOf(
+            OcrLine("Hello", 0.1f, 0.1f, 0.3f, 0.15f),
+            OcrLine("مرحبا", 0.55f, 0.101f, 0.9f, 0.151f, "arabic", 90f))
+        assertEquals("مرحبا Hello", OcrText.text(lines))
+    }
+
+    @Test fun closeRowsStayTogetherWhileLargeVerticalGapsMarkParagraphs() {
+        val lines = listOf(
+            OcrLine("First line", 0.1f, 0.1f, 0.8f, 0.14f),
+            OcrLine("Second line", 0.1f, 0.155f, 0.8f, 0.195f),
+            OcrLine("Next paragraph", 0.1f, 0.35f, 0.8f, 0.39f))
+        assertEquals("First line\\nSecond line\\n\\nNext paragraph", OcrText.text(lines))
+    }
 }
