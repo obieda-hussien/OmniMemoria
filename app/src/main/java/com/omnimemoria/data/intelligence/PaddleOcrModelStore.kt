@@ -37,7 +37,7 @@ class PaddleOcrModelStore @Inject constructor(@ApplicationContext context: Conte
         ),
         Asset(
             recognitionConfig,
-            "https://huggingface.co/PaddlePaddle/arabic_PP-OCRv5_mobile_rec/raw/68285d6/inference.yml",
+            "https://huggingface.co/PaddlePaddle/arabic_PP-OCRv5_mobile_rec_onnx/resolve/14aaedc/inference.yml",
             null, 64L * 1024, 4,
             listOf("model_name: arabic_PP-OCRv5_mobile_rec", "PostProcess:", "character_dict:", "ء", "ا")
         )
