@@ -121,17 +121,8 @@ class PhotoAnalyzer @Inject constructor(
                                 }
                             }
                             ocrLines = recognized + fallback
-                        } else if (arabicModel.isInstalled()) {
-                            val legacyEngine = arabic ?: TessBaseAPI().also { instance ->
-                                if (!instance.init(arabicModel.root.absolutePath, "ara", TessBaseAPI.OEM_LSTM_ONLY)) {
-                                    instance.recycle()
-                                    throw IOException("Fallback Arabic OCR initialization failed")
-                                }
-                                arabic = instance
-                            }
-                            ocrLines = ocrLines.filter { it.language != "arabic" } +
-                                ArabicOcr.recognize(legacyEngine, bitmap, ocrLines.filter { it.language != "arabic" })
-                        }
+                        } // If Paddle found no text, trust the detector's empty result. Do not
+                          // run a second Arabic engine over icons/noise and reintroduce hallucinations.
                     } else {
                         val engine = arabic ?: TessBaseAPI().also { instance ->
                             if (!instance.init(arabicModel.root.absolutePath, "ara", TessBaseAPI.OEM_LSTM_ONLY)) {
