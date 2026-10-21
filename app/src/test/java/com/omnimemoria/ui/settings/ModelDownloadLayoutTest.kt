@@ -44,8 +44,8 @@ class ModelDownloadLayoutTest {
                 LocalDensity provides Density(1f, fontScale = 1.5f)) {
                 OmniMemoriaTheme(darkTheme = dark) {
                     Box(Modifier.width(320.dp)) {
-                        ModelDownloadRow("Tesseract Arabic", Icons.Outlined.Language,
-                            ModelStatus(phase, "Queued · internet access required"), {}, {})
+                        ModelDownloadRow("Arabic + English OCR (PaddleOCRv5)", Icons.Outlined.Language,
+                            ModelStatus(phase, "Queued · Wi-Fi or mobile data required"), {}, {})
                     }
                 }
             }
@@ -66,7 +66,7 @@ class ModelDownloadLayoutTest {
         show(true, LayoutDirection.Rtl, ModelPhase.QUEUED)
         val title = compose.onNodeWithText("Tesseract Arabic").fetchSemanticsNode().boundsInRoot
         val status = compose.onNodeWithText("Queued · internet access required").fetchSemanticsNode().boundsInRoot
-        val button = compose.onNodeWithText("Download 12.6 MB").fetchSemanticsNode().boundsInRoot
+        val button = compose.onNodeWithText("Download ~13 MB").fetchSemanticsNode().boundsInRoot
         assertTrue(title.bottom <= status.top)
         assertTrue(status.bottom <= button.top)
         compose.onNodeWithText("Cancel download").assertIsDisplayed()
@@ -81,9 +81,9 @@ class ModelDownloadLayoutTest {
     @Test fun installedStandardModelOffersTheOptionalAccuracyUpgrade() {
         compose.setContent { OmniMemoriaTheme {
             ModelDownloadRow("Tesseract Arabic", Icons.Outlined.Language,
-                ModelStatus(ModelPhase.INSTALLED, "Standard model installed", canUpgrade = true), {}, {})
+                ModelStatus(ModelPhase.INSTALLED, "Legacy Arabic model installed", canUpgrade = true), {}, {})
         } }
-        compose.onNodeWithText("Upgrade · 12.6 MB").assertIsDisplayed()
+        compose.onNodeWithText("Upgrade · ~13 MB").assertIsDisplayed()
         compose.onNodeWithText("Cancel download").assertDoesNotExist()
     }
 }
