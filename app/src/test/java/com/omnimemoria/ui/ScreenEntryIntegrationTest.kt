@@ -82,8 +82,8 @@ class ScreenEntryIntegrationTest {
 
     @Test fun confirmingArabicSetupEnqueuesTheActualModelRequest() {
         show { SettingsScreen() }
-        compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Arabic OCR (Tesseract)"))
-        compose.onNodeWithText("Arabic OCR (Tesseract)").performClick()
+        compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Arabic + English OCR"))
+        compose.onNodeWithText("Arabic + English OCR").performClick()
         compose.onNodeWithText("Download").assertIsDisplayed().performClick()
         compose.waitUntil(5_000) {
             androidx.work.WorkManager.getInstance(compose.activity).getWorkInfosForUniqueWork(
