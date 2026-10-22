@@ -130,7 +130,7 @@ object OcrText {
             }
             previousRow = row
         }
-        return rendered.mapIndexed { index, (value, paragraphBefore) ->
+            (if (index == 0) "" else if (paragraphBefore) "\n\n" else "\n") + value
             (if (index == 0) "" else if (paragraphBefore) "\\n\\n" else "\\n") + value
         }.joinToString("").take(100_000)
     }
