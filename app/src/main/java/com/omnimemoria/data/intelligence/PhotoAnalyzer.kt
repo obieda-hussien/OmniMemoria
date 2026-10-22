@@ -96,35 +96,74 @@ class PhotoAnalyzer @Inject constructor(
                 stage(AnalysisPolicy.ARABIC, "Arabic and English OCR") {
                     if (!arabicReady) throw IOException("Arabic OCR model is not installed")
                     if (paddleModels.isInstalled()) {
-                        if (!OpenCVUtils.init(context)) throw IOException("OpenCV initialization failed")
-                        val engine = paddle ?: PaddleOCR.create(
-                            context = context,
-                            config = PaddleOCRConfig(
-                                detLimitSideLen = 1280,
-                                detLimitType = "max",
-                                detMaxSideLimit = 1600,
-                                detThresh = 0.25f,
-                                detBoxThresh = 0.50f,
-                                recScoreThresh = 0.35f,
-                                recBatchSize = 1
-                            ),
-                            engineConfig = EngineConfig(numThreads = 2),
-                            detModelAssetPath = paddleModels.detector.absolutePath,
-                            recModelAssetPath = paddleModels.recognizer.absolutePath,
-                            recConfigAssetPath = paddleModels.recognitionConfig.absolutePath
-                        ).also { paddle = it }
-                        val recognized = recognizePaddle(engine, bitmap)
-                        if (recognized.isNotEmpty()) {
-                            // Preserve Arabic and exact QR payloads; suppress only visually
-                            // overlapping non-Arabic OCR lines to avoid double-rendering.
-                            val fallback = ocrLines.filter { existing ->
-                                existing.language == "arabic" || existing.language == "code" ||
-                                    recognized.none { candidate ->
-                                        val smaller = minOf(candidate.area, existing.area).coerceAtLeast(0.001f)
-                                        candidate.overlap(existing) / smaller >= 0.35f
-                                    }
+                        var paddleFailure: Throwable? = null
+                        val recognized = try {
+                            if (!OpenCVUtils.init(context)) throw IOException("OpenCV initialization failed")
+                            val engine = paddle ?: PaddleOCR.create(
+                                context = context,
+                                config = PaddleOCRConfig(
+                                    detLimitSideLen = 1280,
+                                    detLimitType = "max",
+                                    detMaxSideLimit = 1600,
+                                    detThresh = 0.25f,
+                                    detBoxThresh = 0.50f,
+                                    recScoreThresh = 0.35f,
+                                    recBatchSize = 1
+                                ),
+                                engineConfig = EngineConfig(numThreads = 2),
+                                detModelAssetPath = paddleModels.detector.absolutePath,
+                                recModelAssetPath = paddleModels.recognizer.absolutePath,
+                                recConfigAssetPath = paddleModels.recognitionConfig.absolutePath
+                            ).also { paddle = it }
+                            recognizePaddle(engine, bitmap)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            paddleFailure = error
+                            Log.e("OmniPhotoAnalyzer", "PaddleOCR inference failed for photo ${image.id}", error)
+                            emptyList()
+                        } catch (error: UnsatisfiedLinkError) {
+                            paddleFailure = error
+                            Log.e("OmniPhotoAnalyzer", "PaddleOCR native runtime failed for photo ${image.id}", error)
+                            emptyList()
+                        }
+
+                        // Mobile ONNX model or native runtime can fail on device-specific builds.
+                        // Fall back to the installed Tesseract Arabic model instead of turning the
+                        // whole analysis into a dead end; keep ML Kit and QR results in either case.
+                        val hasArabic = recognized.any { OcrText.arabicLetters(it.text) >= 2 }
+                        val legacy = if ((paddleFailure != null || !hasArabic) && arabicModel.isInstalled()) {
+                            val legacyEngine = arabic ?: TessBaseAPI().also { instance ->
+                                if (!instance.init(arabicModel.root.absolutePath, "ara", TessBaseAPI.OEM_LSTM_ONLY)) {
+                                    instance.recycle()
+                                    throw IOException("PaddleOCR failed and Arabic fallback initialization failed", paddleFailure)
+                                }
+                                arabic = instance
                             }
-                            ocrLines = recognized + fallback
+                            ArabicOcr.recognize(
+                                legacyEngine,
+                                bitmap,
+                                ocrLines.filter { it.language != "arabic" && it.language != "code" }
+                            )
+                        } else emptyList()
+
+                        if (paddleFailure != null && legacy.isEmpty()) {
+                            throw IOException(
+                                "PaddleOCR failed and no working Arabic fallback produced text",
+                                paddleFailure
+                            )
+                        }
+
+                        if (recognized.isNotEmpty() || legacy.isNotEmpty()) {
+                            val preferred = recognized + legacy
+                            val fallback = ocrLines.filter { existing ->
+                                existing.language == "code" || preferred.none { candidate ->
+                                    val smaller = minOf(candidate.area, existing.area).coerceAtLeast(0.001f)
+                                    candidate.overlap(existing) / smaller >= 0.35f &&
+                                        candidate.confidence >= existing.confidence
+                                }
+                            }
+                            ocrLines = preferred + fallback
                         }
                     } else {
                         val engine = arabic ?: TessBaseAPI().also { instance ->
@@ -134,8 +173,13 @@ class PhotoAnalyzer @Inject constructor(
                             }
                             arabic = instance
                         }
-                        val arabicLines = ArabicOcr.recognize(engine, bitmap, ocrLines.filter { it.language != "arabic" })
-                        ocrLines = ocrLines.filter { it.language != "arabic" } + arabicLines
+                        val arabicLines = ArabicOcr.recognize(
+                            engine,
+                            bitmap,
+                            ocrLines.filter { it.language != "arabic" && it.language != "code" }
+                        )
+                        ocrLines = ocrLines.filter { it.language != "arabic" } + arabicLines +
+                            ocrLines.filter { it.language == "code" }
                     }
                     result = result.copy(rawText = OcrText.text(ocrLines), ocrBoxes = OcrRegions.write(bitmap.width, bitmap.height, ocrLines))
                 }
@@ -224,7 +268,9 @@ class PhotoAnalyzer @Inject constructor(
                         (region.left + box.left).toFloat() / bitmap.width,
                         (region.top + box.top).toFloat() / bitmap.height,
                         (region.left + box.right).toFloat() / bitmap.width,
-                        (region.top + box.bottom).toFloat() / bitmap.height
+                        (region.top + box.bottom).toFloat() / bitmap.height,
+                        "latin",
+                        80f
                     )
                     if (mapped.isValid()) lines += mapped
                 }
