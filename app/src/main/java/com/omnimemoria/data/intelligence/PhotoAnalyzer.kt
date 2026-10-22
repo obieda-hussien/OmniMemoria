@@ -136,7 +136,7 @@ class PhotoAnalyzer @Inject constructor(
                             val legacyEngine = arabic ?: TessBaseAPI().also { instance ->
                                 if (!instance.init(arabicModel.root.absolutePath, "ara", TessBaseAPI.OEM_LSTM_ONLY)) {
                                     instance.recycle()
-                                    throw IOException("PaddleOCR failed and Arabic fallback initialization failed", paddleFailure)
+                                    throw IOException("PaddleOCR failed and Arabic fallback initialization failed", paddleFailure ?: IOException("Unknown PaddleOCR failure"))
                                 }
                                 arabic = instance
                             }
