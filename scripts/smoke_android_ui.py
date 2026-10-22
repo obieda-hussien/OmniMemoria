@@ -188,19 +188,26 @@ try:
         back(); wait('All Media')
 
     tap('Settings')
-    scroll_to('Arabic OCR (Tesseract)')
-    tap('Arabic OCR (Tesseract)')
-    tap('Later')
-    scroll_to('Image Classification'); tap('Image Classification')
-    scroll_to('Face Detection'); tap('Face Detection')
-    scroll_to('Download 12.6 MB')
-    tap('Download 12.6 MB'); capture('model-dialog')
-    tap('Download'); capture('model-requested')
-    wait('High accuracy model installed', seconds=150, partial=True)
+    scroll_to('Arabic + English OCR')
+    if not feature_checked('Arabic + English OCR'):
+        tap('Arabic + English OCR')
+        wait_checked('Arabic + English OCR')
+    scroll_to('Image Classification'); 
+    if not feature_checked('Image Classification'):
+        tap('Image Classification')
+        wait_checked('Image Classification')
+    scroll_to('Face Detection')
+    if not feature_checked('Face Detection'):
+        tap('Face Detection')
+        wait_checked('Face Detection')
+    # Arabic enablement queues the verified model automatically; there is no
+    # separate confirmation dialog. Wait on the visible status, not stale button text.
+    scroll_to('Arabic + English OCR (PaddleOCRv5)')
+    wait('PaddleOCRv5 Arabic + English model installed', seconds=240, partial=True)
     capture('model-installed')
     # Reopening Settings starts at the scan controls, preserving installed flags.
     home(); tap('Settings'); tap('Scan library now')
-    completed, _ = wait('Scan complete', seconds=180, partial=True)
+    completed, _ = wait('Batch complete', seconds=240, partial=True)
     assert '0 need attention' in completed.get('text', ''), 'An analysis stage failed'
     capture('scan-complete')
     tap('Back'); tap('Gallery')
