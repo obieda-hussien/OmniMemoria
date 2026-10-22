@@ -60,4 +60,15 @@ class OcrTextTest {
             OcrLine("Next paragraph", 0.1f, 0.35f, 0.8f, 0.39f))
         assertEquals("First line\nSecond line\n\nNext paragraph", OcrText.text(lines))
     }
+    @Test fun splitUrlFragmentsAreJoinedAcrossAdjacentRows() {
+        val lines = listOf(
+            OcrLine("https://play.google.com/store/apps/details?id=app", 0.1f, 0.10f, 0.9f, 0.15f),
+            OcrLine(".Source.getcontact&hl=en", 0.1f, 0.16f, 0.9f, 0.20f)
+        )
+        assertEquals(
+            "https://play.google.com/store/apps/details?id=app.Source.getcontact&hl=en",
+            OcrText.text(lines)
+        )
+    }
+
 }
