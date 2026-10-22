@@ -108,7 +108,7 @@ object OcrText {
         if (!isUrlStart(previous) || next.isEmpty() || isUrlStart(next) ||
             next.any(Char::isWhitespace) || arabicLetters(next) > 0) return false
         if (next.any { !it.isLetterOrDigit() && it !in "./?&=#%_-~:+@!$'()[],;" }) return false
-        return next.first() in "./?&=#%_-" || previous.trimEnd().lastOrNull() in "/?&=#%-_."
+        return next.first() in "./?&=#_-" || previous.trimEnd().lastOrNull()?.let { it in "/?&=#%-_." } == true
     }
 
     /** Rejoin URL fragments split across adjacent OCR lines without flattening normal paragraphs. */
