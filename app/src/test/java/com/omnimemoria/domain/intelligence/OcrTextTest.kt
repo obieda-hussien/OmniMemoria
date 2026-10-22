@@ -20,6 +20,11 @@ class OcrTextTest {
             OcrLine("ChatGPT", 0f, 0.2f, 0.4f, 0.3f))
         assertEquals("البورصة المصرية 2026\nChatGPT", OcrText.text(lines))
     }
+    @Test fun preservesReadableArabicAtTheConfiguredPaddleConfidenceFloor() {
+        val line = OcrLine("الرابط الكامل", 0.05f, 0.1f, 0.95f, 0.16f, "arabic", 38f)
+        assertEquals("الرابط الكامل", OcrText.text(listOf(line)))
+    }
+
     @Test fun failedArabicRetryCannotReplaceSuccessfulLatin() {
         val lines = listOf(OcrLine("Hello", 0f, 0f, 1f, 0.1f),
             OcrLine("كلام خاطئ", 0f, 0f, 1f, 0.1f, "arabic", 10f))
