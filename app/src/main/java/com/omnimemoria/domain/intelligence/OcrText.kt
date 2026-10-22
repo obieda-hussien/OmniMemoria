@@ -59,7 +59,7 @@ object OcrText {
         val valid = input.asSequence().filter(OcrLine::isValid).map { it.copy(text = normalize(it.text)) }
             .filter { it.text.isNotBlank() && it.text.any(Char::isLetterOrDigit) }.take(1500).toList()
         val arabic = mutableListOf<OcrLine>()
-        valid.filter { it.language == "arabic" && it.confidence >= 45f &&
+        valid.filter { it.language == "arabic" && it.confidence >= 35f &&
             (arabicLetters(it.text) >= 2 || (it.confidence >= 78f && it.text.count(Char::isDigit) >= 3 &&
                 it.text.all { ch -> ch.isDigit() || ch.isWhitespace() || ch in "+-.,/():٪%$€£٫٬" })) }
             .sortedByDescending { it.confidence }.forEach { line ->
