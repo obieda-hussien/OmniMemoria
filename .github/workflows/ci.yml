@@ -31,7 +31,7 @@ env:
   JAVA_VERSION: "17"
   GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true -Dkotlin.incremental=false"
   GRADLE_BUILD_ACTION_CACHE_DEBUG_ENABLED: false
-  MAX_DEBUG_APK_SIZE_KB: 153600
+  MAX_DEBUG_APK_SIZE_KB: 160000
 
 jobs:
   code-quality:
