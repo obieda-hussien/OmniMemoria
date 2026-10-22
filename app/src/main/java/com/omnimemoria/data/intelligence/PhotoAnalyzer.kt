@@ -5,9 +5,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.Rect
 import android.graphics.ImageDecoder
 import android.graphics.ColorSpace
 import android.os.Build
+import android.util.Log
 import androidx.exifinterface.media.ExifInterface
 import androidx.palette.graphics.Palette
 import com.google.mlkit.vision.common.InputImage
@@ -67,62 +69,63 @@ class PhotoAnalyzer @Inject constructor(
                     if (required and bit == 0 || mask and bit != 0) return
                     try { action(); mask = mask or bit }
                     catch (cancelled: CancellationException) { throw cancelled }
-                    catch (error: Exception) { errors += "$name failed; retry from photo details or Settings." }
-                    catch (error: UnsatisfiedLinkError) { errors += "$name is unavailable on this device." }
+                    catch (error: Exception) {
+                        Log.e("OmniPhotoAnalyzer", "$name failed for photo ${image.id}", error)
+                        val detail = error.message?.takeIf { !it.contains("/data/") && !it.contains("https://") }?.take(90)
+                        errors += if (detail.isNullOrBlank()) "$name failed (${error.javaClass.simpleName}); retry from photo details or Settings."
+                            else "$name failed (${error.javaClass.simpleName}: $detail); retry from photo details or Settings."
+                    }
+                    catch (error: UnsatisfiedLinkError) {
+                        Log.e("OmniPhotoAnalyzer", "$name native engine is unavailable for photo ${image.id}", error)
+                        errors += "$name is unavailable on this device (native library loading failed)."
+                    }
                 }
                 stage(AnalysisPolicy.TEXT, "Text recognition") {
                     val engine = text ?: TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).also { text = it }
-                    // ML Kit tasks do not own cancellation. Await completion before
-                    // releasing their bitmap or closing the native client.
-                    val found = withContext(NonCancellable) { engine.process(input).await() }
-                    val latin = found.textBlocks.flatMap { it.lines }.take(1000).mapNotNull { line -> line.boundingBox?.let { box ->
-                        OcrLine(line.text, box.left.toFloat()/bitmap.width, box.top.toFloat()/bitmap.height,
-                            box.right.toFloat()/bitmap.width, box.bottom.toFloat()/bitmap.height)
-                    } }
-                    ocrLines = ocrLines.filter { it.language == "arabic" } + latin
+                    // Scan the original and overlapping native-resolution crops. This rescues
+                    // small print and long URLs that disappear when a 4K page is downscaled.
+                    val latin = recognizeLatin(engine, bitmap)
+                    ocrLines = ocrLines.filter { it.language == "arabic" || it.language == "code" } + latin
+                    result = result.copy(rawText = OcrText.text(ocrLines), ocrBoxes = OcrRegions.write(bitmap.width, bitmap.height, ocrLines))
+                }
+                stage(AnalysisPolicy.CODES, "QR and barcode recognition") {
+                    val codes = PhotoCodeScanner.scan(bitmap)
+                    ocrLines = (ocrLines.filterNot { it.language == "code" } + codes).take(1500)
                     result = result.copy(rawText = OcrText.text(ocrLines), ocrBoxes = OcrRegions.write(bitmap.width, bitmap.height, ocrLines))
                 }
                 stage(AnalysisPolicy.ARABIC, "Arabic and English OCR") {
                     if (!arabicReady) throw IOException("Arabic OCR model is not installed")
                     if (paddleModels.isInstalled()) {
-                        // PaddleOCRv5's Arabic recognizer handles Arabic, Latin letters,
-                        // punctuation and digits in one pass instead of forcing every
-                        // detected region through a single-language engine.
                         if (!OpenCVUtils.init(context)) throw IOException("OpenCV initialization failed")
                         val engine = paddle ?: PaddleOCR.create(
                             context = context,
-                            config = PaddleOCRConfig(detLimitSideLen = 960, detLimitType = "max", detMaxSideLimit = 1600, detThresh = 0.3f, detBoxThresh = 0.6f, recScoreThresh = 0.55f, recBatchSize = 1),
+                            config = PaddleOCRConfig(
+                                detLimitSideLen = 1280,
+                                detLimitType = "max",
+                                detMaxSideLimit = 1600,
+                                detThresh = 0.25f,
+                                detBoxThresh = 0.50f,
+                                recScoreThresh = 0.35f,
+                                recBatchSize = 1
+                            ),
                             engineConfig = EngineConfig(numThreads = 2),
                             detModelAssetPath = paddleModels.detector.absolutePath,
                             recModelAssetPath = paddleModels.recognizer.absolutePath,
                             recConfigAssetPath = paddleModels.recognitionConfig.absolutePath
                         ).also { paddle = it }
-                        val found = withContext(NonCancellable) { engine.recognize(bitmap) }
-                        val recognized = found.results.take(1000).mapNotNull { item ->
-                            val text = OcrText.normalize(item.text)
-                            val points = item.box.points
-                            if (points.isEmpty() || text.isBlank() || !text.any(Char::isLetterOrDigit)) return@mapNotNull null
-                            val left = (points.minOf { it.x }.coerceIn(0f, bitmap.width.toFloat()) / bitmap.width)
-                            val top = (points.minOf { it.y }.coerceIn(0f, bitmap.height.toFloat()) / bitmap.height)
-                            val right = (points.maxOf { it.x }.coerceIn(0f, bitmap.width.toFloat()) / bitmap.width)
-                            val bottom = (points.maxOf { it.y }.coerceIn(0f, bitmap.height.toFloat()) / bitmap.height)
-                            val confidence = (item.confidence * 100f).coerceIn(0f, 100f)
-                            val script = if (OcrText.arabicLetters(text) >= 2) "arabic" else "latin"
-                            OcrLine(text, left, top, right, bottom, script, confidence).takeIf { it.isValid() && confidence >= 45f }
-                        }
+                        val recognized = recognizePaddle(engine, bitmap)
                         if (recognized.isNotEmpty()) {
-                            // Retain Latin-engine lines only when Paddle did not detect the
-                            // same visual region; this preserves lines missed by either model
-                            // without duplicating one line twice in the searchable text.
+                            // Preserve Arabic and exact QR payloads; suppress only visually
+                            // overlapping non-Arabic OCR lines to avoid double-rendering.
                             val fallback = ocrLines.filter { existing ->
-                                recognized.none { candidate ->
-                                    val smaller = minOf(candidate.area, existing.area).coerceAtLeast(0.001f)
-                                    candidate.overlap(existing) / smaller >= 0.35f
-                                }
+                                existing.language == "arabic" || existing.language == "code" ||
+                                    recognized.none { candidate ->
+                                        val smaller = minOf(candidate.area, existing.area).coerceAtLeast(0.001f)
+                                        candidate.overlap(existing) / smaller >= 0.35f
+                                    }
                             }
                             ocrLines = recognized + fallback
-                        } // If Paddle found no text, trust the detector's empty result. Do not
-                          // run a second Arabic engine over icons/noise and reintroduce hallucinations.
+                        }
                     } else {
                         val engine = arabic ?: TessBaseAPI().also { instance ->
                             if (!instance.init(arabicModel.root.absolutePath, "ara", TessBaseAPI.OEM_LSTM_ONLY)) {
@@ -177,6 +180,90 @@ class PhotoAnalyzer @Inject constructor(
             paddle.also { paddle = null }
         }
         paddleToRelease?.release()
+    }
+
+    /**
+     * Keeps 4K pages sharp for detectors that resize their input. A full-page pass is kept
+     * for ML Kit's reading context; every large image is additionally scanned in overlapping
+     * 1280px crops so small print is not shrunk to a handful of pixels.
+     */
+    private fun recognitionRegions(bitmap: Bitmap): List<Rect> {
+        val width = bitmap.width
+        val height = bitmap.height
+        val full = Rect(0, 0, width, height)
+        if (maxOf(width, height) <= 1800 && width.toLong() * height <= 2_500_000L) return listOf(full)
+        val edge = 1280
+        fun starts(length: Int): List<Int> {
+            if (length <= edge) return listOf(0)
+            val count = kotlin.math.ceil(length.toDouble() / edge).toInt()
+            val last = length - edge
+            return (0 until count).map { index ->
+                if (count == 1) 0 else (last.toDouble() * index / (count - 1)).roundToInt()
+            }.distinct()
+        }
+        val tiles = starts(width).flatMap { left ->
+            starts(height).map { top -> Rect(left, top, minOf(width, left + edge), minOf(height, top + edge)) }
+        }
+        return listOf(full) + tiles
+    }
+
+    private suspend fun recognizeLatin(engine: TextRecognizer, bitmap: Bitmap): List<OcrLine> {
+        val lines = mutableListOf<OcrLine>()
+        for (region in recognitionRegions(bitmap)) {
+            currentCoroutineContext().ensureActive()
+            val tile = if (region.left == 0 && region.top == 0 &&
+                region.width() == bitmap.width && region.height() == bitmap.height
+            ) bitmap else Bitmap.createBitmap(bitmap, region.left, region.top, region.width(), region.height())
+            try {
+                val input = InputImage.fromBitmap(tile, 0)
+                val found = withContext(NonCancellable) { engine.process(input).await() }
+                found.textBlocks.flatMap { it.lines }.take(1000).forEach { line ->
+                    val box = line.boundingBox ?: return@forEach
+                    val mapped = OcrLine(
+                        OcrText.normalize(line.text),
+                        (region.left + box.left).toFloat() / bitmap.width,
+                        (region.top + box.top).toFloat() / bitmap.height,
+                        (region.left + box.right).toFloat() / bitmap.width,
+                        (region.top + box.bottom).toFloat() / bitmap.height
+                    )
+                    if (mapped.isValid()) lines += mapped
+                }
+            } finally {
+                if (tile !== bitmap) tile.recycle()
+            }
+        }
+        return OcrText.resolve(lines)
+    }
+
+    private suspend fun recognizePaddle(engine: PaddleOCR, bitmap: Bitmap): List<OcrLine> {
+        val allRegions = recognitionRegions(bitmap)
+        val regions = if (allRegions.size > 1) allRegions.drop(1) else allRegions
+        val lines = mutableListOf<OcrLine>()
+        for (region in regions) {
+            currentCoroutineContext().ensureActive()
+            val tile = if (region.left == 0 && region.top == 0 &&
+                region.width() == bitmap.width && region.height() == bitmap.height
+            ) bitmap else Bitmap.createBitmap(bitmap, region.left, region.top, region.width(), region.height())
+            try {
+                val found = withContext(NonCancellable) { engine.recognize(tile) }
+                found.results.take(1000).forEach { item ->
+                    val text = OcrText.normalize(item.text)
+                    val points = item.box.points
+                    if (points.isEmpty() || text.isBlank() || !text.any(Char::isLetterOrDigit)) return@forEach
+                    val left = (region.left + points.minOf { it.x }.coerceIn(0f, tile.width.toFloat())) / bitmap.width
+                    val top = (region.top + points.minOf { it.y }.coerceIn(0f, tile.height.toFloat())) / bitmap.height
+                    val right = (region.left + points.maxOf { it.x }.coerceIn(0f, tile.width.toFloat())) / bitmap.width
+                    val bottom = (region.top + points.maxOf { it.y }.coerceIn(0f, tile.height.toFloat())) / bitmap.height
+                    val confidence = (item.confidence * 100f).coerceIn(0f, 100f)
+                    val script = if (OcrText.arabicLetters(text) >= 2) "arabic" else "latin"
+                    val line = OcrLine(text, left, top, right, bottom, script, confidence)
+                    if (line.isValid() && confidence >= 30f) lines += line
+                }
+            } finally {
+                if (tile !== bitmap) tile.recycle()
+            }
+        }
+        return OcrText.resolve(lines)
     }
 
     private fun decode(image: IndexImage): Bitmap {
