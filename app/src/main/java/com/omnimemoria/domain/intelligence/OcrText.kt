@@ -65,9 +65,9 @@ object OcrText {
             .sortedByDescending { it.confidence }.forEach { line ->
                 if (arabic.none { it.area > 0f && line.overlap(it) / min(line.area, it.area) >= 0.65f }) arabic += line
             }
-        val latin = valid.filter { it.language != "arabic" && arabic.none { ar ->
+        val latin = valid.filter { it.language != "arabic" && (it.language == "code" || arabic.none { ar ->
             arabicLetters(ar.text) >= 2 && ar.area > 0f && it.overlap(ar) / it.area >= 0.45f
-        } }
+        }) }
 
         // Legitimate repeated words at different positions must survive. Collapse only
         // duplicate text detections occupying essentially the same image region.
@@ -76,27 +76,65 @@ object OcrText {
             normalized + "@" + (line.left * 100).toInt() + ":" + (line.top * 100).toInt() +
                 ":" + (line.right * 100).toInt() + ":" + (line.bottom * 100).toInt()
         }.take(1000)
-        return rowsInReadingOrder(unique).flatMap { it.lines }
+        return rowsInReadingOrder(deduplicateOverlappingText(unique)).flatMap { it.lines }
     }
 
-    /** Reconstruct reading order and mark clear paragraph breaks from the geometric gaps. */
+    private fun deduplicateOverlappingText(input: List<OcrLine>): List<OcrLine> {
+        val kept = mutableListOf<OcrLine>()
+        input.sortedByDescending { it.confidence }.forEach { candidate ->
+            fun comparable(value: String): String {
+                val normalized = normalize(value).removePrefix("QR code:").trim()
+                return normalized.replace(Regex("\\s+"), " ").lowercase()
+            }
+            val candidateText = comparable(candidate.text)
+            val duplicate = kept.indexOfFirst { existing ->
+                if (candidateText != comparable(existing.text)) return@indexOfFirst false
+                val smaller = min(candidate.area, existing.area).coerceAtLeast(0.001f)
+                candidate.overlap(existing) / smaller >= 0.45f
+            }
+            if (duplicate < 0) kept += candidate
+            else if (candidate.language == "code" && kept[duplicate].language != "code") kept[duplicate] = candidate
+        }
+        return kept
+    }
+
+    private fun isUrlStart(value: String) =
+        Regex("(?i)^\\s*(?:https?://|www\\.)").containsMatchIn(value)
+
+    private fun compactUrl(value: String) = value.replace(Regex("\\s+"), "")
+
+    private fun canJoinUrl(previous: String, current: String): Boolean {
+        val next = current.trim()
+        if (!isUrlStart(previous) || next.isEmpty() || isUrlStart(next) ||
+            next.any(Char::isWhitespace) || arabicLetters(next) > 0) return false
+        if (next.any { !it.isLetterOrDigit() && it !in "./?&=#%_-~:+@!$'()[],;" }) return false
+        return next.first() in "./?&=#%_-" || previous.trimEnd().lastOrNull() in "/?&=#%-_."
+    }
+
+    /** Rejoin URL fragments split across adjacent OCR lines without flattening normal paragraphs. */
     fun text(lines: List<OcrLine>): String {
         val rows = rowsInReadingOrder(resolve(lines))
         if (rows.isEmpty()) return ""
-        val out = StringBuilder()
-        var previous: TextRow? = null
+        val rendered = mutableListOf<Pair<String, Boolean>>()
+        var previousRow: TextRow? = null
         rows.forEach { row ->
-            val prior = previous
-            if (prior != null) {
-                val gap = row.top - prior.bottom
-                val paragraphGap = gap > max(0.018f, max(row.height, prior.height) * 1.25f)
-                out.append(if (paragraphGap) "\n\n" else "\n")
+            val prior = previousRow
+            val paragraphGap = prior != null &&
+                row.top - prior.bottom > max(0.018f, max(row.height, prior.height) * 1.25f)
+            val current = row.lines.joinToString(" ") { it.text.trim() }
+            val previousText = rendered.lastOrNull()?.first
+            if (previousText != null && prior != null && !paragraphGap && canJoinUrl(previousText, current)) {
+                rendered[rendered.lastIndex] = compactUrl(previousText) + compactUrl(current) to rendered.last().second
+            } else {
+                rendered += current to paragraphGap
             }
-            out.append(row.lines.joinToString(" ") { it.text.trim() })
-            previous = row
+            previousRow = row
         }
-        return out.toString().take(100_000)
+        return rendered.mapIndexed { index, (value, paragraphBefore) ->
+            (if (index == 0) "" else if (paragraphBefore) "\\n\\n" else "\\n") + value
+        }.joinToString("").take(100_000)
     }
+
     fun merge(existing: String, incoming: String): String =
         (existing.lineSequence() + incoming.lineSequence())
             .map(::normalize).filter(String::isNotBlank).distinct()
