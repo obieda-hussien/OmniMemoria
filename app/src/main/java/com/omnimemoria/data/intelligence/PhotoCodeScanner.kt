@@ -5,7 +5,7 @@ import android.graphics.Rect
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
-import com.google.zxing.GenericMultipleBarcodeReader
+import com.google.zxing.multi.GenericMultipleBarcodeReader
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.NotFoundException
 import com.google.zxing.RGBLuminanceSource
