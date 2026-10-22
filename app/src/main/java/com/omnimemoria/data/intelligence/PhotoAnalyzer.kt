@@ -31,6 +31,7 @@ import com.omnimemoria.data.local.db.PhotoIntelligence
 import com.omnimemoria.domain.intelligence.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.IOException
+import kotlin.math.roundToInt
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.*
