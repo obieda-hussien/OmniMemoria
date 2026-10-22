@@ -123,6 +123,8 @@ dependencies {
     implementation("androidx.palette:palette-ktx:1.0.0")
     implementation("androidx.exifinterface:exifinterface:1.4.0")
     implementation("com.googlecode.libphonenumber:libphonenumber:9.0.41")
+    // Offline QR/barcode decoding; no network or Google Play Services required.
+    implementation("com.google.zxing:core:3.5.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
