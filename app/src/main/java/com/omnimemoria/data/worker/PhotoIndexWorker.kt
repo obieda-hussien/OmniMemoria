@@ -65,7 +65,7 @@ class PhotoIndexWorker @AssistedInject constructor(
                     if (old != null && !AnalysisPolicy.needsAnalysis(old.completedMask, available, old.analysisVersion,
                             old.sourceModified, image.modified, old.sourceSize, image.size, analysisVersion)) { skipped++; continue }
                     try {
-                        val result = analyzer.analyze(image, old, required, arabicReady, analysisVersion)
+                        val result = analyzer.analyze(image, old, available, arabicReady, analysisVersion)
                         val fresh = source.page(image.id - 1, listOf(image.id)).firstOrNull()
                         if (AnalysisPolicy.required(flags.featureStates.first()) != required) {
                             scheduler.scheduleBackgroundIndex(0, ids, append = true, userInitiated = userInitiated)
