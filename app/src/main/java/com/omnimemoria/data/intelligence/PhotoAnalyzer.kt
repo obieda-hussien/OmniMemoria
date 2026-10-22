@@ -150,7 +150,7 @@ class PhotoAnalyzer @Inject constructor(
                         if (paddleFailure != null && legacy.isEmpty()) {
                             throw IOException(
                                 "PaddleOCR failed and no working Arabic fallback produced text",
-                                paddleFailure
+                                paddleFailure ?: IOException("Unknown PaddleOCR failure")
                             )
                         }
 
