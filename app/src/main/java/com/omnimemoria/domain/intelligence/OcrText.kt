@@ -108,7 +108,7 @@ object OcrText {
         if (!isUrlStart(previous) || next.isEmpty() || isUrlStart(next) ||
             next.any(Char::isWhitespace) || arabicLetters(next) > 0) return false
         if (next.any { !it.isLetterOrDigit() && it !in "./?&=#%_-~:+@!$'()[],;" }) return false
-        return next.first() in "./?&=#_-" || previous.trimEnd().lastOrNull()?.let { it in "/?&=#%-_." } == true
+        return next.first() in "./?&=#%_-" || previous.trimEnd().lastOrNull()?.let { it in "/?&=#%-_." } == true
     }
 
     /** Rejoin URL fragments split across adjacent OCR lines without flattening normal paragraphs. */
@@ -130,8 +130,8 @@ object OcrText {
             }
             previousRow = row
         }
+        return rendered.mapIndexed { index, (value, paragraphBefore) ->
             (if (index == 0) "" else if (paragraphBefore) "\n\n" else "\n") + value
-            (if (index == 0) "" else if (paragraphBefore) "\\n\\n" else "\\n") + value
         }.joinToString("").take(100_000)
     }
 
