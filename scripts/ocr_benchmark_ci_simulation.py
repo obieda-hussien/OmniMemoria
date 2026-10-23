@@ -79,16 +79,22 @@ def synthetic_records() -> list[dict[str, Any]]:
     return records
 
 
+def simulated_wall_clock_ms(rows: list[dict[str, Any]]) -> float:
+    """Deterministic two-worker scheduling simulation; not measured execution time."""
+    workers = [0.0] * WORKER_COUNT
+    for row in sorted(rows, key=lambda item: float(item["total_ms"]), reverse=True):
+        slot = min(range(WORKER_COUNT), key=lambda index: workers[index])
+        workers[slot] += float(row["total_ms"])
+    return max(workers)
+
+
 def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
     summaries = []
     for engine in ENGINES:
         rows = [row for row in records if row["engine"] == engine]
         if len(rows) != IMAGE_COUNT:
             raise AssertionError(f"{engine}: expected {IMAGE_COUNT} records, got {len(rows)}")
-        elapsed_ms = sum(float(row["total_ms"]) for row in rows)
-        # CI contract uses a conservative serial-equivalent schedule duration, not a
-        # prediction of native worker overlap. Real device runner must use wall-clock time.
-        serial_equivalent_seconds = elapsed_ms / WORKER_COUNT / 1000.0
+        wall_clock_ms = simulated_wall_clock_ms(rows)
         times = [float(row["total_ms"]) for row in rows]
         summaries.append({
             "engine": engine,
@@ -98,9 +104,8 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
             "synthetic_p90_ms": round(percentile(times, 0.90), 3),
             "synthetic_p95_ms": round(percentile(times, 0.95), 3),
             "synthetic_mean_ms": round(mean(times), 3),
-            "synthetic_serial_equivalent_images_per_second": round(
-                IMAGE_COUNT / serial_equivalent_seconds, 6
-            ),
+            "synthetic_simulated_wall_clock_ms": round(wall_clock_ms, 3),
+            "synthetic_images_per_second": round(IMAGE_COUNT / (wall_clock_ms / 1000.0), 6),
             "measured_device_wall_clock_ms": None,
             "measured_peak_pss_kb": None,
             "measured_thermal_status": None,
