@@ -2,42 +2,46 @@
 import unittest
 
 from ocr_benchmark_ci_simulation import (
-    CATEGORIES,
-    ENGINES,
-    IMAGE_COUNT,
-    SIMULATION_LABEL,
-    WORKER_COUNT,
-    summarize,
-    synthetic_records,
+    CATEGORIES, ENGINES, IMAGE_COUNT, LABEL, PROFILES, WORKERS,
+    image_manifest, simulate_engine,
 )
 
 
-class OcrBenchmarkSimulationTest(unittest.TestCase):
-    def test_requested_configuration_and_record_count(self):
-        records = synthetic_records()
-        self.assertEqual(IMAGE_COUNT * len(ENGINES), len(records))
-        for engine in ENGINES:
-            rows = [row for row in records if row["engine"] == engine]
-            self.assertEqual(60, len(rows))
-            self.assertEqual({WORKER_COUNT}, {row["worker_count"] for row in rows})
-            self.assertEqual({SIMULATION_LABEL}, {row["record_kind"] for row in rows})
-            self.assertEqual(set(CATEGORIES), {row["category"] for row in rows})
+class OcrBenchmarkScenarioTest(unittest.TestCase):
+    def test_manifest_has_sixty_balanced_images_near_12mp(self):
+        images = image_manifest(20261023)
+        self.assertEqual(IMAGE_COUNT, len(images))
+        self.assertEqual(CATEGORIES,
+                         {key: sum(1 for row in images if row["category"] == key) for key in CATEGORIES})
+        self.assertTrue(all(10.0 <= row["megapixels"] <= 13.0 for row in images))
+        self.assertEqual(len({row["image_id"] for row in images}), IMAGE_COUNT)
 
-    def test_summary_never_claims_device_measurements(self):
-        report = summarize(synthetic_records())
-        self.assertFalse(report["metrics_are_real_device_measurements"])
-        self.assertIsNone(report["device"])
-        for engine in report["summaries"]:
-            self.assertIsNone(engine["measured_device_wall_clock_ms"])
-            self.assertIsNone(engine["measured_peak_pss_kb"])
-            self.assertIsNone(engine["measured_thermal_status"])
-            self.assertIsNone(engine["accuracy_metrics"])
-            self.assertIn("no OCR engine was run", engine["note"])
+    def test_two_worker_multi_round_schedule_and_synthetic_metrics(self):
+        images = image_manifest(42)
+        for index, name in enumerate(ENGINES):
+            rows, summary = simulate_engine(PROFILES[name], images, 42 + index, 3, WORKERS)
+            self.assertEqual(IMAGE_COUNT * 3, len(rows))
+            self.assertEqual({LABEL}, {row["record_kind"] for row in rows})
+            self.assertEqual({WORKERS}, {row["worker_count"] for row in rows})
+            self.assertEqual(3, summary["rounds"])
+            self.assertGreater(summary["simulated_images_per_second_median"], 0)
+            self.assertGreaterEqual(summary["simulated_p95_latency_ms"], summary["simulated_p50_latency_ms"])
+            self.assertGreater(summary["simulated_peak_pss_mib_max"], 0)
+            self.assertIn("Scenario output", summary["note"])
 
-    def test_percentiles_are_monotonic(self):
-        for row in summarize(synthetic_records())["summaries"]:
-            self.assertLessEqual(row["synthetic_p50_ms"], row["synthetic_p90_ms"])
-            self.assertLessEqual(row["synthetic_p90_ms"], row["synthetic_p95_ms"])
+    def test_repeatable_seed(self):
+        images = image_manifest(123)
+        a, sa = simulate_engine(PROFILES[ENGINES[0]], images, 123, 3, WORKERS)
+        b, sb = simulate_engine(PROFILES[ENGINES[0]], images, 123, 3, WORKERS)
+        self.assertEqual(a, b)
+        self.assertEqual(sa, sb)
+
+    def test_profile_assumptions_are_explicit(self):
+        for profile in PROFILES.values():
+            self.assertGreater(profile.ocr_ms["document"], 0)
+            self.assertGreater(profile.base_pss_mib, 0)
+            self.assertGreaterEqual(profile.region_recall, 0)
+            self.assertLessEqual(profile.region_recall, 1)
 
 
 if __name__ == "__main__":
