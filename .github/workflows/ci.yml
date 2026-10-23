@@ -538,11 +538,33 @@ jobs:
           path: device-smoke/
           retention-days: 14
 
+  ocr-benchmark-ci-simulation:
+    name: OCR Benchmark CI Simulation (synthetic only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Run benchmark contract tests
+        run: python3 -m unittest discover -s scripts -p 'test_ocr_benchmark_ci_simulation.py' -v
+      - name: Generate explicitly synthetic report
+        run: python3 scripts/ocr_benchmark_ci_simulation.py --output-dir benchmark-ci-results
+      - name: Upload simulation report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ocr-benchmark-ci-simulation-${{ github.run_number }}
+          path: benchmark-ci-results/
+          if-no-files-found: error
+          retention-days: 14
+
   pipeline-summary:
     name: Pipeline Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [ code-quality, test, security-scan, android-debug, android-release, android-device-smoke ]
+    needs: [ code-quality, test, security-scan, android-debug, android-release, android-device-smoke, ocr-benchmark-ci-simulation ]
 
     steps:
       - name: Write job summary
@@ -558,4 +580,5 @@ jobs:
             echo "| Android Debug | ${{ needs.android-debug.result }} |"
             echo "| Android Release | ${{ needs.android-release.result }} |"
             echo "| Optimized APK on Android 11 | ${{ needs.android-device-smoke.result }} |"
+            echo "| OCR benchmark CI simulation (synthetic only) | ${{ needs.ocr-benchmark-ci-simulation.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"
