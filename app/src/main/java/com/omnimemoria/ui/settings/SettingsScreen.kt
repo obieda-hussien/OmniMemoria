@@ -66,7 +66,7 @@ fun SettingsScreen(onBack: () -> Unit = {}, viewModel: SettingsViewModel = hiltV
                 OmniSettingsGroup("Photo analysis", Icons.Outlined.AutoAwesome) {
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Runs on your device", style = MaterialTheme.typography.titleMedium)
-                        Text("OCR, image labels and face detection use included local models. Gemini Nano and a Google account are not required. Arabic OCR uses an optional download.",
+                        Text("OCR, image labels and face detection run on your device. Arabic + English recognition uses the optional PaddleOCRv5 download (~13 MB); after installation it works offline. Gemini Nano and a Google account are not required.",
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(indexing, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
                         AnalysisScanActions(scanEnabled, viewModel::scanNow, viewModel::cancelScan)
@@ -90,8 +90,7 @@ fun SettingsScreen(onBack: () -> Unit = {}, viewModel: SettingsViewModel = hiltV
                         items.forEachIndexed { index, item ->
                             val available = item.flag !in setOf(FeatureFlag.EMBEDDINGS, FeatureFlag.RAG_SEARCH)
                             FeatureToggleRow(item.title, item.icon, available && features[item.flag] == true,
-                                { enabled -> viewModel.setEnabled(item.flag, enabled)
-                                    if (enabled && item.flag == FeatureFlag.ARABIC_OCR) showDownload = true },
+                                { enabled -> viewModel.setEnabled(item.flag, enabled) },
                                 subtitle = item.subtitle, enabled = available, isLast = index == items.lastIndex)
                         }
                     }
@@ -163,9 +162,9 @@ internal fun ModelDownloadRow(title: String, icon: ImageVector, status: ModelSta
             if (status.canUpgrade || status.phase !in setOf(ModelPhase.INSTALLED, ModelPhase.PLANNED)) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = onDownload) { Text(when {
-                        status.canUpgrade -> "Upgrade · ${com.omnimemoria.data.intelligence.ArabicModelStore.SIZE_LABEL}"
+                        status.canUpgrade -> "Upgrade · ${com.omnimemoria.data.intelligence.PaddleOcrModelStore.SIZE_LABEL}"
                         status.phase in setOf(ModelPhase.FAILED, ModelPhase.RETRYING) -> "Retry now"
-                        else -> "Download ${com.omnimemoria.data.intelligence.ArabicModelStore.SIZE_LABEL}"
+                        else -> "Download ${com.omnimemoria.data.intelligence.PaddleOcrModelStore.SIZE_LABEL}"
                     }) }
                     if (status.phase in setOf(ModelPhase.DOWNLOADING, ModelPhase.QUEUED, ModelPhase.RETRYING)) TextButton(onClick = onCancel) { Text("Cancel download") }
                 }
@@ -190,7 +189,7 @@ private data class AiModelItem(
 
 private val AI_FEATURE_ITEMS = listOf(
     FeatureItem("Text Extraction (OCR)",    FeatureFlag.OCR,            Icons.Outlined.DocumentScanner),
-    FeatureItem("Arabic OCR (Tesseract)",   FeatureFlag.ARABIC_OCR,     Icons.Outlined.Translate,      "On-device Arabic text · optional high accuracy model below"),
+    FeatureItem("Arabic + English OCR",        FeatureFlag.ARABIC_OCR,     Icons.Outlined.Translate,      "PP-OCRv5 mixed-script recognition · optional ~13 MB model below"),
     FeatureItem("Image Classification",     FeatureFlag.ML_LABELS,      Icons.Outlined.Category),
     FeatureItem("Face Detection",           FeatureFlag.FACE_DETECTION,  Icons.Outlined.Face),
     FeatureItem("Embeddings",              FeatureFlag.EMBEDDINGS,      Icons.Outlined.Polyline, "Not available in this version"),
@@ -213,7 +212,7 @@ private val COMPRESSION_ITEMS = listOf(
 )
 
 private val AI_MODEL_ITEMS = listOf(
-    AiModelItem("Tesseract Arabic", ModelDownloadWorker.MODEL_TESSERACT_ARA,    Icons.Outlined.Language),
+    AiModelItem("Arabic + English OCR (PaddleOCRv5)", ModelDownloadWorker.MODEL_TESSERACT_ARA,    Icons.Outlined.Language),
     AiModelItem("EmbeddingGemma",  ModelDownloadWorker.MODEL_MEDIAPIPE_EMBEDDER, Icons.Outlined.Psychology)
 )
 

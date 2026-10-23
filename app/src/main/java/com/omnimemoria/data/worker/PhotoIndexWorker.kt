@@ -25,10 +25,11 @@ class PhotoIndexWorker @AssistedInject constructor(
     private val source: IndexImageSource,
     private val analyzer: PhotoAnalyzer,
     private val models: ArabicModelStore,
+    private val paddleModels: PaddleOcrModelStore,
     private val scheduler: WorkManagerScheduler
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        var examined = 0; var processed = 0; var failed = 0
+        var examined = 0; var processed = 0; var failed = 0; var skipped = 0
         var after = inputData.getLong(WORK_INPUT_AFTER_ID, 0)
         val userInitiated = inputData.getBoolean(WORK_INPUT_USER_INITIATED, false)
         val ids = inputData.getLongArray(WORK_INPUT_PHOTO_IDS)?.toList()
@@ -36,8 +37,11 @@ class PhotoIndexWorker @AssistedInject constructor(
         val dao = database.photoIntelligenceDao()
         val trash = database.trashDao()
         try {
-            val arabicReady = models.isInstalled()
-            val highAccuracyArabic = arabicReady && models.isHighAccuracyInstalled()
+            if (userInitiated) setForeground(WorkForeground.info(applicationContext, 4101, "Scanning photo library", "Analyzing photos on this device"))
+            val paddleReady = paddleModels.isInstalled()
+            val legacyArabicReady = models.isInstalled()
+            val arabicReady = paddleReady || legacyArabicReady
+            val highAccuracyArabic = paddleReady || models.isHighAccuracyInstalled()
             while (examined < 80 && SystemClock.elapsedRealtime() - started < 45_000) {
                 currentCoroutineContext().ensureActive()
                 val required = AnalysisPolicy.required(flags.featureStates.first())
@@ -45,7 +49,7 @@ class PhotoIndexWorker @AssistedInject constructor(
                 val available = if (arabicReady) required else required and AnalysisPolicy.ARABIC.inv()
                 val analysisVersion = AnalysisPolicy.version(highAccuracyArabic && required and AnalysisPolicy.ARABIC != 0)
                 val page = source.page(after, ids)
-                if (page.isEmpty()) return@withContext Result.success(workDataOf(OUTPUT_STATUS to "complete", "processed" to processed, "failed" to failed))
+                if (page.isEmpty()) return@withContext Result.success(workDataOf(OUTPUT_STATUS to "complete", "processed" to processed, "failed" to failed, "skipped" to skipped, "examined" to examined))
                 val corrupted = database.corruptedMediaDao().getAllIds().toHashSet()
                 for (image in page) {
                     currentCoroutineContext().ensureActive()
@@ -57,11 +61,11 @@ class PhotoIndexWorker @AssistedInject constructor(
                         return@withContext Result.success(workDataOf(OUTPUT_STATUS to "preferences_changed"))
                     }
                     val old = dao.getById(image.id)
-                    if (image.id in corrupted || old?.isVaultItem == true || trash.getById(image.id) != null) continue
+                    if (image.id in corrupted || old?.isVaultItem == true || trash.getById(image.id) != null) { skipped++; continue }
                     if (old != null && !AnalysisPolicy.needsAnalysis(old.completedMask, available, old.analysisVersion,
-                            old.sourceModified, image.modified, old.sourceSize, image.size, analysisVersion)) continue
+                            old.sourceModified, image.modified, old.sourceSize, image.size, analysisVersion)) { skipped++; continue }
                     try {
-                        val result = analyzer.analyze(image, old, required, arabicReady, analysisVersion)
+                        val result = analyzer.analyze(image, old, available, arabicReady, analysisVersion)
                         val fresh = source.page(image.id - 1, listOf(image.id)).firstOrNull()
                         if (AnalysisPolicy.required(flags.featureStates.first()) != required) {
                             scheduler.scheduleBackgroundIndex(0, ids, append = true, userInitiated = userInitiated)
@@ -93,14 +97,14 @@ class PhotoIndexWorker @AssistedInject constructor(
                             }
                         }
                     }
-                    if (examined % 10 == 0) setProgress(workDataOf("processed" to processed, "failed" to failed, "examined" to examined))
+                    if (examined % 10 == 0) setProgress(workDataOf("processed" to processed, "failed" to failed, "skipped" to skipped, "examined" to examined))
                     yield()
                     if (examined >= 80 || SystemClock.elapsedRealtime() - started >= 45_000) break
                 }
             }
             currentCoroutineContext().ensureActive()
             scheduler.scheduleBackgroundIndex(after, ids, userInitiated = userInitiated)
-            Result.success(workDataOf(OUTPUT_STATUS to "continuing", "processed" to processed, "failed" to failed))
+            Result.success(workDataOf(OUTPUT_STATUS to "continuing", "processed" to processed, "failed" to failed, "skipped" to skipped, "examined" to examined))
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: SecurityException) { Result.failure(workDataOf(OUTPUT_STATUS to "storage_permission_required")) }
         catch (error: Exception) {

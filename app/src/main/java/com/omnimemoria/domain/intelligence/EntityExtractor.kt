@@ -8,7 +8,7 @@ data class DetectedAmount(val value: String, val currency: String)
 object EntityExtractor {
     private val phoneUtil by lazy { PhoneNumberUtil.getInstance() }
     private val email = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
-    private val url = Regex("""https?://[^\s<>"]+""", RegexOption.IGNORE_CASE)
+    private val url = Regex("""(?i)(?:https?://|www\.)[^\s<>"]+""")
     fun normalizeDigits(text: String) = text.map { c ->
         when (c) { in '٠'..'٩' -> '0' + (c - '٠'); in '۰'..'۹' -> '0' + (c - '۰'); else -> c }
     }.joinToString("")
@@ -61,5 +61,8 @@ object EntityExtractor {
         runCatching { DetectedAmount(BigDecimal(value).toPlainString(), code) }.getOrNull()
     }.distinct().take(20).toList()
     fun emails(text: String) = email.findAll(text).map { it.value }.distinct().take(20).toList()
-    fun urls(text: String) = url.findAll(text).map { it.value.trimEnd('.', ',', ')', '،') }.distinct().take(20).toList()
+    fun urls(text: String) = url.findAll(text).map { match ->
+        val candidate = match.value.trimEnd('.', ',', ')', '،', '؛', ';', ':')
+        if (candidate.startsWith("www.", ignoreCase = true)) "https://$candidate" else candidate
+    }.distinct().take(20).toList()
 }

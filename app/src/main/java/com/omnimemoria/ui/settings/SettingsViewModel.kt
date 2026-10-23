@@ -26,6 +26,7 @@ class SettingsViewModel @Inject constructor(
     private val featureFlagManager: FeatureFlagManager,
     private val appPreferences: AppPreferences,
     private val models: com.omnimemoria.data.intelligence.ArabicModelStore,
+    private val paddleModels: com.omnimemoria.data.intelligence.PaddleOcrModelStore,
     private val scheduler: WorkManagerScheduler,
     @ApplicationContext context: Context
 ) : ViewModel() {
@@ -42,13 +43,13 @@ class SettingsViewModel @Inject constructor(
         val job = jobs.firstOrNull { it.state == androidx.work.WorkInfo.State.RUNNING }
             ?: jobs.firstOrNull { !it.state.isFinished } ?: jobs.lastOrNull()
         val status = when {
-            job?.state == androidx.work.WorkInfo.State.RUNNING -> ModelStatus(ModelPhase.DOWNLOADING, "Downloading Arabic OCR", job.progress.getInt("percent", 0))
+            job?.state == androidx.work.WorkInfo.State.RUNNING -> ModelStatus(ModelPhase.DOWNLOADING, "Downloading Arabic + English OCR model", job.progress.getInt("percent", 0))
             job?.state == androidx.work.WorkInfo.State.ENQUEUED && job.runAttemptCount > 0 -> ModelStatus(ModelPhase.RETRYING, "Download interrupted · retry scheduled. Tap Retry now to start again.")
-            job?.state == androidx.work.WorkInfo.State.ENQUEUED -> ModelStatus(ModelPhase.QUEUED, "Queued · internet access required")
+            job?.state == androidx.work.WorkInfo.State.ENQUEUED -> ModelStatus(ModelPhase.QUEUED, "Queued · Wi-Fi or mobile data required")
+            paddleModels.isInstalled() -> ModelStatus(ModelPhase.INSTALLED, "PaddleOCRv5 Arabic + English model installed · checksums verified")
             job?.state == androidx.work.WorkInfo.State.FAILED -> ModelStatus(ModelPhase.FAILED, job.outputData.getString("error") ?: "Download failed. Please retry.")
-            models.isHighAccuracyInstalled() -> ModelStatus(ModelPhase.INSTALLED, "High accuracy model installed · file verified")
-            models.isInstalled() -> ModelStatus(ModelPhase.INSTALLED, "Standard model installed · optional high accuracy upgrade", canUpgrade = true)
-            else -> ModelStatus(ModelPhase.NOT_INSTALLED, "Optional · ${com.omnimemoria.data.intelligence.ArabicModelStore.SIZE_LABEL} download")
+            models.isInstalled() -> ModelStatus(ModelPhase.INSTALLED, "Legacy Arabic model installed · upgrade to the multilingual PaddleOCRv5 model", canUpgrade = true)
+            else -> ModelStatus(ModelPhase.NOT_INSTALLED, "Optional · ${com.omnimemoria.data.intelligence.PaddleOcrModelStore.SIZE_LABEL} download · works offline after installation")
         }
         mapOf(OfflineModel.TESSERACT_ARABIC.id to status, OfflineModel.EMBEDDING_GEMMA.id to ModelStatus(ModelPhase.PLANNED, "Not included in this version. No Gemini Nano is required for photo analysis."))
     }.flowOn(kotlinx.coroutines.Dispatchers.IO).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
@@ -58,7 +59,7 @@ class SettingsViewModel @Inject constructor(
             val active = jobs.lastOrNull { it.state == androidx.work.WorkInfo.State.RUNNING }
                 ?: jobs.lastOrNull { !it.state.isFinished } ?: jobs.lastOrNull()
             when (active?.state) {
-                androidx.work.WorkInfo.State.RUNNING -> "Analyzing · ${active.progress.getInt("processed", 0)} completed · ${active.progress.getInt("failed", 0)} need attention"
+                androidx.work.WorkInfo.State.RUNNING -> "Scanning · ${active.progress.getInt("examined", 0)} checked · ${active.progress.getInt("processed", 0)} analyzed · ${active.progress.getInt("skipped", 0)} already up to date · ${active.progress.getInt("failed", 0)} need attention"
                 androidx.work.WorkInfo.State.ENQUEUED -> when {
                     active.constraints.requiresDeviceIdle() -> "Scheduled · waits for idle device and sufficient battery"
                     active.runAttemptCount > 0 -> "Retry scheduled · a photo changed or library access was interrupted"
@@ -69,7 +70,7 @@ class SettingsViewModel @Inject constructor(
                 androidx.work.WorkInfo.State.SUCCEEDED -> when (active.outputData.getString(com.omnimemoria.data.worker.PhotoIndexWorker.OUTPUT_STATUS)) {
                     "disabled" -> "Enable an analysis feature to scan photos"
                     "continuing", "preferences_changed" -> "Continuing with the next batch"
-                    else -> "Scan complete · ${active.outputData.getInt("processed", 0)} analyzed · ${active.outputData.getInt("failed", 0)} need attention in last batch"
+                    else -> "Batch complete · ${active.outputData.getInt("examined", 0)} checked · ${active.outputData.getInt("processed", 0)} analyzed · ${active.outputData.getInt("skipped", 0)} skipped (up to date or excluded) · ${active.outputData.getInt("failed", 0)} need attention"
                 }
                 androidx.work.WorkInfo.State.FAILED -> when (active.outputData.getString(com.omnimemoria.data.worker.PhotoIndexWorker.OUTPUT_STATUS)) {
                     "photo_changed" -> "A photo kept changing during analysis. Finish editing, then scan again."
@@ -93,7 +94,21 @@ class SettingsViewModel @Inject constructor(
     val error = _error.asStateFlow()
 
     fun setEnabled(flag: FeatureFlag, enabled: Boolean) {
-        viewModelScope.launch { safely { featureFlagManager.setEnabled(flag, enabled) } }
+        viewModelScope.launch { safely {
+            featureFlagManager.setEnabled(flag, enabled)
+            // Arabic OCR needs the verified high-accuracy model. Start its download
+            // automatically when the user enables the feature; CONNECTED permits
+            // Wi-Fi or mobile data and the worker reports visible progress.
+            if (enabled && flag == FeatureFlag.ARABIC_OCR && !paddleModels.isInstalled()) {
+                appPreferences.setBoolean(requestKey(OfflineModel.TESSERACT_ARABIC), true)
+                val request = com.omnimemoria.data.worker.ModelDownloadWorker.request()
+                workManager.enqueueUniqueWork(
+                    com.omnimemoria.data.worker.ModelDownloadWorker.UNIQUE_ARABIC_DOWNLOAD,
+                    androidx.work.ExistingWorkPolicy.KEEP,
+                    request
+                ).await()
+            }
+        } }
     }
 
     fun requestModel(id: String, requested: Boolean = true) {

@@ -11,6 +11,7 @@ class EntityExtractorTest {
     @Test fun extractsEmailsAndHttpUrlsWithoutExecutingAnything() {
         assertEquals(listOf("hi@example.com"), EntityExtractor.emails("email hi@example.com please"))
         assertEquals(listOf("https://example.com/path"), EntityExtractor.urls("https://example.com/path."))
+        assertEquals(listOf("https://www.example.com/a?x=1&b=2"), EntityExtractor.urls("www.example.com/a?x=1&b=2)."))
         assertTrue(EntityExtractor.urls("javascript:alert(1)").isEmpty())
     }
     @Test fun duplicatesAndNonPhoneLongNumbersAreIgnored() {

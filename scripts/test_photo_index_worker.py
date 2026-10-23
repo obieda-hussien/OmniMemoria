@@ -48,8 +48,10 @@ class Data(val values: Map<String, Any?> = emptyMap()) {
 fun workDataOf(vararg pairs: Pair<String, Any?>) = Data(mapOf(*pairs))
 class WorkerParameters(val data: Data = Data(), val attempts: Int = 0)
 abstract class CoroutineWorker(context: android.content.Context, val params: WorkerParameters) {
+ val applicationContext = context
  val inputData = params.data; val runAttemptCount = params.attempts; val isStopped = false
  abstract suspend fun doWork(): Result
+ suspend fun setForeground(info: Any) {}
  suspend fun setProgress(data: Data) {}
  data class Result(val state: String, val data: Data = Data()) {
   companion object {
@@ -93,6 +95,7 @@ class IndexImageSource {
  }
 }
 class ArabicModelStore { suspend fun isInstalled() = false; fun isHighAccuracyInstalled() = false }
+class PaddleOcrModelStore { fun isInstalled() = false }
 class PhotoAnalyzer {
  var onAnalyze: () -> Unit = {}; var released = false
  suspend fun analyze(image: IndexImage, old: PhotoIntelligence?, required: Int, arabicReady: Boolean, analysisVersion: Int): PhotoIntelligence {
@@ -108,6 +111,9 @@ class WorkManagerScheduler {
  val queued = mutableListOf<Long>()
  fun scheduleBackgroundIndex(afterId: Long = 0, ids: List<Long>? = null, append: Boolean = false, userInitiated: Boolean = false) { queued += afterId }
 }
+internal object WorkForeground {
+ fun info(context: android.content.Context, notificationId: Int, title: String, message: String): Any = Any()
+}
 """,
     'Runner.kt': """import android.content.Context
 import androidx.work.*
@@ -121,7 +127,7 @@ class Fixture {
  val analyzer = PhotoAnalyzer(); val scheduler = WorkManagerScheduler()
  fun worker(attempts: Int = 0) = PhotoIndexWorker(Context(), WorkerParameters(workDataOf(
   PhotoIndexWorker.WORK_INPUT_PHOTO_IDS to longArrayOf(42), PhotoIndexWorker.WORK_INPUT_USER_INITIATED to true), attempts),
-  flags, db, source, analyzer, ArabicModelStore(), scheduler)
+  flags, db, source, analyzer, ArabicModelStore(), PaddleOcrModelStore(), scheduler)
 }
 fun main() = runBlocking {
  var cases = 0
